@@ -1,0 +1,27 @@
+--- tests/browser-modules.test.js
++++ tests/browser-modules.test.js
+@@ -253,6 +253,24 @@
+   assert.equal(root.ExtensityPopupLabels.formatProfileBadgeLabel("Bookmark Organization", "icons_only", 4), "");
+ });
+
++test("clampInteger enforces boundaries through utility function", () => {
++  const root = {};
++  loadBrowserScript(path.join(repoRoot, "js/engine.js"), {
++    ko: { extenders: {} },
++    window: root
++  });
++
++  const clampInteger = root.ExtensityUtils.clampInteger;
++
++  assert.equal(clampInteger("5", 10, 1, 100), 5);
++  assert.equal(clampInteger(5, 10, 1, 100), 5);
++  assert.equal(clampInteger(-5, 10, 1, 100), 1);
++  assert.equal(clampInteger(105, 10, 1, 100), 100);
++  assert.equal(clampInteger("abc", 10, 1, 100), 10);
++  assert.equal(clampInteger(NaN, 10, 1, 100), 10);
++  assert.equal(clampInteger("4.9", 10, 1, 100), 4);
++});
++
+ test("extension toggle icon reflects the current enabled state", () => {
+   function observable(initial) {
+     let value = initial;

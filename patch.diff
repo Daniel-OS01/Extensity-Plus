@@ -1,0 +1,11 @@
+--- js/engine.js
++++ js/engine.js
+@@ -539,6 +539,7 @@
+   root.ExtensityUtils = {
+     buildManageExtensionUrl: buildManageExtensionUrl,
+     buildPermissionsPageUrl: buildPermissionsPageUrl,
+     chromeCall: chromeCall,
++    clampInteger: clampInteger,
+     copyText: copyText,
+     openTab: openTab
+   };

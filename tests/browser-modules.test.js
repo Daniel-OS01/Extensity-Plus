@@ -1650,3 +1650,18 @@ test("background install does not request optional web store permission without 
 
   assert.deepEqual(permissionRequests, []);
 });
+
+test("background isAppType identifies hosted and packaged apps", () => {
+  const root = loadBackgroundModule();
+  const isAppType = root.ExtensityBackground.isAppType;
+
+  assert.equal(isAppType("hosted_app"), true);
+  assert.equal(isAppType("legacy_packaged_app"), true);
+  assert.equal(isAppType("packaged_app"), true);
+
+  assert.equal(isAppType("extension"), false);
+  assert.equal(isAppType("theme"), false);
+  assert.equal(isAppType(""), false);
+  assert.equal(isAppType(null), false);
+  assert.equal(isAppType(undefined), false);
+});

@@ -965,9 +965,9 @@ importScripts(
     var envelope = importExport.validateBackupEnvelope(payload.envelope);
     var currentLocalState = await storage.loadLocalState();
 
-    for (var index = 0; index < currentLocalState.reminderQueue.length; index += 1) {
-      await clearAlarm(currentLocalState.reminderQueue[index].alarmName);
-    }
+    await Promise.all(currentLocalState.reminderQueue.map(function(item) {
+      return clearAlarm(item.alarmName);
+    }));
 
     await storage.saveSyncOptions(envelope.settings);
     await storage.saveProfiles(envelope.profiles);

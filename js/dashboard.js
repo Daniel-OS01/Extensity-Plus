@@ -4,13 +4,6 @@ document.addEventListener("DOMContentLoaded", function() {
     return isFinite(parsed) ? parsed : fallback;
   }
 
-  function exportFilename(prefix, ext) {
-    var d = new Date();
-    var dd = String(d.getDate()).padStart(2, "0");
-    var mm = String(d.getMonth() + 1).padStart(2, "0");
-    var yyyy = d.getFullYear();
-    return prefix + "-" + dd + "-" + mm + "-" + yyyy + "." + ext;
-  }
 
   function applyCssVars(options) {
     var itemPadding = numericOption(options.itemPaddingPx, 10);
@@ -447,7 +440,7 @@ document.addEventListener("DOMContentLoaded", function() {
     self.exportJson = function() {
       self.performAction(ExtensityApi.exportBackup()).then(function(payload) {
         ExtensityIO.downloadText(
-          exportFilename("extensity-plus-backup", "json"),
+          ExtensityIO.exportFilename("extensity-plus-backup", "json"),
           JSON.stringify(payload.envelope, null, 2),
           "application/json;charset=utf-8"
         );
@@ -457,7 +450,7 @@ document.addEventListener("DOMContentLoaded", function() {
     self.exportCsv = function() {
       self.performAction(ExtensityApi.getState()).then(function(payload) {
         var csv = ExtensityImportExport.buildExtensionsCsv(payload.state.extensions);
-        ExtensityIO.downloadText(exportFilename("extensity-extensions", "csv"), csv, "text/csv;charset=utf-8");
+        ExtensityIO.downloadText(ExtensityIO.exportFilename("extensity-extensions", "csv"), csv, "text/csv;charset=utf-8");
       }).catch(function() {});
     };
 

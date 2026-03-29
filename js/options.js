@@ -90,15 +90,8 @@ document.addEventListener("DOMContentLoaded", function() {
     return new Date(timestamp).toLocaleString();
   }
 
-  function OptionsViewModel() {
-    var self = this;
-    self.loading = ko.observable(true);
-    self.busy = ko.observable(false);
-    self.error = ko.observable("");
-    self.message = ko.observable("");
-    self.needsWebStorePermission = ko.observable(false);
-    self.options = new OptionsCollection();
 
+  function attachPermissionMethods(self) {
     self.checkWebStorePermission = function() {
       chrome.permissions.contains(
         { origins: ["https://chromewebstore.google.com/*"] },
@@ -112,10 +105,123 @@ document.addEventListener("DOMContentLoaded", function() {
         function(granted) { self.needsWebStorePermission(!granted); }
       );
     };
+  }
 
+  function attachDataMethods(self) {
     self.lastDriveSyncLabel = ko.pureComputed(function() {
       return formatTimestamp(self.options.lastDriveSync());
     });
+
+    self.exportJson = function() {
+      self.performAction(ExtensityApi.exportBackup()).then(function(payload) {
+        ExtensityIO.downloadText(
+          exportFilename("extensity-plus-backup", "json"),
+          JSON.stringify(payload.envelope, null, 2),
+          "application/json;charset=utf-8"
+        );
+      });
+    };
+
+    self.exportCsv = function() {
+      self.performAction(ExtensityApi.getState()).then(function(payload) {
+        var csv = ExtensityImportExport.buildExtensionsCsv(payload.state.extensions);
+        ExtensityIO.downloadText(exportFilename("extensity-extensions", "csv"), csv, "text/csv;charset=utf-8");
+      });
+    };
+
+    self.importJson = function(viewModel, event) {
+      var file = event.target.files && event.target.files[0];
+      if (!file) {
+        return;
+      }
+
+      self.busy(true);
+      ExtensityIO.readFileAsText(file).then(function(content) {
+        return JSON.parse(content);
+      }).then(function(envelope) {
+        return ExtensityApi.importBackup(envelope);
+      }).then(function(payload) {
+        self.applyState(payload.state);
+        self.message("Backup imported.");
+        fadeOutMessage("save-result");
+      }).catch(function(error) {
+        self.error(error.message);
+      }).finally(function() {
+        self.busy(false);
+        event.target.value = "";
+      });
+    };
+
+    self.syncDrive = function() {
+      self.performAction(ExtensityApi.syncDrive()).then(function() {
+        self.message("Drive sync completed.");
+      }).catch(function() {});
+    };
+  }
+
+  function attachPresetMethods(self) {
+    self.applyPresetNone = function() {
+      self.options.itemPaddingPx(0);
+      self.options.itemPaddingXPx(0);
+      self.options.itemNameGapPx(0);
+      self.options.itemSpacingPx(0);
+      self.options.popupListStyle("table");
+      applyCssVars(self.options.toJS());
+      self.save();
+    };
+
+    self.applyPresetCompact = function() {
+      self.options.fontSizePx(11);
+      self.options.itemPaddingPx(6);
+      self.options.itemPaddingXPx(10);
+      self.options.itemNameGapPx(8);
+      self.options.itemSpacingPx(4);
+      self.save();
+    };
+
+    self.applyPresetDefault = function() {
+      self.options.fontSizePx(12);
+      self.options.itemPaddingPx(10);
+      self.options.itemPaddingXPx(12);
+      self.options.itemNameGapPx(10);
+      self.options.itemSpacingPx(8);
+      self.save();
+    };
+
+    self.applyPresetComfortable = function() {
+      self.options.fontSizePx(13);
+      self.options.itemPaddingPx(14);
+      self.options.itemPaddingXPx(14);
+      self.options.itemNameGapPx(12);
+      self.options.itemSpacingPx(12);
+      self.save();
+    };
+
+    self.resetAccentColor = function() {
+      self.options.accentColor("");
+      applyCssVars(self.options.toJS());
+      self.save();
+    };
+
+    self.resetPopupBgColor = function() {
+      self.options.popupBgColor("");
+      document.body.style.background = "";
+      self.save();
+    };
+  }
+
+  function OptionsViewModel() {
+    var self = this;
+    self.loading = ko.observable(true);
+    self.busy = ko.observable(false);
+    self.error = ko.observable("");
+    self.message = ko.observable("");
+    self.needsWebStorePermission = ko.observable(false);
+    self.options = new OptionsCollection();
+
+    attachPermissionMethods(self);
+    attachDataMethods(self);
+    attachPresetMethods(self);
 
     self.applyState = function(state) {
       var normalizedOptions = normalizeOptionState(state.options);
@@ -172,100 +278,6 @@ document.addEventListener("DOMContentLoaded", function() {
       chrome.tabs.create({ url: "chrome://extensions/shortcuts" });
     };
 
-    self.exportJson = function() {
-      self.performAction(ExtensityApi.exportBackup()).then(function(payload) {
-        ExtensityIO.downloadText(
-          exportFilename("extensity-plus-backup", "json"),
-          JSON.stringify(payload.envelope, null, 2),
-          "application/json;charset=utf-8"
-        );
-      });
-    };
-
-    self.exportCsv = function() {
-      self.performAction(ExtensityApi.getState()).then(function(payload) {
-        var csv = ExtensityImportExport.buildExtensionsCsv(payload.state.extensions);
-        ExtensityIO.downloadText(exportFilename("extensity-extensions", "csv"), csv, "text/csv;charset=utf-8");
-      });
-    };
-
-    self.importJson = function(viewModel, event) {
-      var file = event.target.files && event.target.files[0];
-      if (!file) {
-        return;
-      }
-
-      self.busy(true);
-      ExtensityIO.readFileAsText(file).then(function(content) {
-        return JSON.parse(content);
-      }).then(function(envelope) {
-        return ExtensityApi.importBackup(envelope);
-      }).then(function(payload) {
-        self.applyState(payload.state);
-        self.message("Backup imported.");
-        fadeOutMessage("save-result");
-      }).catch(function(error) {
-        self.error(error.message);
-      }).finally(function() {
-        self.busy(false);
-        event.target.value = "";
-      });
-    };
-
-    self.syncDrive = function() {
-      self.performAction(ExtensityApi.syncDrive()).then(function() {
-        self.message("Drive sync completed.");
-      }).catch(function() {});
-    };
-
-    self.applyPresetNone = function() {
-      self.options.itemPaddingPx(0);
-      self.options.itemPaddingXPx(0);
-      self.options.itemNameGapPx(0);
-      self.options.itemSpacingPx(0);
-      self.options.popupListStyle("table");
-      applyCssVars(self.options.toJS());
-      self.save();
-    };
-
-    self.applyPresetCompact = function() {
-      self.options.fontSizePx(11);
-      self.options.itemPaddingPx(6);
-      self.options.itemPaddingXPx(10);
-      self.options.itemNameGapPx(8);
-      self.options.itemSpacingPx(4);
-      self.save();
-    };
-
-    self.applyPresetDefault = function() {
-      self.options.fontSizePx(12);
-      self.options.itemPaddingPx(10);
-      self.options.itemPaddingXPx(12);
-      self.options.itemNameGapPx(10);
-      self.options.itemSpacingPx(8);
-      self.save();
-    };
-
-    self.applyPresetComfortable = function() {
-      self.options.fontSizePx(13);
-      self.options.itemPaddingPx(14);
-      self.options.itemPaddingXPx(14);
-      self.options.itemNameGapPx(12);
-      self.options.itemSpacingPx(12);
-      self.save();
-    };
-
-    self.resetAccentColor = function() {
-      self.options.accentColor("");
-      applyCssVars(self.options.toJS());
-      self.save();
-    };
-
-    self.resetPopupBgColor = function() {
-      self.options.popupBgColor("");
-      document.body.style.background = "";
-      self.save();
-    };
   }
 
   _.defer(function() {

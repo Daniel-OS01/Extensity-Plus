@@ -238,6 +238,7 @@ document.addEventListener("DOMContentLoaded", function() {
       self.opts.apply(state.options);
       self.ext.applyState(state.extensions);
       self.profiles.applyState(state.profiles);
+      self.decorateProfiles();
 
       self.profiles.items().forEach(function(profile) {
         if (profile.reserved()) {
@@ -273,6 +274,7 @@ document.addEventListener("DOMContentLoaded", function() {
       if (window.ExtensityTooltips && window.ExtensityTooltips.applyAutoTooltips) {
         window.ExtensityTooltips.applyAutoTooltips(document.body);
       }
+      self.syncCurrentProfileFlags();
       self.loading(false);
       self.error("");
       self.checkWebStorePermission();
@@ -317,6 +319,37 @@ document.addEventListener("DOMContentLoaded", function() {
         };
       });
     });
+
+    self.decorateProfile = function(profile) {
+      if (!profile) {
+        return profile;
+      }
+
+      profile.activate = function() {
+        self.select(profile);
+        return false;
+      };
+
+      profile.requestRemove = function() {
+        self.remove(profile);
+        return false;
+      };
+
+      return profile;
+    };
+
+    self.decorateProfiles = function() {
+      self.profiles.items().forEach(function(profile) {
+        self.decorateProfile(profile);
+      });
+    };
+
+    self.syncCurrentProfileFlags = function() {
+      var currentName = self.current_name();
+      self.profiles.items().forEach(function(profile) {
+        profile.isActive(profile.name() === currentName);
+      });
+    };
 
     self.refreshExtensionMetadata = function() {
       var extensionIds;
@@ -440,6 +473,7 @@ document.addEventListener("DOMContentLoaded", function() {
         return extension.id();
       });
       var profile = self.profiles.add(name, enabledIds);
+      self.decorateProfile(profile);
       self.current_profile(profile);
       self.add_name("");
     };
@@ -592,6 +626,10 @@ document.addEventListener("DOMContentLoaded", function() {
     self.close = function() {
       window.close();
     };
+
+    self.current_profile.subscribe(function() {
+      self.syncCurrentProfileFlags();
+    });
   }
 
   _.defer(function() {

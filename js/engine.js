@@ -226,9 +226,15 @@
     self.name = ko.observable(name);
     self.items = ko.observableArray(root.ExtensityStorage.uniqueArray(items || []));
     self.selected = ko.observable(false);
+    self.activate = function() { return false; };
+    self.requestRemove = function() { return false; };
 
     self.reserved = ko.pureComputed(function() {
       return self.name().indexOf("__") === 0;
+    });
+
+    self.listVisible = ko.pureComputed(function() {
+      return !self.reserved();
     });
 
     self.hasItems = ko.pureComputed(function() {

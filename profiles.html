@@ -131,14 +131,14 @@
           <li title="Edit the Favorites profile" data-sbind="click: selectFavorites, css:{active: '__favorites' == current_name()}"><i class="fa fa-star"></i> Favorites</li>
         </ul>
 
-        <ul class="items" data-sbind="foreach: profiles.items">
-          <li data-sbind="visible: !reserved(), click: $parent.select, css:{active: name() == $parent.current_name()}">
+        <ul class="items" data-sbind="foreach: profiles.items, attr:{dir: profileNameDir}">
+          <li data-sbind="visible: listVisible, click: activate, css:{active: isActive}">
             <input type="checkbox" data-sbind="checked: selected, clickBubble: false" />
             <span class="profile-color-dot" data-sbind="attr:{style: 'background:' + color()}"></span>
             <i class="fa" data-sbind="attr:{class: 'fa ' + icon()}"></i>
-            <a class="profile-name-text" data-sbind="text: short_name, attr:{dir: $parent.profileNameDir}"></a>
+            <a class="profile-name-text" data-sbind="text: short_name"></a>
             <span class="profile-count" title="Extensions in this profile" data-sbind="text: itemCount"></span>
-            <i class="fa fa-trash-o remove-profile" title="Delete this profile" data-sbind="click: $parent.remove, clickBubble: false"></i>
+            <i class="fa fa-trash-o remove-profile" title="Delete this profile" data-sbind="click: requestRemove, clickBubble: false"></i>
           </li>
         </ul>
 

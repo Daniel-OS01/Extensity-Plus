@@ -1205,6 +1205,283 @@ test("options none preset keeps font size and zeroes spacing options", async () 
   assert.equal(saveOptionsCalls, 1);
 });
 
+test("profiles add decorates custom profiles without parent-context bindings", async () => {
+  function observable(initialValue) {
+    let value = initialValue;
+    const subscribers = [];
+    const obs = function(nextValue) {
+      if (arguments.length > 0) {
+        value = nextValue;
+        subscribers.forEach((fn) => fn(value));
+        return obs;
+      }
+      return value;
+    };
+    obs.subscribe = function(fn) {
+      subscribers.push(fn);
+    };
+    return obs;
+  }
+
+  function observableArray(initialValue) {
+    const obs = observable(initialValue || []);
+    obs.push = function(item) {
+      const nextValue = obs().slice();
+      nextValue.push(item);
+      obs(nextValue);
+    };
+    obs.remove = function(predicateOrItem) {
+      const predicate = typeof predicateOrItem === "function"
+        ? predicateOrItem
+        : function(item) { return item === predicateOrItem; };
+      obs(obs().filter((item) => !predicate(item)));
+    };
+    obs.indexOf = function(item) {
+      return obs().indexOf(item);
+    };
+    obs.extend = function() {
+      return obs;
+    };
+    return obs;
+  }
+
+  const ko = {
+    extenders: {},
+    observable,
+    observableArray,
+    computed(fn) {
+      const obs = function() {
+        return fn();
+      };
+      obs.extend = function() {
+        return obs;
+      };
+      return obs;
+    },
+    pureComputed(fn) {
+      const obs = function() {
+        return fn();
+      };
+      obs.extend = function() {
+        return obs;
+      };
+      return obs;
+    },
+    bindingProvider: {},
+    secureBindingsProvider: function() {},
+    applyBindings(vm) {
+      capturedVm = vm;
+    }
+  };
+
+  function OptionsCollection() {
+    this.colorScheme = observable("auto");
+    this.profileDisplay = observable("landscape");
+    this.profileExtensionSide = observable("right");
+    this.profileLayoutDirection = observable("ltr");
+    this.profileNameDirection = observable("ltr");
+    this.showProfilesExtensionMetadata = observable(true);
+    this.apply = function(nextState) {
+      const state = nextState || {};
+      this.colorScheme(state.colorScheme || "auto");
+      this.profileDisplay(state.profileDisplay || "landscape");
+      this.profileExtensionSide(state.profileExtensionSide || "right");
+      this.profileLayoutDirection(state.profileLayoutDirection || "ltr");
+      this.profileNameDirection(state.profileNameDirection || "ltr");
+      this.showProfilesExtensionMetadata(
+        typeof state.showProfilesExtensionMetadata === "boolean" ? state.showProfilesExtensionMetadata : true
+      );
+    };
+    this.toJS = function() {
+      return {
+        colorScheme: this.colorScheme(),
+        profileDisplay: this.profileDisplay(),
+        profileExtensionSide: this.profileExtensionSide(),
+        profileLayoutDirection: this.profileLayoutDirection(),
+        profileNameDirection: this.profileNameDirection(),
+        showProfilesExtensionMetadata: this.showProfilesExtensionMetadata()
+      };
+    };
+  }
+
+  function ProfileCollectionModel(initialState) {
+    this.items = observableArray([]);
+    this.localProfiles = observable(false);
+    this.applyState = function(state) {
+      const payload = state || {};
+      this.localProfiles(!!payload.localProfiles);
+      this.items((payload.items || []).map((profile) => {
+        return new windowRoot.ProfileModel(profile.name, profile.items, {
+          color: profile.color,
+          icon: profile.icon
+        });
+      }));
+    };
+    this.add = function(name, items) {
+      const profile = new windowRoot.ProfileModel(name, items || []);
+      this.items.push(profile);
+      return profile;
+    };
+    this.find = function(name) {
+      return this.items().find((profile) => profile.name() === name);
+    };
+    this.remove = function(profile) {
+      this.items.remove(profile);
+    };
+    this.toMap = function() {
+      return this.items().reduce((result, profile) => {
+        result[profile.name()] = normalize(profile.items());
+        return result;
+      }, {});
+    };
+    this.toMeta = function() {
+      return {};
+    };
+    this.applyState(initialState || { items: [], localProfiles: false });
+  }
+
+  let capturedVm = null;
+  let domReady = null;
+  const windowRoot = {
+    ExtensityStorage: storageStub
+  };
+
+  loadBrowserScript(path.join(repoRoot, "js/engine.js"), {
+    ko,
+    _: Object.assign(function(items) {
+      return {
+        find(predicate) {
+          return (items || []).find(predicate);
+        }
+      };
+    }, {
+      delay(fn) {
+        fn();
+      }
+    }),
+    window: windowRoot
+  });
+
+  loadBrowserScript(path.join(repoRoot, "js/profiles.js"), {
+    DismissalsCollection: function() {
+      this.dismiss = function() {};
+    },
+    ExtensionCollectionModel: windowRoot.ExtensionCollectionModel,
+    ExtensityApi: {
+      getExtensionMetadata() {
+        return Promise.resolve({ metadata: {} });
+      },
+      getState() {
+        return Promise.resolve({
+          state: {
+            metadata: { version: "2.0.2" },
+            options: {
+              colorScheme: "auto",
+              profileDisplay: "landscape",
+              profileExtensionSide: "right",
+              profileLayoutDirection: "ltr",
+              profileNameDirection: "ltr",
+              showProfilesExtensionMetadata: true
+            },
+            extensions: [
+              {
+                enabled: true,
+                id: "ext-1",
+                isApp: false,
+                mayDisable: true,
+                name: "Example Extension"
+              }
+            ],
+            profiles: {
+              items: [
+                { items: [], name: "__always_on" },
+                { items: [], name: "__favorites" }
+              ],
+              localProfiles: false
+            }
+          }
+        });
+      }
+    },
+    OptionsCollection,
+    ProfileCollectionModel,
+    _: Object.assign(function(items) {
+      return {
+        find(predicate) {
+          return (items || []).find(predicate);
+        }
+      };
+    }, {
+      defer(fn) {
+        fn();
+      }
+    }),
+    chrome: {
+      permissions: {
+        contains(descriptor, callback) {
+          callback(true);
+        },
+        request(descriptor, callback) {
+          callback(false);
+        }
+      },
+      tabs: {
+        create() {}
+      }
+    },
+    document: {
+      addEventListener(event, callback) {
+        if (event === "DOMContentLoaded") {
+          domReady = callback;
+        }
+      },
+      body: {
+        className: "",
+        setAttribute() {}
+      },
+      getElementById() {
+        return {};
+      }
+    },
+    fadeOutMessage() {},
+    ko,
+    window: {
+      ExtensityEngine: windowRoot.ExtensityEngine,
+      ExtensityTooltips: {
+        applyAutoTooltips() {}
+      },
+      close() {},
+      confirm() {
+        return true;
+      }
+    }
+  });
+
+  assert.ok(domReady);
+  domReady();
+  await Promise.resolve();
+  await Promise.resolve();
+
+  assert.ok(capturedVm);
+  capturedVm.add_name("Work");
+  capturedVm.add();
+
+  const workProfile = capturedVm.profiles.find("Work");
+  assert.ok(workProfile);
+  assert.equal(workProfile.listVisible(), true);
+  assert.equal(typeof workProfile.activate, "function");
+  assert.equal(typeof workProfile.requestRemove, "function");
+  assert.equal(workProfile.isActive(), true);
+  assert.deepEqual(normalize(workProfile.items()), ["ext-1"]);
+
+  capturedVm.selectByName("__favorites");
+  assert.equal(workProfile.isActive(), false);
+
+  workProfile.activate();
+  assert.equal(capturedVm.current_name(), "Work");
+  assert.equal(workProfile.isActive(), true);
+});
+
 test("url rules support wildcard, regex, and later-rule precedence", () => {
   const root = loadModule("js/url-rules.js");
 

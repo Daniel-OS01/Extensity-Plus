@@ -400,6 +400,10 @@ document.addEventListener("DOMContentLoaded", function() {
       self.selectByName("__always_on");
     };
 
+    self.selectBase = function() {
+      self.selectByName("__base");
+    };
+
     self.selectFavorites = function() {
       self.selectByName("__favorites");
     };

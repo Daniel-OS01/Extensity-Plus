@@ -191,11 +191,13 @@
 
   var reservedNames = {
     "__always_on": "Always On",
+    "__base": "Base",
     "__favorites": "Favorites"
   };
 
   var reservedIcons = {
     "__always_on": "fa-lightbulb-o",
+    "__base": "fa-home",
     "__default": "fa-user-circle-o",
     "__favorites": "fa-star"
   };
@@ -365,6 +367,10 @@
 
     self.always_on = function() {
       return self.find("__always_on");
+    };
+
+    self.base = function() {
+      return self.find("__base");
     };
 
     self.favorites = function() {

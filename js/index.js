@@ -157,7 +157,7 @@ document.addEventListener("DOMContentLoaded", function() {
 
     self.assignableProfiles = ko.pureComputed(function() {
       return self.profiles.items().filter(function(profile) {
-        return !profile.reserved();
+        return !profile.reserved() || profile.name() === "__always_on" || profile.name() === "__base" || profile.name() === "__favorites";
       });
     });
 
@@ -165,7 +165,7 @@ document.addEventListener("DOMContentLoaded", function() {
       var expandedId = self.expandedExtensionId();
       var memberMap = expandedId ? (self.extensionProfileMembership()[expandedId] || {}) : {};
       return self.profiles.items().filter(function(profile) {
-        return !profile.reserved();
+        return !profile.reserved() || profile.name() === "__always_on" || profile.name() === "__base" || profile.name() === "__favorites";
       }).map(function(profile) {
         var profileName = profile.name();
         var isMember = !!memberMap[profileName];
@@ -289,14 +289,24 @@ document.addEventListener("DOMContentLoaded", function() {
     };
 
     self.decorateProfileRow = function(profile) {
+      function profileTooltipText() {
+        return profile.reserved() ? profile.short_name() : profile.name();
+      }
+
       profile.selectProfile = function() {
         self.setProfile(profile);
       };
+      profile.profileTooltip = ko.pureComputed(function() {
+        return profileTooltipText();
+      });
       profile.showPillCheck = ko.pureComputed(function() {
         return self.showProfilePillCheck(profile);
       });
       profile.showAlwaysOnIcon = ko.pureComputed(function() {
         return self.showProfilePillReservedIcon(profile, "__always_on");
+      });
+      profile.showBaseIcon = ko.pureComputed(function() {
+        return self.showProfilePillReservedIcon(profile, "__base");
       });
       profile.showFavoritesIcon = ko.pureComputed(function() {
         return self.showProfilePillReservedIcon(profile, "__favorites");
@@ -444,44 +454,71 @@ document.addEventListener("DOMContentLoaded", function() {
       });
 
       // Compute profile membership badges for each extension
-      var profileMap = {};
+      var normalProfileMap = {};
+      var baseMembershipMap = {};
       var colorIndex = 0;
       var badgeMode = self.opts.popupProfileBadgeTextMode();
       var singleWordChars = self.opts.popupProfileBadgeSingleWordChars();
+      function buildProfileBadge(name, colorClass, badgeStyle, title) {
+        return {
+          badgeStyle: badgeStyle || "",
+          colorClass: colorClass || "",
+          name: ExtensityPopupLabels.formatProfileBadgeLabel(name, badgeMode, singleWordChars),
+          title: title || name
+        };
+      }
+
       self.profiles.items().forEach(function(profile) {
-        if (!profile.reserved()) {
-          var hexColor = profile.color();
-          var isHex = hexColor && hexColor.indexOf("#") === 0;
-          var colorClass = isHex ? "" : ("profile-color-" + (colorIndex % 5));
-          var badgeStyle = isHex ? ("border-left-color:" + hexColor) : "";
-          colorIndex += 1;
+        if (profile.name() === "__base") {
           profile.items().forEach(function(extId) {
-            if (!profileMap[extId]) { profileMap[extId] = []; }
-            profileMap[extId].push({
-              badgeStyle: badgeStyle,
-              colorClass: colorClass,
-              name: ExtensityPopupLabels.formatProfileBadgeLabel(profile.name(), badgeMode, singleWordChars)
-            });
+            baseMembershipMap[extId] = true;
           });
+          return;
         }
+        if (profile.reserved()) {
+          return;
+        }
+
+        var hexColor = profile.color();
+        var isHex = hexColor && hexColor.indexOf("#") === 0;
+        var colorClass = isHex ? "" : ("profile-color-" + (colorIndex % 5));
+        var badgeStyle = isHex ? ("border-left-color:" + hexColor) : "";
+        var badgeTitle = profile.name();
+        colorIndex += 1;
+        profile.items().forEach(function(extId) {
+          if (!normalProfileMap[extId]) { normalProfileMap[extId] = []; }
+          normalProfileMap[extId].push(buildProfileBadge(profile.name(), colorClass, badgeStyle, badgeTitle));
+        });
       });
       self.exts.items().forEach(function(ext) {
-        var badges = (profileMap[ext.id()] || []).slice();
-        if (self.opts.showAlwaysOnBadge() && ext.alwaysOn()) {
-          badges.unshift({
-            badgeStyle: "",
-            colorClass: "always-on-badge",
-            name: ExtensityPopupLabels.formatProfileBadgeLabel("__always_on", badgeMode, singleWordChars)
-          });
+        var badges = [];
+        var isAlwaysOn = ext.alwaysOn();
+        var isBaseMember = !!baseMembershipMap[ext.id()];
+        var normalBadges = (normalProfileMap[ext.id()] || []).slice();
+        if (isAlwaysOn && self.opts.showAlwaysOnBadge()) {
+          badges.push(buildProfileBadge("__always_on", "always-on-badge", "", "Always On"));
+        }
+        if (isBaseMember) {
+          badges.push(buildProfileBadge("__base", "base-badge", "", "Base"));
+        }
+        if (!isAlwaysOn) {
+          badges = badges.concat(normalBadges.slice(0, 3));
+          if (normalBadges.length > 3) {
+            badges.push({
+              badgeStyle: "",
+              colorClass: "profile-overflow-badge",
+              name: "+" + (normalBadges.length - 3),
+              title: "Hidden profiles: " + normalBadges.slice(3).map(function(badge) {
+                return badge.title;
+              }).join(", ")
+            });
+          }
         }
         ext.profileBadges(badges);
       });
 
       var profileMembership = {};
       self.profiles.items().forEach(function(profile) {
-        if (profile.reserved()) {
-          return;
-        }
         profile.items().forEach(function(extensionId) {
           if (!profileMembership[extensionId]) {
             profileMembership[extensionId] = {};

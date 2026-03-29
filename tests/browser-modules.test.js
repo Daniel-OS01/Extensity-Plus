@@ -188,6 +188,19 @@ test("storage sync defaults expose popup and profile display settings", () => {
   assert.deepEqual(normalize(localDefaults.webStoreMetadata), {});
 });
 
+test("normalizeProfileMap always includes reserved Base", () => {
+  const root = loadModule("js/storage.js");
+
+  assert.deepEqual(normalize(root.ExtensityStorage.normalizeProfileMap({
+    Work: ["ext-1"]
+  })), {
+    __always_on: [],
+    __base: [],
+    __favorites: [],
+    Work: ["ext-1"]
+  });
+});
+
 
 test("ensureSyncDefaults backfills missing profile direction keys", async () => {
   const syncState = {};
@@ -268,6 +281,7 @@ test("popup profile badge labels support full and compact formatting", () => {
   });
 
   assert.equal(root.ExtensityPopupLabels.formatProfileBadgeLabel("__always_on", "compact", 4), "AO");
+  assert.equal(root.ExtensityPopupLabels.formatProfileBadgeLabel("__base", "compact", 4), "Base");
   assert.equal(root.ExtensityPopupLabels.formatProfileBadgeLabel("Bookmark Organization", "compact", 4), "BO");
   assert.equal(root.ExtensityPopupLabels.formatProfileBadgeLabel("Testing", "compact", 4), "Test");
   assert.equal(root.ExtensityPopupLabels.formatProfileBadgeLabel("Bookmark Organization", "full", 4), "Bookmark Organization");
@@ -1817,8 +1831,88 @@ test("normalizePopupTextMode returns compact/icons_only or defaults to full", as
 
 test("popup template avoids secure-binding context variables", () => {
   const html = fs.readFileSync(path.join(repoRoot, "index.html"), "utf8");
+  const templateStart = html.indexOf('<script type="text/html" id="item-template">');
+  const templateEnd = html.indexOf("</script>", templateStart);
+  const template = html.slice(templateStart, templateEnd);
+  const openings = template.match(/<!-- ko /g) || [];
+  const closings = template.match(/<!-- \/ko -->/g) || [];
 
   assert.doesNotMatch(html, /\$parent|\$root|\$data|\$index/);
+  assert.equal(openings.length, closings.length);
+});
+
+test("popup header uses a logo-only repository link", () => {
+  const html = fs.readFileSync(path.join(repoRoot, "index.html"), "utf8");
+
+  assert.match(
+    html,
+    /<a id="title"[^>]*title="Open Extensity-Plus repository"[^>]*aria-label="Open Extensity-Plus repository"[^>]*>\s*<img[^>]*alt="Extensity-Plus"[^>]*>\s*<\/a>/
+  );
+  assert.doesNotMatch(
+    html,
+    /<a id="title"[\s\S]*>\s*<img[^>]*>\s*Extensity-Plus\s*<\/a>/
+  );
+});
+
+test("popup table action panel spans full width in below-name mode", () => {
+  const css = fs.readFileSync(path.join(repoRoot, "styles/index.css"), "utf8");
+
+  assert.match(
+    css,
+    /body\.table-action-panel-below-name\.popup-list-style-table\.list-view \.table-action-line\s*\{[^}]*grid-column:\s*1 \/ -1;[^}]*\}/
+  );
+});
+
+test("popup profile pills keep icon and text on one line", () => {
+  const css = fs.readFileSync(path.join(repoRoot, "styles/index.css"), "utf8");
+
+  assert.match(
+    css,
+    /#profiles ul\.items li \.profile-row\s*\{[^}]*display:\s*inline-flex;[^}]*flex-wrap:\s*nowrap;[^}]*white-space:\s*nowrap;[^}]*\}/
+  );
+  assert.match(
+    css,
+    /#profiles ul\.items li \.profile-row span\s*\{[^}]*white-space:\s*nowrap;[^}]*\}/
+  );
+});
+
+test("popup profile pills expose real profile titles and a Base icon", () => {
+  const html = fs.readFileSync(path.join(repoRoot, "index.html"), "utf8");
+
+  assert.match(
+    html,
+    /<div class="profile-row" data-sbind="click: selectProfile, attr:\{title: profileTooltip\}">/
+  );
+  assert.match(
+    html,
+    /<i class="fa fa-home" data-sbind="visible: showBaseIcon"><\/i>/
+  );
+  assert.match(
+    html,
+    /attr:\{style: badgeStyle, title: title\}/
+  );
+});
+
+test("popup expanded action rows keep the profile selector inline", () => {
+  const html = fs.readFileSync(path.join(repoRoot, "index.html"), "utf8");
+  const css = fs.readFileSync(path.join(repoRoot, "styles/index.css"), "utf8");
+
+  assert.match(
+    html,
+    /<div class="action-controls-row">[\s\S]*<div class="action-icon-row">[\s\S]*<select class="profile-assign-select"/
+  );
+  assert.match(
+    css,
+    /\.action-controls-row\s*\{[^}]*display:\s*flex;[^}]*flex-wrap:\s*nowrap;[^}]*min-width:\s*0;[^}]*\}/
+  );
+  assert.match(
+    css,
+    /\.action-icon-row\s*\{[^}]*flex:\s*1 1 auto;[^}]*min-width:\s*0;[^}]*\}/
+  );
+  assert.match(
+    css,
+    /\.table-action-line \.profile-assign-select,\s*\.compact-action-line \.profile-assign-select\s*\{[^}]*flex:\s*0 1 168px;[^}]*min-width:\s*148px;[^}]*\}/
+  );
 });
 
 test("popup rows expose direct profile membership and sort handlers", async () => {
@@ -1937,7 +2031,7 @@ test("popup rows expose direct profile membership and sort handlers", async () =
       popupListStyle: "table",
       popupMainPaddingPx: 0,
       popupProfileBadgeSingleWordChars: 4,
-      popupProfileBadgeTextMode: "compact",
+      popupProfileBadgeTextMode: "full",
       popupProfilePillShowIcons: false,
       popupProfilePillSingleWordChars: 4,
       popupProfilePillTextMode: "icons_only",
@@ -1956,12 +2050,36 @@ test("popup rows expose direct profile membership and sort handlers", async () =
     },
     profiles: {
       items: [
-        { items: [], name: "__always_on" },
-        { color: "#ff0000", icon: "fa-rocket", items: ["ext-1"], name: "Work" }
+        { items: ["ext-ao"], name: "__always_on" },
+        { items: ["ext-1", "ext-ao"], name: "__base" },
+        { items: ["ext-1"], name: "__favorites" },
+        { color: "#ff0000", icon: "fa-rocket", items: ["ext-1", "ext-ao"], name: "Work" },
+        { color: "#00aa00", icon: "fa-bolt", items: ["ext-1"], name: "Focus" },
+        { color: "#0000ff", icon: "fa-globe", items: ["ext-1"], name: "Travel" },
+        { color: "#ffaa00", icon: "fa-leaf", items: ["ext-1"], name: "Home" }
       ],
       localProfiles: false
     },
     extensions: [
+      {
+        alwaysOn: true,
+        alias: "",
+        description: "Always-on extension description",
+        enabled: true,
+        groupBadges: [],
+        groupIds: [],
+        homepageUrl: "https://example.com/always-on",
+        icon: "images/icon48.png",
+        id: "ext-ao",
+        installType: "normal",
+        isApp: false,
+        mayDisable: true,
+        name: "Always On Extension",
+        optionsUrl: "https://example.com/always-on/options",
+        storeUrl: "https://chrome.google.com/webstore/detail/example/ext-ao",
+        usageCount: 4,
+        version: "4.5.6"
+      },
       {
         alias: "",
         description: "Example extension description",
@@ -2128,29 +2246,76 @@ test("popup rows expose direct profile membership and sort handlers", async () =
   await Promise.resolve();
 
   assert.ok(capturedVm);
+  const profileNames = capturedVm.listedProfiles().map((profile) => profile.name());
   const profile = capturedVm.listedProfiles()[0];
-  const extension = capturedVm.listedExtensions()[0];
+  const extension = capturedVm.listedExtensions().find((item) => item.id() === "ext-1");
+  const alwaysOnExtension = capturedVm.listedExtensions().find((item) => item.id() === "ext-ao");
 
   assert.equal(typeof profile.selectProfile, "function");
   assert.equal(typeof extension.toggleTableRowAction, "function");
   assert.equal(typeof extension.onProfileMembershipChange, "function");
   assert.equal(extension.showTableRow(), true);
+  assert.deepEqual(normalize(profileNames), ["__always_on", "__base", "__favorites", "Work", "Focus", "Travel", "Home"]);
   assert.deepEqual(normalize(extension.profileDropdownOptions()), [
-    { label: "✓ Work", value: "Work" }
+    { label: " Always On", value: "__always_on" },
+    { label: "✓ Base", value: "__base" },
+    { label: "✓ Favorites", value: "__favorites" },
+    { label: "✓ Work", value: "Work" },
+    { label: "✓ Focus", value: "Focus" },
+    { label: "✓ Travel", value: "Travel" },
+    { label: "✓ Home", value: "Home" }
+  ]);
+  assert.equal(capturedVm.profiles.find("__base").profileTooltip(), "Base");
+  assert.deepEqual(normalize(extension.profileBadges()), [
+    { badgeStyle: "", colorClass: "base-badge", name: "Base", title: "Base" },
+    { badgeStyle: "border-left-color:#ff0000", colorClass: "", name: "Work", title: "Work" },
+    { badgeStyle: "border-left-color:#00aa00", colorClass: "", name: "Focus", title: "Focus" },
+    { badgeStyle: "border-left-color:#0000ff", colorClass: "", name: "Travel", title: "Travel" },
+    { badgeStyle: "", colorClass: "profile-overflow-badge", name: "+1", title: "Hidden profiles: Home" }
+  ]);
+  assert.deepEqual(normalize(alwaysOnExtension.profileBadges()), [
+    { badgeStyle: "", colorClass: "always-on-badge", name: "Always On", title: "Always On" },
+    { badgeStyle: "", colorClass: "base-badge", name: "Base", title: "Base" }
   ]);
 
   extension.onProfileMembershipChange(null, {
     target: {
-      value: "Work"
+      value: "__always_on"
     }
   });
   await Promise.resolve();
 
-  assert.deepEqual(normalize(membershipCalls), [{
-    extensionId: "ext-1",
-    profileName: "Work",
-    shouldInclude: false
-  }]);
+  extension.onProfileMembershipChange(null, {
+    target: {
+      value: "__favorites"
+    }
+  });
+  await Promise.resolve();
+
+  extension.onProfileMembershipChange(null, {
+    target: {
+      value: "__base"
+    }
+  });
+  await Promise.resolve();
+
+  assert.deepEqual(normalize(membershipCalls), [
+    {
+      extensionId: "ext-1",
+      profileName: "__always_on",
+      shouldInclude: true
+    },
+    {
+      extensionId: "ext-1",
+      profileName: "__favorites",
+      shouldInclude: false
+    },
+    {
+      extensionId: "ext-1",
+      profileName: "__base",
+      shouldInclude: false
+    }
+  ]);
 
   capturedVm.setSortAlpha();
   await Promise.resolve();

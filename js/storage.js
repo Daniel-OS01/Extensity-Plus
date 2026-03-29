@@ -74,7 +74,7 @@
     webStoreMetadata: {}
   };
 
-  var profileNames = ["__always_on", "__favorites"];
+  var profileNames = ["__always_on", "__base", "__favorites"];
   var syncProfileDirectionDefaults = {
     profileLayoutDirection: syncDefaults.profileLayoutDirection,
     profileNameDirection: syncDefaults.profileNameDirection

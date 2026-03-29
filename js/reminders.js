@@ -42,11 +42,10 @@
       return [];
     }
 
-    for (var index = 0; index < changes.length; index += 1) {
-      var change = changes[index];
+    await Promise.all(changes.map(function(change) {
       var alarmName = alarmNameFor(change.id);
       nextQueue = removeEntry(nextQueue, change.id);
-      await chromeCall(chrome.alarms, "clear", [alarmName]);
+      var clearPromise = chromeCall(chrome.alarms, "clear", [alarmName]);
 
       if (change.enabled && source === "manual") {
         chrome.alarms.create(alarmName, { delayInMinutes: delay });
@@ -57,7 +56,9 @@
           extensionId: change.id
         });
       }
-    }
+
+      return clearPromise;
+    }));
 
     return nextQueue;
   }

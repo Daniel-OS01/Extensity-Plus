@@ -1443,6 +1443,7 @@ importScripts(
     buildGenericStoreUrl: buildGenericStoreUrl,
     defaultCategoryForInstallType: defaultCategoryForInstallType,
     firstDescriptionLine: firstDescriptionLine,
+    isAppType: isAppType,
     loadExtensionMetadata: loadExtensionMetadata,
     normalizeExtensions: normalizeExtensions,
     normalizeStoreUrl: normalizeStoreUrl,

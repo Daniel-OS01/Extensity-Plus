@@ -771,6 +771,7 @@
     buildPermissionsPageUrl: buildPermissionsPageUrl,
     chromeCall: chromeCall,
     copyText: copyText,
-    openTab: openTab
+    openTab: openTab,
+    pruneText: pruneText
   };
 })(window);

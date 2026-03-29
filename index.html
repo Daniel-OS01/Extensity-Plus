@@ -36,9 +36,9 @@
 
 <section id="toolbar" class="main" data-sbind="visible: opts.showPopupSort">
   <div class="sort-modes">
-    <button type="button" title="Sort extensions alphabetically" data-sbind="click: setSortAlpha, css:{selected: opts.sortMode() == 'alpha'}">A-Z</button>
-    <button type="button" title="Sort by usage frequency" data-sbind="click: setSortFrequency, css:{selected: opts.sortMode() == 'frequency'}">Popular</button>
-    <button type="button" title="Sort by most recently toggled" data-sbind="click: setSortRecent, css:{selected: opts.sortMode() == 'recent'}">Recent</button>
+    <button type="button" title="Sort extensions alphabetically" data-sbind="click: setSortAlpha, css:{selected: opts.sortMode == 'alpha'}">A-Z</button>
+    <button type="button" title="Sort by usage frequency" data-sbind="click: setSortFrequency, css:{selected: opts.sortMode == 'frequency'}">Popular</button>
+    <button type="button" title="Sort by most recently toggled" data-sbind="click: setSortRecent, css:{selected: opts.sortMode == 'recent'}">Recent</button>
   </div>
   <p class="error" data-sbind="visible: error, text: error"></p>
 </section>
@@ -161,7 +161,7 @@
       </div>
       <select class="profile-assign-select" title="Assign to profile" data-sbind="event:{change: $root.onProfileMembershipChange}">
         <option value="">Profiles&#8230;</option>
-        <!-- ko foreach: $root.profileDropdownOptions -->
+        <!-- ko foreach: $root.profileDropdownOptions() -->
         <option data-sbind="value: value, text: label"></option>
         <!-- /ko -->
       </select>
@@ -204,7 +204,7 @@
       </div>
       <select class="profile-assign-select" title="Assign to profile" data-sbind="event:{change: $root.onProfileMembershipChange}">
         <option value="">Profiles&#8230;</option>
-        <!-- ko foreach: $root.profileDropdownOptions -->
+        <!-- ko foreach: $root.profileDropdownOptions() -->
         <option data-sbind="value: value, text: label"></option>
         <!-- /ko -->
       </select>

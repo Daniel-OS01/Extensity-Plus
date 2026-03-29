@@ -105,6 +105,14 @@
       });
     });
   }
+  function exportFilename(prefix, ext) {
+    var d = new Date();
+    var dd = String(d.getDate()).padStart(2, "0");
+    var mm = String(d.getMonth() + 1).padStart(2, "0");
+    var yyyy = d.getFullYear();
+    return prefix + "-" + yyyy + "-" + mm + "-" + dd + "." + ext;
+  }
+
 
   function downloadText(filename, content, mimeType) {
     var blob = new Blob([content], { type: mimeType || "text/plain;charset=utf-8" });
@@ -743,6 +751,7 @@
   root.DismissalsCollection = DismissalsCollection;
   root.ExtensityApi = ExtensityApi;
   root.ExtensityIO = {
+    exportFilename: exportFilename,
     downloadText: downloadText,
     readFileAsText: readFileAsText
   };

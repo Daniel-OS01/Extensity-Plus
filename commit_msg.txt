@@ -1,6 +1,0 @@
-🧹 Centralize applyThemeClasses in ExtensityUtils
-
-🎯 **What:** The `applyThemeClasses` function was duplicated in `js/dashboard.js` and `js/options.js`. This function has been centralized into `js/engine.js` under the `ExtensityUtils` namespace, and the callers have been updated to use the shared function.
-💡 **Why:** By extracting the logic into a single shared utility, we ensure styling consistency across all UI components and reduce code duplication, making future theme-related updates easier to maintain.
-✅ **Verification:** Ran `npm test` successfully (after updating `browser-modules.test.js` to mock `ExtensityUtils.applyThemeClasses`). Visually verified the options and dashboard pages correctly toggle dark mode classes using a Playwright verification script.
-✨ **Result:** A cleaner codebase with a single source of truth for applying themes.

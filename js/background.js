@@ -924,9 +924,9 @@ importScripts(
     var localState = await storage.loadLocalState();
 
     if (!nextOptions.enableReminders) {
-      for (var index = 0; index < localState.reminderQueue.length; index += 1) {
-        await clearAlarm(localState.reminderQueue[index].alarmName);
-      }
+      await Promise.all(localState.reminderQueue.map(function(item) {
+        return clearAlarm(item.alarmName);
+      }));
       await storage.saveLocalState({ reminderQueue: [] });
     }
 

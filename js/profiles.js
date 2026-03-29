@@ -1,56 +1,4 @@
 document.addEventListener("DOMContentLoaded", function() {
-  function chromeCall(target, method, args) {
-    return new Promise(function(resolve, reject) {
-      var finalArgs = (args || []).slice();
-      finalArgs.push(function(result) {
-        if (chrome.runtime.lastError) {
-          reject(new Error(chrome.runtime.lastError.message));
-          return;
-        }
-        resolve(result);
-      });
-      target[method].apply(target, finalArgs);
-    });
-  }
-
-  function openTab(url) {
-    return chromeCall(chrome.tabs, "create", [{ active: true, url: url }]);
-  }
-
-  function buildManageExtensionUrl(extensionId) {
-    return "chrome://extensions/?id=" + encodeURIComponent(extensionId);
-  }
-
-  function buildPermissionsPageUrl(extensionId) {
-    return buildManageExtensionUrl(extensionId) + "#permissions";
-  }
-
-  function copyText(value) {
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      return navigator.clipboard.writeText(value);
-    }
-
-    return new Promise(function(resolve, reject) {
-      var input = document.createElement("textarea");
-      input.value = value;
-      input.setAttribute("readonly", "readonly");
-      input.style.position = "fixed";
-      input.style.opacity = "0";
-      document.body.appendChild(input);
-      input.select();
-
-      try {
-        if (!document.execCommand("copy")) {
-          throw new Error("Copy command failed.");
-        }
-        resolve();
-      } catch (error) {
-        reject(error);
-      } finally {
-        document.body.removeChild(input);
-      }
-    });
-  }
 
   function ProfilesViewModel() {
     var self = this;
@@ -559,14 +507,14 @@ document.addEventListener("DOMContentLoaded", function() {
     };
 
     self.openManagePage = function(extension) {
-      return openTab(buildManageExtensionUrl(extension.id())).catch(function(error) {
+      return ExtensityUtils.openTab(ExtensityUtils.buildManageExtensionUrl(extension.id())).catch(function(error) {
         self.error(error.message);
       });
     };
 
     self.openPermissionsPage = function(extension) {
-      return openTab(buildPermissionsPageUrl(extension.id())).catch(function() {
-        return openTab(buildManageExtensionUrl(extension.id()));
+      return ExtensityUtils.openTab(ExtensityUtils.buildPermissionsPageUrl(extension.id())).catch(function() {
+        return ExtensityUtils.openTab(ExtensityUtils.buildManageExtensionUrl(extension.id()));
       }).catch(function(error) {
         self.error(error.message);
       });
@@ -584,7 +532,7 @@ document.addEventListener("DOMContentLoaded", function() {
     };
 
     self.launchOptions = function(extension) {
-      return openTab(extension.optionsUrl()).catch(function(error) {
+      return ExtensityUtils.openTab(extension.optionsUrl()).catch(function(error) {
         self.error(error.message);
       });
     };
@@ -597,7 +545,7 @@ document.addEventListener("DOMContentLoaded", function() {
       if (!self.canCopyLink(extension)) {
         return;
       }
-      copyText(extension.copyLinkUrl()).catch(function(error) {
+      ExtensityUtils.copyText(extension.copyLinkUrl()).catch(function(error) {
         self.error(error.message);
       });
     };
@@ -606,7 +554,7 @@ document.addEventListener("DOMContentLoaded", function() {
       if (!extension.storeLinkAvailable()) {
         return;
       }
-      openTab(extension.storeUrl()).catch(function(error) {
+      ExtensityUtils.openTab(extension.storeUrl()).catch(function(error) {
         self.error(error.message);
       });
     };

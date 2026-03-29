@@ -7,6 +7,58 @@
     return text.slice(0, Math.max(0, maxLength - 1)) + "…";
   }
 
+  function chromeCall(target, method, args) {
+    return new Promise(function(resolve, reject) {
+      var finalArgs = (args || []).slice();
+      finalArgs.push(function(result) {
+        if (chrome.runtime.lastError) {
+          reject(new Error(chrome.runtime.lastError.message));
+          return;
+        }
+        resolve(result);
+      });
+      target[method].apply(target, finalArgs);
+    });
+  }
+
+  function openTab(url) {
+    return chromeCall(chrome.tabs, "create", [{ active: true, url: url }]);
+  }
+
+  function buildManageExtensionUrl(extensionId) {
+    return "chrome://extensions/?id=" + encodeURIComponent(extensionId);
+  }
+
+  function buildPermissionsPageUrl(extensionId) {
+    return buildManageExtensionUrl(extensionId) + "#permissions";
+  }
+
+  function copyText(value) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      return navigator.clipboard.writeText(value);
+    }
+
+    return new Promise(function(resolve, reject) {
+      var input = document.createElement("textarea");
+      input.value = value;
+      input.setAttribute("readonly", "readonly");
+      input.style.position = "fixed";
+      input.style.opacity = "0";
+      document.body.appendChild(input);
+      input.select();
+      try {
+        if (!document.execCommand("copy")) {
+          throw new Error("Copy command failed.");
+        }
+        resolve();
+      } catch (error) {
+        reject(error);
+      } finally {
+        document.body.removeChild(input);
+      }
+    });
+  }
+
   ko.extenders.countable = function(target) {
     target.count = ko.computed(function() {
       return target().length;
@@ -713,5 +765,12 @@
   root.fadeOutMessage = fadeOutMessage;
   root.ExtensityEngine = {
     PROFILE_ICONS: PROFILE_ICONS
+  };
+  root.ExtensityUtils = {
+    buildManageExtensionUrl: buildManageExtensionUrl,
+    buildPermissionsPageUrl: buildPermissionsPageUrl,
+    chromeCall: chromeCall,
+    copyText: copyText,
+    openTab: openTab
   };
 })(window);

@@ -1094,6 +1094,22 @@ test("import/export builds CSV rows with escaped content", () => {
   assert.match(csv, /"alpha\|beta"/);
 });
 
+
+test("import/export csvEscape handles edge cases", () => {
+  const root = loadModule("js/import-export.js");
+  const escape = root.ExtensityImportExport._csvEscape;
+
+  assert.equal(escape(null), '""');
+  assert.equal(escape(undefined), '""');
+  assert.equal(escape("hello"), '"hello"');
+  assert.equal(escape('hello "world"'), '"hello ""world"""');
+  assert.equal(escape('""'), '""""""');
+  assert.equal(escape(123), '"123"');
+  assert.equal(escape(true), '"true"');
+  assert.equal(escape(false), '"false"');
+  assert.equal(escape(""), '""');
+});
+
 test("options none preset keeps font size and zeroes spacing options", async () => {
   function observable(initialValue) {
     let value = initialValue;

@@ -1487,6 +1487,7 @@ test("url rules support wildcard, regex, and later-rule precedence", () => {
 
   assert.equal(root.ExtensityUrlRules.isSupportedUrl("https://github.com/openai"), true);
   assert.equal(root.ExtensityUrlRules.isSupportedUrl("chrome://extensions"), false);
+  assert.equal(root.ExtensityUrlRules.isSupportedUrl("not_a_valid_url"), false);
   assert.equal(root.ExtensityUrlRules.matchUrl("https://github.com/openai", "*://github.com/*", "wildcard"), true);
   assert.equal(root.ExtensityUrlRules.matchUrl("https://github.com/openai", "^https://github\\.com/.+$", "regex"), true);
   assert.equal(root.ExtensityUrlRules.matchUrl("https://github.com/openai", "[", "regex"), false);

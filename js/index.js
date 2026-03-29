@@ -320,7 +320,19 @@ document.addEventListener("DOMContentLoaded", function() {
       var badgeMode = self.opts.popupProfileBadgeTextMode();
       var singleWordChars = self.opts.popupProfileBadgeSingleWordChars();
       self.profiles.items().forEach(function(profile) {
+        if (!profile._popupDecorated) {
+          profile.selectProfile = function() { self.setProfile(profile); };
+          profile.showPillCheck = ko.pureComputed(function() { return self.showProfilePillCheck(profile); });
+          profile.showAlwaysOnIcon = ko.pureComputed(function() { return self.showProfilePillReservedIcon(profile, '__always_on'); });
+          profile.showFavoritesIcon = ko.pureComputed(function() { return self.showProfilePillReservedIcon(profile, '__favorites'); });
+          profile.showCustomIcon = ko.pureComputed(function() { return self.showProfilePillCustomIcon(profile); });
+          profile.showPillText = ko.pureComputed(self.showProfilePillText);
+          profile.showPillCount = ko.pureComputed(self.showProfilePillText);
+          profile._popupDecorated = true;
+        }
+
         if (!profile.reserved()) {
+
           var hexColor = profile.color();
           var isHex = hexColor && hexColor.indexOf("#") === 0;
           var colorClass = isHex ? "" : ("profile-color-" + (colorIndex % 5));
@@ -337,7 +349,63 @@ document.addEventListener("DOMContentLoaded", function() {
         }
       });
       self.exts.items().forEach(function(ext) {
+        if (!ext._popupDecorated) {
+          ext.showDefaultRow = ko.pureComputed(function() { return !self.isCompactPopupList() && !self.isTablePopupList(); });
+          ext.showTableRow = ko.pureComputed(self.isTablePopupList);
+          ext.showCompactRow = ko.pureComputed(self.isCompactPopupList);
+          ext.rowExpanded = ko.pureComputed(function() { return self.expandedExtensionId() === ext.id(); });
+          ext.rowClick = function() { self.toggleExtension(ext); };
+          ext.rowKeydown = function(item, event) { self.handleRowKeydown(ext, event); };
+          ext.compactRowKeydown = function(item, event) { self.handleCompactRowKeydown(ext, event); };
+          ext.tableRowKeydown = function(item, event) { self.handleTableRowKeydown(ext, event); };
+          ext.toggleCompactAction = function() { self.toggleCompactExtension(ext); };
+          ext.toggleTableRowAction = function() { self.toggleTableRow(ext); };
+          ext.toggleCompactRowAction = function() { self.toggleCompactRow(ext); };
+          ext.openManageAction = function() { self.openManagePage(ext); };
+          ext.openPermissionsAction = function() { self.openPermissionsPage(ext); };
+          ext.copyLinkAction = function() { self.copyExtensionLink(ext); };
+          ext.openStoreAction = function() { self.openChromeWebStore(ext); };
+          ext.removeAction = function() { self.removeExtension(ext); };
+          ext.launchOptionsAction = function() { self.launchOptions(ext); };
+          ext.launchAppAction = function() { self.launchApp(ext); };
+
+          ext.showVersionCategoryLine = ko.pureComputed(function() { return self.opts.showPopupVersionChips() && ext.versionCategoryLine(); });
+          ext.showVersionChip = ko.pureComputed(function() { return self.opts.showPopupVersionChips() && ext.version(); });
+          ext.showCategorySubtitle = ko.pureComputed(function() { return self.opts.showPopupVersionChips() && ext.category(); });
+          ext.showOptions = ko.pureComputed(self.opts.showOptions);
+
+          ext.profileDropdownOptions = ko.pureComputed(function() {
+            var memberMap = self.extensionProfileMembership()[ext.id()] || {};
+            return self.profiles.items().filter(function(profile) {
+              return !profile.reserved();
+            }).map(function(profile) {
+              var profileName = profile.name();
+              var isMember = !!memberMap[profileName];
+              return {
+                label: (isMember ? "\u2713 " : "\u2003") + profile.short_name(),
+                value: profileName
+              };
+            });
+          });
+
+          ext.onProfileMembershipChange = function(data, event) {
+            var selectedName = event.target.value;
+            event.target.value = "";
+            if (!selectedName) { return false; }
+            var memberMap = self.extensionProfileMembership()[ext.id()] || {};
+            var isMember = !!memberMap[selectedName];
+            self.performAction(ExtensityApi.updateExtensionProfileMembership(ext.id(), selectedName, !isMember));
+            return false;
+          };
+
+          ext.zebraOdd = ko.observable(false);
+          ext.zebraEven = ko.observable(false);
+
+          ext._popupDecorated = true;
+        }
+
         var badges = (profileMap[ext.id()] || []).slice();
+
         if (self.opts.showAlwaysOnBadge() && ext.alwaysOn()) {
           badges.unshift({
             badgeStyle: "",

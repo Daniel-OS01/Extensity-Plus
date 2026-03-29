@@ -56,13 +56,13 @@
     <h1>Profiles</h1>
     <ul class="items" data-sbind="foreach: listedProfiles">
       <li class="app keyboard-row" tabindex="0" data-sbind="css: {active: isActive()}">
-        <div class="profile-row" data-sbind="click: $root.setProfile">
-          <i class="fa fa-check" data-sbind="visible: $root.showProfilePillCheck($data)"></i>
-          <i class="fa fa-lightbulb-o" data-sbind="visible: $root.showProfilePillReservedIcon($data, '__always_on')"></i>
-          <i class="fa fa-star" data-sbind="visible: $root.showProfilePillReservedIcon($data, '__favorites')"></i>
-          <i class="fa profile-icon-display" data-sbind="visible: $root.showProfilePillCustomIcon($data), attr:{class: 'fa ' + icon()}"></i>
-          <span data-sbind="visible: $root.showProfilePillText(), text: popupLabel"></span>
-          <span class="profile-count" title="Extensions in this profile" data-sbind="visible: $root.showProfilePillText(), text: itemCount"></span>
+        <div class="profile-row" data-sbind="click: selectProfile">
+          <i class="fa fa-check" data-sbind="visible: showPillCheck"></i>
+          <i class="fa fa-lightbulb-o" data-sbind="visible: showAlwaysOnIcon"></i>
+          <i class="fa fa-star" data-sbind="visible: showFavoritesIcon"></i>
+          <i class="fa profile-icon-display" data-sbind="visible: showCustomIcon, attr:{class: 'fa ' + icon()}"></i>
+          <span data-sbind="visible: showPillText, text: popupLabel"></span>
+          <span class="profile-count" title="Extensions in this profile" data-sbind="visible: showPillText, text: itemCount"></span>
         </div>
       </li>
     </ul>
@@ -103,13 +103,13 @@
 
 <script type="text/html" id="item-template">
   <!-- ko if: !isApp() -->
-  <!-- ko if: !$parent.isCompactPopupList() && !$parent.isTablePopupList() -->
-  <li class="extension keyboard-row" tabindex="0" data-sbind="click: $parent.toggleExtension, event:{keydown: $parent.handleRowKeydown}, css:{disabled: disabled(), enabled: status}">
+  <!-- ko if: showDefaultRow -->
+  <li class="extension keyboard-row" tabindex="0" data-sbind="click: rowClick, event:{keydown: rowKeydown}, css:{disabled: disabled(), enabled: status}">
     <div class="item-main">
       <img class="extension-icon" data-sbind="attr:{src:icon}" />
       <div class="labels">
         <span class="name" data-sbind="text: short_name"></span>
-        <span class="extension-subtitle" data-sbind="visible: $parent.opts.showPopupVersionChips() && versionCategoryLine, text: versionCategoryLine"></span>
+        <span class="extension-subtitle" data-sbind="visible: showVersionCategoryLine, text: versionCategoryLine"></span>
         <div class="badges" data-sbind="visible: groupBadges().length">
           <!-- ko foreach: groupBadges -->
           <span class="badge group" title="Extension group badge" data-sbind="text: name"></span>
@@ -122,19 +122,19 @@
       <span class="badge profile-badge" title="Profile membership badge" data-sbind="text: name, css: colorClass, attr:{style: badgeStyle}"></span>
       <!-- /ko -->
       <i class="fa fa-flask" title="Development" data-sbind="visible: is_development()"></i>
-      <i class="fa fa-gear" title="Options" data-sbind="visible: $parent.opts.showOptions() && optionsUrl() && !disabled(), click: $parent.launchOptions, clickBubble: false"></i>
+      <i class="fa fa-gear" title="Options" data-sbind="visible: showOptions() && optionsUrl() && !disabled(), click: launchOptionsAction, clickBubble: false"></i>
     </div>
   </li>
   <!-- /ko -->
-  <!-- ko if: $parent.isTablePopupList() -->
-  <li class="extension keyboard-row table-row" tabindex="0" data-sbind="event:{keydown: $parent.handleTableRowKeydown}, css:{disabled: disabled(), enabled: status, expanded: $parent.expandedExtensionId() == id()}">
+  <!-- ko if: showTableRow -->
+  <li class="extension keyboard-row table-row" tabindex="0" data-sbind="event:{keydown: tableRowKeydown}, css:{disabled: disabled(), enabled: status, expanded: rowExpanded}">
     <div class="table-row-main">
       <img class="extension-icon" data-sbind="attr:{src:icon}" />
       <div class="table-row-labels">
         <div class="table-row-title">
-          <span class="name" data-sbind="text: short_name, click: $parent.toggleCompactExtension, clickBubble: false"></span>
-          <span class="version-chip" data-sbind="visible: $parent.opts.showPopupVersionChips() && version(), text: version"></span>
-          <span class="extension-subtitle" data-sbind="visible: $parent.opts.showPopupVersionChips() && category, text: category"></span>
+          <span class="name" data-sbind="text: short_name, click: toggleCompactAction, clickBubble: false"></span>
+          <span class="version-chip" data-sbind="visible: showVersionChip, text: version"></span>
+          <span class="extension-subtitle" data-sbind="visible: showCategorySubtitle, text: category"></span>
           <i class="fa fa-flask" title="Development" data-sbind="visible: is_development()"></i>
         </div>
       </div>
@@ -143,39 +143,39 @@
         <span class="badge profile-badge" title="Profile membership badge" data-sbind="text: name, css: colorClass, attr:{style: badgeStyle}"></span>
         <!-- /ko -->
       </div>
-      <button type="button" class="table-row-chevron" title="Show extension actions" data-sbind="click: $parent.toggleTableRow, clickBubble: false, css:{expanded: $parent.expandedExtensionId() == id()}">
+      <button type="button" class="table-row-chevron" title="Show extension actions" data-sbind="click: toggleTableRowAction, clickBubble: false, css:{expanded: rowExpanded}">
         <i class="fa fa-chevron-left"></i>
       </button>
     </div>
-    <div class="table-action-line" data-sbind="visible: $parent.expandedExtensionId() == id()">
+    <div class="table-action-line" data-sbind="visible: rowExpanded">
       <div class="action-icon-row">
-        <button type="button" class="action-icon-button" title="Toggle enable/disable" data-sbind="click: $parent.toggleCompactExtension, clickBubble: false">
+        <button type="button" class="action-icon-button" title="Toggle enable/disable" data-sbind="click: toggleCompactAction, clickBubble: false">
           <i class="fa" data-sbind="css: toggleIconClass"></i>
         </button>
-        <button type="button" class="action-icon-button" title="Extension options" data-sbind="visible: optionsUrl(), click: $parent.launchOptions, clickBubble: false"><i class="fa fa-cog"></i></button>
-        <button type="button" class="action-icon-button" title="Manage extension" data-sbind="click: $parent.openManagePage, clickBubble: false"><i class="fa fa-puzzle-piece"></i></button>
-        <button type="button" class="action-icon-button" title="Web permissions" data-sbind="click: $parent.openPermissionsPage, clickBubble: false"><i class="fa fa-shield"></i></button>
-        <button type="button" class="action-icon-button" title="Copy link" data-sbind="click: $parent.copyExtensionLink, clickBubble: false, enable: copyLinkAvailable"><i class="fa fa-files-o"></i></button>
-        <button type="button" class="action-icon-button" title="Open in Chrome Web Store" data-sbind="click: $parent.openChromeWebStore, clickBubble: false, enable: storeLinkAvailable()"><i class="fa fa-external-link"></i></button>
-        <button type="button" class="action-icon-button danger" title="Remove extension" data-sbind="visible: canRemove, click: $parent.removeExtension, clickBubble: false"><i class="fa fa-trash-o"></i></button>
+        <button type="button" class="action-icon-button" title="Extension options" data-sbind="visible: optionsUrl(), click: launchOptionsAction, clickBubble: false"><i class="fa fa-cog"></i></button>
+        <button type="button" class="action-icon-button" title="Manage extension" data-sbind="click: openManageAction, clickBubble: false"><i class="fa fa-puzzle-piece"></i></button>
+        <button type="button" class="action-icon-button" title="Web permissions" data-sbind="click: openPermissionsAction, clickBubble: false"><i class="fa fa-shield"></i></button>
+        <button type="button" class="action-icon-button" title="Copy link" data-sbind="click: copyLinkAction, clickBubble: false, enable: copyLinkAvailable"><i class="fa fa-files-o"></i></button>
+        <button type="button" class="action-icon-button" title="Open in Chrome Web Store" data-sbind="click: openStoreAction, clickBubble: false, enable: storeLinkAvailable()"><i class="fa fa-external-link"></i></button>
+        <button type="button" class="action-icon-button danger" title="Remove extension" data-sbind="visible: canRemove, click: removeAction, clickBubble: false"><i class="fa fa-trash-o"></i></button>
       </div>
-      <select class="profile-assign-select" title="Assign to profile" data-sbind="event:{change: $root.onProfileMembershipChange}">
+      <select class="profile-assign-select" title="Assign to profile" data-sbind="event:{change: onProfileMembershipChange}">
         <option value="">Profiles&#8230;</option>
-        <!-- ko foreach: $root.profileDropdownOptions -->
+        <!-- ko foreach: profileDropdownOptions -->
         <option data-sbind="value: value, text: label"></option>
         <!-- /ko -->
       </select>
     </div>
   </li>
   <!-- /ko -->
-  <!-- ko if: $parent.isCompactPopupList() -->
-  <li class="extension keyboard-row compact-row" tabindex="0" data-sbind="event:{keydown: $parent.handleCompactRowKeydown}, css:{disabled: disabled(), enabled: status, expanded: $parent.expandedExtensionId() == id(), 'zebra-odd': $index() % 2 === 0, 'zebra-even': $index() % 2 === 1}">
+  <!-- ko if: showCompactRow -->
+  <li class="extension keyboard-row compact-row" tabindex="0" data-sbind="event:{keydown: compactRowKeydown}, css:{disabled: disabled(), enabled: status, expanded: rowExpanded, 'zebra-odd': zebraOdd, 'zebra-even': zebraEven}">
     <div class="compact-row-main">
       <img class="extension-icon" data-sbind="attr:{src:icon}" />
       <div class="compact-row-labels">
         <div class="compact-row-title">
-          <span class="name" data-sbind="text: short_name, click: $parent.toggleCompactExtension, clickBubble: false"></span>
-          <span class="version-chip" data-sbind="visible: $parent.opts.showPopupVersionChips() && version(), text: version"></span>
+          <span class="name" data-sbind="text: short_name, click: toggleCompactAction, clickBubble: false"></span>
+          <span class="version-chip" data-sbind="visible: showVersionChip, text: version"></span>
           <i class="fa fa-flask" title="Development" data-sbind="visible: is_development()"></i>
         </div>
       </div>
@@ -185,26 +185,26 @@
           <span class="badge profile-badge" title="Profile membership badge" data-sbind="text: name, css: colorClass, attr:{style: badgeStyle}"></span>
           <!-- /ko -->
         </div>
-        <button type="button" class="compact-row-chevron" title="Show extension actions" data-sbind="click: $parent.toggleCompactRow, clickBubble: false, css:{expanded: $parent.expandedExtensionId() == id()}">
+        <button type="button" class="compact-row-chevron" title="Show extension actions" data-sbind="click: toggleCompactRowAction, clickBubble: false, css:{expanded: rowExpanded}">
           <i class="fa fa-chevron-down"></i>
         </button>
       </div>
     </div>
-    <div class="compact-action-line" data-sbind="visible: $parent.expandedExtensionId() == id()">
+    <div class="compact-action-line" data-sbind="visible: rowExpanded">
       <div class="action-icon-row">
-        <button type="button" class="action-icon-button" title="Toggle enable/disable" data-sbind="click: $parent.toggleCompactExtension, clickBubble: false">
+        <button type="button" class="action-icon-button" title="Toggle enable/disable" data-sbind="click: toggleCompactAction, clickBubble: false">
           <i class="fa" data-sbind="css: toggleIconClass"></i>
         </button>
-        <button type="button" class="action-icon-button" title="Extension options" data-sbind="visible: optionsUrl(), click: $parent.launchOptions, clickBubble: false"><i class="fa fa-cog"></i></button>
-        <button type="button" class="action-icon-button" title="Manage extension" data-sbind="click: $parent.openManagePage, clickBubble: false"><i class="fa fa-puzzle-piece"></i></button>
-        <button type="button" class="action-icon-button" title="Web permissions" data-sbind="click: $parent.openPermissionsPage, clickBubble: false"><i class="fa fa-shield"></i></button>
-        <button type="button" class="action-icon-button" title="Copy link" data-sbind="click: $parent.copyExtensionLink, clickBubble: false, enable: copyLinkAvailable"><i class="fa fa-files-o"></i></button>
-        <button type="button" class="action-icon-button" title="Open in Chrome Web Store" data-sbind="click: $parent.openChromeWebStore, clickBubble: false, enable: storeLinkAvailable()"><i class="fa fa-external-link"></i></button>
-        <button type="button" class="action-icon-button danger" title="Remove extension" data-sbind="visible: canRemove, click: $parent.removeExtension, clickBubble: false"><i class="fa fa-trash-o"></i></button>
+        <button type="button" class="action-icon-button" title="Extension options" data-sbind="visible: optionsUrl(), click: launchOptionsAction, clickBubble: false"><i class="fa fa-cog"></i></button>
+        <button type="button" class="action-icon-button" title="Manage extension" data-sbind="click: openManageAction, clickBubble: false"><i class="fa fa-puzzle-piece"></i></button>
+        <button type="button" class="action-icon-button" title="Web permissions" data-sbind="click: openPermissionsAction, clickBubble: false"><i class="fa fa-shield"></i></button>
+        <button type="button" class="action-icon-button" title="Copy link" data-sbind="click: copyLinkAction, clickBubble: false, enable: copyLinkAvailable"><i class="fa fa-files-o"></i></button>
+        <button type="button" class="action-icon-button" title="Open in Chrome Web Store" data-sbind="click: openStoreAction, clickBubble: false, enable: storeLinkAvailable()"><i class="fa fa-external-link"></i></button>
+        <button type="button" class="action-icon-button danger" title="Remove extension" data-sbind="visible: canRemove, click: removeAction, clickBubble: false"><i class="fa fa-trash-o"></i></button>
       </div>
-      <select class="profile-assign-select" title="Assign to profile" data-sbind="event:{change: $root.onProfileMembershipChange}">
+      <select class="profile-assign-select" title="Assign to profile" data-sbind="event:{change: onProfileMembershipChange}">
         <option value="">Profiles&#8230;</option>
-        <!-- ko foreach: $root.profileDropdownOptions -->
+        <!-- ko foreach: profileDropdownOptions -->
         <option data-sbind="value: value, text: label"></option>
         <!-- /ko -->
       </select>
@@ -213,7 +213,7 @@
   <!-- /ko -->
   <!-- /ko -->
   <!-- ko if: isApp() -->
-  <li class="app keyboard-row" tabindex="0" data-sbind="click: $parent.launchApp, event:{keydown: $parent.handleRowKeydown}, css:{'zebra-odd': $index() % 2 === 0, 'zebra-even': $index() % 2 === 1}">
+  <li class="app keyboard-row" tabindex="0" data-sbind="click: launchAppAction, event:{keydown: rowKeydown}, css:{'zebra-odd': zebraOdd, 'zebra-even': zebraEven}">
     <div class="item-main">
       <img class="extension-icon" data-sbind="attr:{src:icon}" />
       <div class="labels">
@@ -222,7 +222,7 @@
     </div>
     <div class="item-actions">
       <i class="fa fa-flask" title="Development" data-sbind="visible: is_development()"></i>
-      <i class="fa fa-gear" title="Options" data-sbind="visible: $parent.opts.showOptions() && optionsUrl() && !disabled(), click: $parent.launchOptions, clickBubble: false"></i>
+      <i class="fa fa-gear" title="Options" data-sbind="visible: showOptions() && optionsUrl() && !disabled(), click: launchOptionsAction, clickBubble: false"></i>
     </div>
   </li>
   <!-- /ko -->

@@ -27,6 +27,16 @@
     }
 
     if (method === "regex") {
+      // Basic ReDoS protection: limit pattern and input length.
+      if (pattern.length > 512 || (url && url.length > 2048)) {
+        return false;
+      }
+
+      // Basic heuristic for dangerous nested quantifiers: (a+)+, (a*)*, etc.
+      if (/(\([^\)]+[\*\+\?]\)[\*\+\?])/.test(pattern)) {
+        return false;
+      }
+
       try {
         return new RegExp(pattern).test(url);
       } catch (error) {

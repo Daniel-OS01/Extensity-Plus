@@ -52,23 +52,22 @@ document.addEventListener("DOMContentLoaded", function() {
     var self = this;
     self.q = ko.observable("");
 
+    // Cache the normalized query to avoid re-computing it for every extension during a search
+    self.normalizedQuery = ko.pureComputed(function() {
+      return (self.q() || "").trim().toLowerCase();
+    });
+
     self.matchesExtension = function(extension) {
-      var query = (self.q() || "").trim().toLowerCase();
+      var query = self.normalizedQuery();
       if (!query) {
         return true;
       }
 
-      var haystacks = [
-        extension.alias(),
-        extension.name(),
-        extension.description()
-      ].filter(Boolean).map(function(item) {
-        return item.toLowerCase();
-      });
+      var alias = (extension.alias() || "").toLowerCase();
+      var name = (extension.name() || "").toLowerCase();
+      var description = (extension.description() || "").toLowerCase();
 
-      if (haystacks.some(function(item) {
-        return item.indexOf(query) !== -1;
-      })) {
+      if (alias.indexOf(query) !== -1 || name.indexOf(query) !== -1 || description.indexOf(query) !== -1) {
         return true;
       }
 
@@ -76,10 +75,8 @@ document.addEventListener("DOMContentLoaded", function() {
         return false;
       }
 
-      return haystacks.some(function(item) {
-        return item.split(/\s+/).some(function(word) {
-          return levenshteinWithin(word, query, 2);
-        });
+      return (alias + " " + name + " " + description).split(/\s+/).some(function(word) {
+        return levenshteinWithin(word, query, 2);
       });
     };
   }

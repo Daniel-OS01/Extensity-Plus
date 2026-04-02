@@ -1,0 +1,3 @@
+## 2024-05-24 - Array Deduplication Performance & Safety
+**Learning:** Using plain JS objects (`{}`) combined with `.filter()` for array deduplication causes performance overhead (garbage collection, callback allocation) and introduces prototype key collision vulnerabilities (e.g., `"__proto__"` can be dropped or cause unexpected behavior).
+**Action:** When deduplicating arrays, especially strings or extension IDs, prefer an ES6 `Set` paired with a standard `for` loop. This avoids prototype pollution vectors and drastically improves iteration performance over `.filter()`.

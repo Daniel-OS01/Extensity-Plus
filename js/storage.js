@@ -126,14 +126,19 @@
   }
 
   function uniqueArray(items) {
-    var seen = {};
-    return (Array.isArray(items) ? items : []).filter(function(item) {
-      if (!item || seen[item]) {
-        return false;
+    // ⚡ Bolt: Use ES6 Set + for loop for O(n) deduplication
+    // Prevents prototype key collisions and improves array iteration performance
+    var result = [];
+    var seen = new Set();
+    var arr = Array.isArray(items) ? items : [];
+    for (var i = 0; i < arr.length; i++) {
+      var item = arr[i];
+      if (item && !seen.has(item)) {
+        seen.add(item);
+        result.push(item);
       }
-      seen[item] = true;
-      return true;
-    });
+    }
+    return result;
   }
 
   function sortProfileName(name) {

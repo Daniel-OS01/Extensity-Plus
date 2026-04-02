@@ -1,0 +1,3 @@
+## 2024-05-24 - Accessible Icon-Only Links
+**Learning:** Discovered a consistent accessibility issue pattern in the app's components where icon-only action links (e.g., Undo, Settings, Toggle View) place their descriptive `title` attribute on the inner FontAwesome `<i>` element, leaving the interactive `<a>` wrapper without an accessible name for screen readers.
+**Action:** Apply `aria-label` directly to the outer interactive wrapper (`<a>` or `<button>`), move the `title` attribute there to cover the full clickable area, and add `aria-hidden="true"` to the inner decorative `<i>` tag to ensure proper screen reader announcements while preserving visual tooltips.

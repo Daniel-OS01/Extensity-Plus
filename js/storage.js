@@ -125,15 +125,23 @@
     return callArea(area, "remove", keys);
   }
 
+  /*
+   * Performance Optimization: Use ES6 Set and standard for loop instead of {} and .filter().
+   * This provides O(1) lookups, prevents prototype key collisions (e.g. "__proto__"),
+   * and avoids the overhead of callback functions in .filter().
+   */
   function uniqueArray(items) {
-    var seen = {};
-    return (Array.isArray(items) ? items : []).filter(function(item) {
-      if (!item || seen[item]) {
-        return false;
+    var source = Array.isArray(items) ? items : [];
+    var seen = new Set();
+    var result = [];
+    for (var i = 0; i < source.length; i++) {
+      var item = source[i];
+      if (item && !seen.has(item)) {
+        seen.add(item);
+        result.push(item);
       }
-      seen[item] = true;
-      return true;
-    });
+    }
+    return result;
   }
 
   function sortProfileName(name) {

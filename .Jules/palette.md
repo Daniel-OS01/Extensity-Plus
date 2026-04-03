@@ -1,0 +1,3 @@
+## 2024-05-24 - Screen Reader Compatibility for Action Buttons
+**Learning:** Found an accessibility issue pattern specific to this app's components. Several icon-only action buttons relied only on the `title` attribute, which screen readers might not reliably announce as the primary interactive label compared to `aria-label`. Furthermore, the inner FontAwesome `<i>` tags were not hidden (`aria-hidden="true"`), potentially causing screen readers to read out confusing, decorative icon classes or characters.
+**Action:** Always add explicit `aria-label` attributes matching the `title` text to icon-only buttons, and use `aria-hidden="true"` on the purely decorative inner `<i>` tags to ensure a clean, accessible experience.

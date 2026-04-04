@@ -126,14 +126,17 @@
   }
 
   function uniqueArray(items) {
-    var seen = {};
-    return (Array.isArray(items) ? items : []).filter(function(item) {
-      if (!item || seen[item]) {
-        return false;
+    var seen = new Set();
+    var result = [];
+    var array = Array.isArray(items) ? items : [];
+    for (var i = 0; i < array.length; i++) {
+      var item = array[i];
+      if (item && !seen.has(item)) {
+        seen.add(item);
+        result.push(item);
       }
-      seen[item] = true;
-      return true;
-    });
+    }
+    return result;
   }
 
   function sortProfileName(name) {

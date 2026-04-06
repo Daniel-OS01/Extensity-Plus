@@ -1,0 +1,3 @@
+## 2024-05-14 - Transition from Object-based deduplication to Set-based deduplication
+**Learning:** Found that `uniqueArray` used a plain JavaScript object and `Array.prototype.filter()` for deduplication. This approach can be problematic due to prototype key collisions (e.g. `__proto__`) and also causes performance bottleneck because of extra array allocations and property lookups. Replacing it with an ES6 `Set` inside a standard `for` loop significantly improves iteration performance without sacrificing the original logic.
+**Action:** When deduplicating arrays in hot paths, directly use ES6 `Set` within a standard `for` loop instead of an object lookup with `Array.prototype.filter()`.

@@ -126,14 +126,22 @@
   }
 
   function uniqueArray(items) {
-    var seen = {};
-    return (Array.isArray(items) ? items : []).filter(function(item) {
-      if (!item || seen[item]) {
-        return false;
+    if (!Array.isArray(items)) {
+      return [];
+    }
+    // Performance optimization: ES6 Set with a standard for loop
+    // minimizes execution time and avoids intermediate array allocations
+    // compared to Object.keys and Array.prototype.filter.
+    var seen = new Set();
+    var result = [];
+    for (var i = 0; i < items.length; i++) {
+      var item = items[i];
+      if (item && !seen.has(item)) {
+        seen.add(item);
+        result.push(item);
       }
-      seen[item] = true;
-      return true;
-    });
+    }
+    return result;
   }
 
   function sortProfileName(name) {

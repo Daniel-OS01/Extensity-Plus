@@ -24,13 +24,13 @@
       <i class="fa" data-sbind="attr:{class: activeProfileIconClass}"></i>
       <span data-sbind="text: activeProfileName"></span>
     </span>
-    <a href="#" class="page" data-sbind="click: switch.undo, css:{disabled: !canUndo()}"><i class="fa fa-undo" title="Undo"></i></a>
-    <a href="#" class="page" data-sbind="click: toggleViewMode"><i class="fa" data-sbind="css: viewToggleIcon" title="Toggle view"></i></a>
-    <a href="#" class="page" data-sbind="click: openDashboard"><i class="fa fa-table" title="Open dashboard"></i></a>
-    <a href="options.html" class="page" target="_blank"><i class="fa fa-cog" title="Options"></i></a>
-    <a href="profiles.html" class="page" target="_blank"><i class="fa fa-user-circle-o" title="Profiles"></i></a>
-    <a href="chrome://extensions" class="page" target="_blank" data-sbind="click: openChromeExtensions"><i class="fa fa-puzzle-piece" title="Chrome extensions"></i></a>
-    <a href="#" class="switch" data-sbind="click: switch.flip"><i class="fa" data-sbind="css: switch.toggleStyle" title="Toggle all"></i></a>
+    <a href="#" class="page" aria-label="Undo" data-sbind="click: switch.undo, css:{disabled: !canUndo()}"><i class="fa fa-undo" aria-hidden="true" title="Undo"></i></a>
+    <a href="#" class="page" aria-label="Toggle view" data-sbind="click: toggleViewMode"><i class="fa" aria-hidden="true" data-sbind="css: viewToggleIcon" title="Toggle view"></i></a>
+    <a href="#" class="page" aria-label="Open dashboard" data-sbind="click: openDashboard"><i class="fa fa-table" aria-hidden="true" title="Open dashboard"></i></a>
+    <a href="options.html" class="page" aria-label="Options" target="_blank"><i class="fa fa-cog" aria-hidden="true" title="Options"></i></a>
+    <a href="profiles.html" class="page" aria-label="Profiles" target="_blank"><i class="fa fa-user-circle-o" aria-hidden="true" title="Profiles"></i></a>
+    <a href="chrome://extensions" class="page" aria-label="Chrome extensions" target="_blank" data-sbind="click: openChromeExtensions"><i class="fa fa-puzzle-piece" aria-hidden="true" title="Chrome extensions"></i></a>
+    <a href="#" class="switch" aria-label="Toggle all" data-sbind="click: switch.flip"><i class="fa" aria-hidden="true" data-sbind="css: switch.toggleStyle" title="Toggle all"></i></a>
   </h1>
 </section>
 
@@ -48,7 +48,7 @@
 </section>
 
 <section id="search" class="main" data-sbind="if: opts.searchBox">
-  <p><i class="fa fa-search"></i> <input type="text" data-sbind="value: search.q, valueUpdate: 'keyup'" tabindex="1" autofocus /></p>
+  <p><i class="fa fa-search" aria-hidden="true"></i> <input type="text" placeholder="Search extensions..." aria-label="Search extensions" data-sbind="value: search.q, valueUpdate: 'keyup'" tabindex="1" autofocus /></p>
 </section>
 
 <section id="content" class="main" data-sbind="visible: !loading()">

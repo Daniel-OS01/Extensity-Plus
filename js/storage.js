@@ -134,9 +134,10 @@
     // compared to Object.keys and Array.prototype.filter.
     var seen = new Set();
     var result = [];
+    var protoCheck = {};
     for (var i = 0; i < items.length; i++) {
       var item = items[i];
-      if (item && !seen.has(item)) {
+      if (item && typeof protoCheck[item] === "undefined" && !seen.has(item)) {
         seen.add(item);
         result.push(item);
       }

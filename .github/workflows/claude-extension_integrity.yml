@@ -1,0 +1,209 @@
+name: "claude: Extension Build Integrity"
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+
+permissions:
+  contents: read
+
+jobs:
+  extension-integrity:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          cache: npm
+          node-version: 22
+
+      - name: Set up Python (required by Makefile zipfile step)
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build distributable extension
+        id: build
+        run: make dist 2>&1 | tee build-output.txt
+        continue-on-error: true
+
+      - name: Verify dist/dist.zip exists and is a valid zip
+        id: zip-check
+        if: steps.build.outcome == 'success'
+        run: |
+          set -e
+          if [ ! -f dist/dist.zip ]; then
+            echo "FAIL: dist/dist.zip not found after build"
+            exit 1
+          fi
+          python3 -c "import zipfile; zipfile.ZipFile('dist/dist.zip').testzip()" \
+            && echo "dist/dist.zip is a valid zip archive" \
+            || { echo "FAIL: dist/dist.zip is not a valid zip archive"; exit 1; }
+        continue-on-error: true
+
+      - name: Verify required files are present in the zip
+        id: zip-contents
+        if: steps.build.outcome == 'success'
+        run: |
+          set -e
+          REQUIRED_FILES=(
+            "manifest.json"
+            "js/background.js"
+            "js/storage.js"
+            "js/engine.js"
+            "js/url-rules.js"
+            "js/history-logger.js"
+            "js/import-export.js"
+            "js/migration.js"
+            "js/reminders.js"
+            "index.html"
+            "options.html"
+            "profiles.html"
+            "dashboard.html"
+            "images/icon16.png"
+            "images/icon48.png"
+            "images/icon128.png"
+            "images/iconbar.png"
+          )
+
+          MISSING=0
+          for FILE in "${REQUIRED_FILES[@]}"; do
+            if python3 -c "import zipfile; names=zipfile.ZipFile('dist/dist.zip').namelist(); exit(0 if '$FILE' in names else 1)" 2>/dev/null; then
+              echo "  ✓ $FILE"
+            else
+              echo "  ✗ MISSING: $FILE"
+              MISSING=$((MISSING + 1))
+            fi
+          done
+
+          if [ $MISSING -gt 0 ]; then
+            echo ""
+            echo "FAIL: $MISSING required file(s) missing from dist/dist.zip"
+            exit 1
+          fi
+          echo ""
+          echo "All required files present in dist/dist.zip"
+        continue-on-error: true
+
+      - name: Verify minified JS files are non-empty
+        id: minified-check
+        if: steps.build.outcome == 'success'
+        run: |
+          set -e
+          EMPTY=0
+          for FILE in dist/js/*.js; do
+            SIZE=$(wc -c < "$FILE")
+            if [ "$SIZE" -eq 0 ]; then
+              echo "FAIL: $FILE is empty after minification"
+              EMPTY=$((EMPTY + 1))
+            else
+              echo "  ✓ $FILE ($SIZE bytes)"
+            fi
+          done
+          if [ $EMPTY -gt 0 ]; then
+            exit 1
+          fi
+        continue-on-error: true
+
+      - name: Verify dist does not contain test or CI source files
+        id: exclusion-check
+        if: steps.build.outcome == 'success'
+        run: |
+          set -e
+          LEAKED=0
+          for PATTERN in "tests/" ".github/" "CLAUDE.md" "Makefile" "package.json" "package-lock.json"; do
+            if python3 -c "
+          import zipfile, sys
+          names = zipfile.ZipFile('dist/dist.zip').namelist()
+          leaked = [n for n in names if '$PATTERN' in n]
+          if leaked:
+              print('LEAKED: ' + ', '.join(leaked))
+              sys.exit(1)
+          " 2>/dev/null; then
+              echo "  ✓ No $PATTERN entries in zip"
+            else
+              LEAKED=$((LEAKED + 1))
+            fi
+          done
+          if [ $LEAKED -gt 0 ]; then
+            echo "FAIL: Development files leaked into the distributable zip"
+            exit 1
+          fi
+        continue-on-error: true
+
+      - name: PR Safety Summary
+        if: always()
+        run: |
+          BUILD="${{ steps.build.outcome }}"
+          ZIP="${{ steps.zip-check.outcome }}"
+          CONTENTS="${{ steps.zip-contents.outcome }}"
+          MINIFIED="${{ steps.minified-check.outcome }}"
+          EXCLUSION="${{ steps.exclusion-check.outcome }}"
+
+          ALL_PASS="true"
+          [ "$BUILD" != "success" ] && ALL_PASS="false"
+          [ "$ZIP" != "success" ] && [ "$ZIP" != "skipped" ] && ALL_PASS="false"
+          [ "$CONTENTS" != "success" ] && [ "$CONTENTS" != "skipped" ] && ALL_PASS="false"
+          [ "$MINIFIED" != "success" ] && [ "$MINIFIED" != "skipped" ] && ALL_PASS="false"
+          [ "$EXCLUSION" != "success" ] && [ "$EXCLUSION" != "skipped" ] && ALL_PASS="false"
+
+          echo ""
+          echo "=========================================="
+          if [ "$ALL_PASS" = "true" ]; then
+            echo "✅  PR SAFE TO COMMIT"
+            echo "    Extension build integrity: all checks passed."
+            echo ""
+            echo "    Verified:"
+            echo "    • make dist completed without error"
+            echo "    • dist/dist.zip is a valid zip archive"
+            echo "    • All required HTML, JS, and image files are present in the zip"
+            echo "    • Minified JS files are non-empty"
+            echo "    • No test, CI, or development files leaked into the zip"
+          else
+            echo "❌  PR NOT SAFE TO COMMIT"
+            echo "    Extension build integrity checks failed."
+            echo ""
+            echo "    Step outcomes:"
+            echo "    • Build:         $BUILD"
+            echo "    • Zip valid:     $ZIP"
+            echo "    • Zip contents:  $CONTENTS"
+            echo "    • JS minified:   $MINIFIED"
+            echo "    • No dev leaks:  $EXCLUSION"
+            echo ""
+            if [ "$BUILD" != "success" ]; then
+              echo "=== Build output ==="
+              cat build-output.txt || true
+              echo ""
+            fi
+            echo "=== Suggested fixes ==="
+            echo ""
+            echo "  make dist failed:"
+            echo "    → Check that uglify-js and sass are in devDependencies and npm ci was run"
+            echo "    → Check that python3 is available (needed for the zip step)"
+            echo "    → Run 'make dist' locally and read the Makefile for the failing target"
+            echo ""
+            echo "  dist/dist.zip is corrupt:"
+            echo "    → The Makefile uses 'python3 -m zipfile' — ensure python3 is on PATH"
+            echo "    → Check the Makefile zip target for the correct source directory"
+            echo ""
+            echo "  Required file missing from zip:"
+            echo "    → Check the Makefile copy targets — the file may not be included in the cp step"
+            echo "    → Verify the file exists at the root level (not in a subdirectory the Makefile misses)"
+            echo ""
+            echo "  Minified JS is empty:"
+            echo "    → UglifyJS may have encountered a syntax error — run 'npm test' to catch JS errors first"
+            echo "    → Check that the source file exists before the minification step in the Makefile"
+            echo ""
+            echo "  Dev files leaked into zip:"
+            echo "    → The Makefile copy step is too broad — add explicit exclusions for tests/, .github/, etc."
+          fi
+          echo "=========================================="
+          [ "$ALL_PASS" = "true" ]

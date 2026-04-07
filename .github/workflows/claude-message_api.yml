@@ -1,0 +1,180 @@
+name: "claude: Message API Regression"
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+
+permissions:
+  contents: read
+
+jobs:
+  message-api:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          cache: npm
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run message API tests
+        id: test
+        run: |
+          set -o pipefail
+          node --test tests/message-api.test.js 2>&1 | tee message-api-output.txt
+        continue-on-error: true
+
+      # Static contract check: verifies all expected message type strings appear
+      # in background.js without needing to invoke the service worker at runtime.
+      - name: Static contract check — all message types present in background.js
+        id: contract-check
+        run: |
+          set -e
+          MISSING=0
+          MESSAGE_TYPES=(
+            "APPLY_PROFILE"
+            "EXPORT_BACKUP"
+            "GET_EXTENSION_METADATA"
+            "GET_STATE"
+            "IMPORT_BACKUP"
+            "OPEN_DASHBOARD"
+            "SAVE_ALIAS"
+            "SAVE_GROUPS"
+            "SAVE_OPTIONS"
+            "SAVE_URL_RULES"
+            "SET_EXTENSION_STATE"
+            "SYNC_DRIVE"
+            "TOGGLE_ALL"
+            "UNDO_LAST"
+            "UNINSTALL_EXTENSION"
+          )
+
+          for TYPE in "${MESSAGE_TYPES[@]}"; do
+            if grep -q "\"$TYPE\"" js/background.js; then
+              echo "  ✓ $TYPE"
+            else
+              echo "  ✗ MISSING: $TYPE"
+              MISSING=$((MISSING + 1))
+            fi
+          done
+
+          if [ $MISSING -gt 0 ]; then
+            echo ""
+            echo "FAIL: $MISSING message type(s) missing from js/background.js"
+            exit 1
+          fi
+        continue-on-error: true
+
+      # Verify the default branch that rejects unknown message types is still present.
+      - name: Verify handleMessage throws on unknown types (default branch)
+        id: default-branch-check
+        run: |
+          if grep -q "Unsupported message type" js/background.js; then
+            echo "✓ handleMessage default throw branch is present"
+          else
+            echo "FAIL: 'Unsupported message type' error string missing from background.js"
+            echo "      The default branch of the handleMessage switch must throw for unknown types"
+            exit 1
+          fi
+        continue-on-error: true
+
+      # Verify all valid operation context source values are used in background.js.
+      - name: Verify operation context source values are all present
+        id: context-sources-check
+        run: |
+          set -e
+          SOURCES=("manual" "bulk" "profile" "rule" "undo" "import")
+          MISSING=0
+
+          for SOURCE in "${SOURCES[@]}"; do
+            if grep -q "\"$SOURCE\"" js/background.js; then
+              echo "  ✓ context source: $SOURCE"
+            else
+              echo "  ✗ MISSING context source: $SOURCE"
+              MISSING=$((MISSING + 1))
+            fi
+          done
+
+          if [ $MISSING -gt 0 ]; then
+            echo ""
+            echo "FAIL: $MISSING operation context source(s) missing from background.js"
+            exit 1
+          fi
+        continue-on-error: true
+
+      - name: PR Safety Summary
+        if: always()
+        run: |
+          TEST="${{ steps.test.outcome }}"
+          CONTRACT="${{ steps.contract-check.outcome }}"
+          DEFAULT="${{ steps.default-branch-check.outcome }}"
+          SOURCES="${{ steps.context-sources-check.outcome }}"
+
+          ALL_PASS="true"
+          for STEP in "$TEST" "$CONTRACT" "$DEFAULT" "$SOURCES"; do
+            [ "$STEP" != "success" ] && ALL_PASS="false"
+          done
+
+          echo ""
+          echo "=========================================="
+          if [ "$ALL_PASS" = "true" ]; then
+            echo "✅  PR SAFE TO COMMIT"
+            echo "    Message API regression: all checks passed."
+            echo ""
+            echo "    Verified:"
+            echo "    • background.js loads without runtime errors"
+            echo "    • ExtensityBackground namespace is exported with all required functions"
+            echo "    • All 15 message types are handled in the handleMessage switch"
+            echo "    • handleMessage default branch throws for unknown types"
+            echo "    • All 6 operation context source values are used"
+            echo "    • normalizeExtensions preserves version, sets isApp and isAlwaysOn correctly"
+          else
+            echo "❌  PR NOT SAFE TO COMMIT"
+            echo "    Message API regression checks failed."
+            echo ""
+            echo "    Step outcomes:"
+            echo "    • Unit tests:           $TEST"
+            echo "    • Message type contract: $CONTRACT"
+            echo "    • Default throw branch: $DEFAULT"
+            echo "    • Context sources:      $SOURCES"
+            echo ""
+            if [ "$TEST" != "success" ]; then
+              echo "=== Unit test output ==="
+              cat message-api-output.txt || true
+              echo ""
+            fi
+            echo "=== Suggested fixes ==="
+            echo ""
+            echo "  Missing message type in handleMessage switch:"
+            echo "    → Add a 'case \"TYPE_NAME\":' branch in the handleMessage switch in js/background.js"
+            echo "    → Each case must return a value (state object or payload)"
+            echo "    → If you renamed a type, update ALL callers: index.js, options.js, profiles.js, dashboard.js"
+            echo ""
+            echo "  Default throw branch missing:"
+            echo "    → Add 'default: throw new Error(\"Unsupported message type: \" + message.type)'"
+            echo "      as the last case in the handleMessage switch"
+            echo "    → This ensures unknown types surface as errors instead of silent no-ops"
+            echo ""
+            echo "  Operation context source missing:"
+            echo "    → Each mutating message must pass a context object: { source: 'manual' }"
+            echo "    → Valid sources: manual, bulk, profile, rule, undo, import"
+            echo "    → Check applyExtensionChanges() call sites for missing or mistyped source values"
+            echo ""
+            echo "  ExtensityBackground function missing:"
+            echo "    → Check that the function is included in the root.ExtensityBackground = { ... } export"
+            echo "      at the bottom of js/background.js (lines ~916-925)"
+            echo ""
+            echo "  normalizeExtensions incorrect isApp flag:"
+            echo "    → type === 'hosted_app' || type === 'packaged_app' must set isApp to true"
+            echo "    → type === 'extension' must set isApp to false"
+          fi
+          echo "=========================================="
+          [ "$ALL_PASS" = "true" ]

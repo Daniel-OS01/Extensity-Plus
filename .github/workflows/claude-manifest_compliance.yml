@@ -1,0 +1,255 @@
+name: "claude: Manifest V3 Compliance"
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+
+permissions:
+  contents: read
+
+jobs:
+  manifest-compliance:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          cache: npm
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run project manifest validator
+        id: check-manifest
+        run: npm run check:manifest 2>&1 | tee manifest-check.txt
+        continue-on-error: true
+
+      - name: Verify manifest_version is 3
+        id: check-mv3
+        run: |
+          VERSION=$(node -e "const m = require('./manifest.json'); process.stdout.write(String(m.manifest_version))")
+          if [ "$VERSION" != "3" ]; then
+            echo "FAIL: manifest_version is '$VERSION', expected 3"
+            exit 1
+          fi
+          echo "manifest_version: $VERSION ✓"
+        continue-on-error: true
+
+      - name: Verify no deprecated Manifest V2 keys are present
+        id: check-no-mv2
+        run: |
+          DEPRECATED_KEYS=("browser_action" "page_action" "background.scripts" "background.persistent")
+          FAIL=0
+          for KEY in "${DEPRECATED_KEYS[@]}"; do
+            if node -e "
+          const m = require('./manifest.json');
+          const raw = JSON.stringify(m);
+          const key = '$KEY';
+          if (raw.includes(JSON.stringify(key.split('.').pop()))) {
+            // deep check for dotted paths
+          }
+          " 2>/dev/null; then : ; fi
+            # Use python for reliable JSON path checking
+            if python3 -c "
+          import json, sys
+          m = json.load(open('manifest.json'))
+          key = '$KEY'
+          parts = key.split('.')
+          node = m
+          try:
+              for p in parts:
+                  node = node[p]
+              print('DEPRECATED KEY FOUND: $KEY')
+              sys.exit(1)
+          except (KeyError, TypeError):
+              pass
+          " 2>/dev/null; then
+              echo "  ✓ No deprecated key: $KEY"
+            else
+              echo "  ✗ DEPRECATED KEY PRESENT: $KEY"
+              FAIL=$((FAIL + 1))
+            fi
+          done
+          if [ $FAIL -gt 0 ]; then
+            echo "FAIL: Deprecated MV2 keys detected in manifest.json"
+            exit 1
+          fi
+        continue-on-error: true
+
+      - name: Verify service_worker file exists
+        id: check-sw
+        run: |
+          SW=$(node -e "const m = require('./manifest.json'); process.stdout.write(m.background.service_worker)")
+          if [ ! -f "$SW" ]; then
+            echo "FAIL: service_worker file declared as '$SW' does not exist"
+            exit 1
+          fi
+          echo "service_worker: $SW ✓"
+        continue-on-error: true
+
+      - name: Verify all HTML pages referenced in manifest exist
+        id: check-pages
+        run: |
+          node -e "
+          const fs = require('fs');
+          const m = require('./manifest.json');
+          const refs = [];
+          if (m.action && m.action.default_popup) refs.push(m.action.default_popup);
+          if (m.options_ui && m.options_ui.page) refs.push(m.options_ui.page);
+          if (m.options_page) refs.push(m.options_page);
+          if (m.chrome_url_overrides) {
+            Object.values(m.chrome_url_overrides).forEach(p => refs.push(p));
+          }
+          let failed = 0;
+          refs.forEach(ref => {
+            if (!fs.existsSync(ref)) {
+              console.error('MISSING HTML:', ref);
+              failed++;
+            } else {
+              console.log('  ✓', ref);
+            }
+          });
+          if (failed > 0) process.exit(1);
+          " 2>&1
+        continue-on-error: true
+
+      - name: Verify all icon files declared in manifest exist
+        id: check-icons
+        run: |
+          node -e "
+          const fs = require('fs');
+          const m = require('./manifest.json');
+          const icons = [];
+          if (m.icons) Object.values(m.icons).forEach(p => icons.push(p));
+          if (m.action && m.action.default_icon) {
+            const di = m.action.default_icon;
+            if (typeof di === 'string') icons.push(di);
+            else Object.values(di).forEach(p => icons.push(p));
+          }
+          let failed = 0;
+          [...new Set(icons)].forEach(icon => {
+            if (!fs.existsSync(icon)) {
+              console.error('MISSING ICON:', icon);
+              failed++;
+            } else {
+              console.log('  ✓', icon);
+            }
+          });
+          if (failed > 0) process.exit(1);
+          " 2>&1
+        continue-on-error: true
+
+      - name: Verify manifest version is valid semver
+        id: check-version
+        run: |
+          VERSION=$(node -e "const m = require('./manifest.json'); process.stdout.write(m.version)")
+          if ! echo "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+'; then
+            echo "FAIL: manifest version '$VERSION' is not valid semver (X.Y.Z)"
+            exit 1
+          fi
+          echo "version: $VERSION ✓"
+        continue-on-error: true
+
+      - name: Verify required manifest fields are present
+        id: check-fields
+        run: |
+          node -e "
+          const m = require('./manifest.json');
+          const required = ['name', 'version', 'description', 'manifest_version', 'background'];
+          let failed = 0;
+          required.forEach(key => {
+            if (!m[key] && m[key] !== 0) {
+              console.error('MISSING FIELD:', key);
+              failed++;
+            } else {
+              console.log('  ✓', key + ':', JSON.stringify(m[key]).slice(0, 60));
+            }
+          });
+          if (failed > 0) process.exit(1);
+          " 2>&1
+        continue-on-error: true
+
+      - name: PR Safety Summary
+        if: always()
+        run: |
+          VALIDATOR="${{ steps.check-manifest.outcome }}"
+          MV3="${{ steps.check-mv3.outcome }}"
+          NO_MV2="${{ steps.check-no-mv2.outcome }}"
+          SW="${{ steps.check-sw.outcome }}"
+          PAGES="${{ steps.check-pages.outcome }}"
+          ICONS="${{ steps.check-icons.outcome }}"
+          VERSION="${{ steps.check-version.outcome }}"
+          FIELDS="${{ steps.check-fields.outcome }}"
+
+          ALL_PASS="true"
+          for STEP in "$VALIDATOR" "$MV3" "$NO_MV2" "$SW" "$PAGES" "$ICONS" "$VERSION" "$FIELDS"; do
+            [ "$STEP" != "success" ] && ALL_PASS="false"
+          done
+
+          echo ""
+          echo "=========================================="
+          if [ "$ALL_PASS" = "true" ]; then
+            echo "✅  PR SAFE TO COMMIT"
+            echo "    Manifest V3 compliance: all checks passed."
+            echo ""
+            echo "    Verified:"
+            echo "    • Project manifest validator passed"
+            echo "    • manifest_version is 3"
+            echo "    • No deprecated MV2 keys (browser_action, page_action, etc.)"
+            echo "    • service_worker file exists on disk"
+            echo "    • All HTML pages referenced in manifest exist"
+            echo "    • All icon files declared in manifest exist"
+            echo "    • Version is valid semver (X.Y.Z)"
+            echo "    • All required manifest fields are present"
+          else
+            echo "❌  PR NOT SAFE TO COMMIT"
+            echo "    Manifest compliance checks failed."
+            echo ""
+            echo "    Step outcomes:"
+            echo "    • npm check:manifest:  $VALIDATOR"
+            echo "    • manifest_version=3:  $MV3"
+            echo "    • No MV2 keys:         $NO_MV2"
+            echo "    • SW file exists:      $SW"
+            echo "    • HTML pages exist:    $PAGES"
+            echo "    • Icons exist:         $ICONS"
+            echo "    • Semver version:      $VERSION"
+            echo "    • Required fields:     $FIELDS"
+            echo ""
+            if [ "$VALIDATOR" != "success" ]; then
+              echo "=== Project validator output ==="
+              cat manifest-check.txt || true
+              echo ""
+            fi
+            echo "=== Suggested fixes ==="
+            echo ""
+            echo "  manifest_version is not 3:"
+            echo "    → Set 'manifest_version': 3 in manifest.json"
+            echo ""
+            echo "  Deprecated MV2 key present:"
+            echo "    → Remove 'browser_action' → replace with 'action'"
+            echo "    → Remove 'background.scripts' + 'background.persistent' → replace with 'background.service_worker'"
+            echo "    → Remove 'page_action' → not supported in MV3"
+            echo ""
+            echo "  service_worker file not found:"
+            echo "    → Check 'background.service_worker' path in manifest.json"
+            echo "    → The path is relative to the extension root (e.g. 'js/background.js')"
+            echo ""
+            echo "  HTML page not found:"
+            echo "    → Verify the file exists at the declared path"
+            echo "    → Check for typos in 'action.default_popup' or 'options_ui.page'"
+            echo ""
+            echo "  Icon not found:"
+            echo "    → Verify the file exists at the declared path under 'images/'"
+            echo "    → Check both 'icons' and 'action.default_icon' in manifest.json"
+            echo ""
+            echo "  Version not semver:"
+            echo "    → Use format X.Y.Z (e.g. 2.0.0) for the 'version' field"
+          fi
+          echo "=========================================="
+          [ "$ALL_PASS" = "true" ]

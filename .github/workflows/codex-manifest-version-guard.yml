@@ -1,0 +1,63 @@
+name: PR Manifest and Version Guard
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+
+jobs:
+  manifest-contract:
+    name: Validate manifest and tracked versions
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate manifest schema and contract
+        run: npm run check:manifest
+
+      - name: Ensure package and manifest versions match
+        run: |
+          PACKAGE_VERSION="$(node -p "require('./package.json').version")"
+          MANIFEST_VERSION="$(node -p "require('./manifest.json').version")"
+
+          if [ "$PACKAGE_VERSION" != "$MANIFEST_VERSION" ]; then
+            echo "Mismatch detected: package.json=$PACKAGE_VERSION, manifest.json=$MANIFEST_VERSION"
+            exit 1
+          fi
+
+      - name: PR safety summary (pass)
+        if: success()
+        run: |
+          {
+            echo "## Safe-to-commit summary"
+            echo "✅ This pull request is safe to commit from a manifest-contract perspective."
+            echo "Manifest validation passed and package.json/manifest.json versions are synchronized."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: PR safety summary (fail with diagnostics)
+        if: failure()
+        run: |
+          {
+            echo "## Safe-to-commit summary"
+            echo "❌ This pull request is **not** safe to commit yet."
+            echo "Manifest contract validation failed or tracked versions diverged."
+            echo ""
+            echo "### Diagnostic feedback for AI coding assistants"
+            echo "1. Run \\`npm run check:manifest\\` locally and fix every reported field violation in manifest.json."
+            echo "2. Compare \\`package.json.version\\` and \\`manifest.json.version\\`; keep them identical for releasable states."
+            echo "3. Re-check MV3-specific keys (service_worker, host permissions, action/default_popup) after edits."
+            echo "4. Avoid introducing unsupported or misspelled manifest keys."
+          } >> "$GITHUB_STEP_SUMMARY"

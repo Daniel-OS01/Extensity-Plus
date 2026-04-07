@@ -1,0 +1,264 @@
+name: "claude: Security Audit"
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+
+permissions:
+  contents: read
+
+jobs:
+  security-audit:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      # MV3 extensions are blocked from eval() at the browser level.
+      # Any eval() in source will silently fail at runtime and is a CSP violation.
+      - name: Scan for eval() and new Function() in extension JS
+        id: check-eval
+        run: |
+          set -e
+          VIOLATIONS=0
+
+          # Exclude js/libs/ (third-party) and test files from the scan
+          if grep -rn --include="*.js" \
+            --exclude-dir="js/libs" \
+            --exclude-dir="tests" \
+            --exclude-dir="scripts" \
+            --exclude-dir="node_modules" \
+            -E '\beval\s*\(' js/ 2>/dev/null; then
+            echo "FAIL: eval() usage found in extension JS (MV3 CSP violation)"
+            VIOLATIONS=$((VIOLATIONS + 1))
+          else
+            echo "✓ No eval() in extension JS"
+          fi
+
+          if grep -rn --include="*.js" \
+            --exclude-dir="js/libs" \
+            --exclude-dir="tests" \
+            --exclude-dir="scripts" \
+            --exclude-dir="node_modules" \
+            -E '\bnew\s+Function\s*\(' js/ 2>/dev/null; then
+            echo "FAIL: new Function() usage found in extension JS (MV3 CSP violation)"
+            VIOLATIONS=$((VIOLATIONS + 1))
+          else
+            echo "✓ No new Function() in extension JS"
+          fi
+
+          exit $VIOLATIONS
+        continue-on-error: true
+
+      # innerHTML assignments are the primary XSS vector in extensions.
+      # The popup renders user-controlled data (aliases, profile names) — any innerHTML write is a risk.
+      - name: Scan for innerHTML assignments in extension JS
+        id: check-innerhtml
+        run: |
+          set -e
+          if grep -rn --include="*.js" \
+            --exclude-dir="js/libs" \
+            --exclude-dir="tests" \
+            --exclude-dir="node_modules" \
+            -E '\.innerHTML\s*=' js/ 2>/dev/null; then
+            echo "FAIL: innerHTML assignment found — use textContent or Knockout bindings instead"
+            exit 1
+          else
+            echo "✓ No innerHTML assignments in extension JS"
+          fi
+        continue-on-error: true
+
+      # document.write is blocked in MV3 content security policy.
+      - name: Scan for document.write in extension JS
+        id: check-docwrite
+        run: |
+          set -e
+          if grep -rn --include="*.js" \
+            --exclude-dir="js/libs" \
+            --exclude-dir="tests" \
+            --exclude-dir="node_modules" \
+            -E '\bdocument\.write\s*\(' js/ 2>/dev/null; then
+            echo "FAIL: document.write() found (blocked in MV3)"
+            exit 1
+          else
+            echo "✓ No document.write() in extension JS"
+          fi
+        continue-on-error: true
+
+      # Inline event handlers (onclick=, onerror=, etc.) are blocked by MV3 CSP.
+      - name: Scan for inline event handlers in HTML files
+        id: check-inline-handlers
+        run: |
+          set -e
+          if grep -rn --include="*.html" \
+            -E '\s(on[a-z]+)\s*=' \
+            index.html options.html profiles.html dashboard.html 2>/dev/null; then
+            echo "FAIL: Inline event handler found in HTML (blocked by MV3 CSP)"
+            exit 1
+          else
+            echo "✓ No inline event handlers in HTML files"
+          fi
+        continue-on-error: true
+
+      # Inline <script> tags in HTML are blocked by MV3 CSP.
+      - name: Scan for inline script blocks in HTML files
+        id: check-inline-scripts
+        run: |
+          set -e
+          if grep -rn --include="*.html" \
+            -P '<script(?![^>]*src=)[^>]*>' \
+            index.html options.html profiles.html dashboard.html 2>/dev/null; then
+            echo "FAIL: Inline <script> block found in HTML (blocked by MV3 CSP — use src= only)"
+            exit 1
+          else
+            echo "✓ No inline script blocks in HTML files"
+          fi
+        continue-on-error: true
+
+      # Hardcoded secrets and API keys should never appear in extension source.
+      - name: Scan for common secret patterns in source files
+        id: check-secrets
+        run: |
+          set -e
+          FOUND=0
+
+          SECRET_PATTERNS=(
+            'AIza[0-9A-Za-z\-_]{35}'         # Google API key
+            'ghp_[0-9A-Za-z]{36}'             # GitHub personal access token
+            'sk-[a-zA-Z0-9]{32,}'             # OpenAI / Anthropic API key
+            'AKIA[0-9A-Z]{16}'                # AWS access key
+            'ya29\.[0-9A-Za-z\-_]+'           # Google OAuth access token
+          )
+
+          for PATTERN in "${SECRET_PATTERNS[@]}"; do
+            if grep -rn --include="*.js" --include="*.json" --include="*.html" \
+              --exclude-dir="node_modules" \
+              --exclude-dir="tests" \
+              -E "$PATTERN" . 2>/dev/null; then
+              echo "FAIL: Possible secret matched pattern: $PATTERN"
+              FOUND=$((FOUND + 1))
+            fi
+          done
+
+          if [ $FOUND -eq 0 ]; then
+            echo "✓ No common secret patterns detected"
+          fi
+
+          exit $FOUND
+        continue-on-error: true
+
+      # Verify the manifest declares a content_security_policy or relies on MV3 defaults.
+      # MV3 enforces a restrictive default CSP — explicitly weakening it is a red flag.
+      - name: Verify manifest does not weaken the default MV3 CSP
+        id: check-csp
+        run: |
+          node -e "
+          const m = require('./manifest.json');
+          const csp = m.content_security_policy;
+
+          if (!csp) {
+            console.log('✓ No explicit CSP — using secure MV3 default');
+            process.exit(0);
+          }
+
+          // Detect patterns that weaken MV3 default security
+          const dangerous = [
+            \"'unsafe-eval'\",
+            \"'unsafe-inline'\",
+            'data:',
+            'http:',
+          ];
+
+          const cspStr = JSON.stringify(csp);
+          const violations = dangerous.filter(p => cspStr.includes(p));
+
+          if (violations.length > 0) {
+            console.error('FAIL: CSP weakens MV3 default security. Dangerous directives found:', violations.join(', '));
+            process.exit(1);
+          }
+
+          console.log('✓ Explicit CSP does not weaken MV3 default security');
+          " 2>&1
+        continue-on-error: true
+
+      - name: PR Safety Summary
+        if: always()
+        run: |
+          EVAL="${{ steps.check-eval.outcome }}"
+          INNERHTML="${{ steps.check-innerhtml.outcome }}"
+          DOCWRITE="${{ steps.check-docwrite.outcome }}"
+          HANDLERS="${{ steps.check-inline-handlers.outcome }}"
+          SCRIPTS="${{ steps.check-inline-scripts.outcome }}"
+          SECRETS="${{ steps.check-secrets.outcome }}"
+          CSP="${{ steps.check-csp.outcome }}"
+
+          ALL_PASS="true"
+          for STEP in "$EVAL" "$INNERHTML" "$DOCWRITE" "$HANDLERS" "$SCRIPTS" "$SECRETS" "$CSP"; do
+            [ "$STEP" != "success" ] && ALL_PASS="false"
+          done
+
+          echo ""
+          echo "=========================================="
+          if [ "$ALL_PASS" = "true" ]; then
+            echo "✅  PR SAFE TO COMMIT"
+            echo "    Security audit: all checks passed."
+            echo ""
+            echo "    Verified:"
+            echo "    • No eval() or new Function() in extension JS (MV3 CSP compliance)"
+            echo "    • No innerHTML assignments in extension JS (XSS prevention)"
+            echo "    • No document.write() in extension JS"
+            echo "    • No inline event handlers in HTML (MV3 CSP compliance)"
+            echo "    • No inline <script> blocks in HTML (MV3 CSP compliance)"
+            echo "    • No common secret patterns detected in source files"
+            echo "    • Manifest CSP does not weaken MV3 defaults"
+          else
+            echo "❌  PR NOT SAFE TO COMMIT"
+            echo "    Security audit checks failed."
+            echo ""
+            echo "    Step outcomes:"
+            echo "    • No eval/new Function: $EVAL"
+            echo "    • No innerHTML:         $INNERHTML"
+            echo "    • No document.write:    $DOCWRITE"
+            echo "    • No inline handlers:   $HANDLERS"
+            echo "    • No inline scripts:    $SCRIPTS"
+            echo "    • No secret patterns:   $SECRETS"
+            echo "    • CSP not weakened:     $CSP"
+            echo ""
+            echo "=== Suggested fixes ==="
+            echo ""
+            echo "  eval() or new Function() found:"
+            echo "    → MV3 extensions are blocked from dynamic code execution by the browser CSP"
+            echo "    → Replace eval() with a direct function call or JSON.parse() as appropriate"
+            echo "    → Replace new Function() with a named function or a lookup table"
+            echo ""
+            echo "  innerHTML found:"
+            echo "    → Replace .innerHTML = value with .textContent = value for plain text"
+            echo "    → For HTML fragments, use Knockout.js data-bind or DOM APIs (createElement)"
+            echo "    → Never pass user-controlled strings (aliases, profile names) through innerHTML"
+            echo ""
+            echo "  document.write() found:"
+            echo "    → Replace with DOM manipulation: document.body.appendChild(element)"
+            echo ""
+            echo "  Inline event handler in HTML:"
+            echo "    → Remove onclick=, onerror=, etc. from HTML attributes"
+            echo "    → Attach event listeners in JS: element.addEventListener('click', handler)"
+            echo "    → Knockout.js: use data-bind='click: handler' instead"
+            echo ""
+            echo "  Inline <script> block in HTML:"
+            echo "    → Move all JS to external files loaded via <script src='...'>"
+            echo "    → MV3 CSP blocks execution of inline script blocks"
+            echo ""
+            echo "  Secret pattern detected:"
+            echo "    → Remove the hardcoded credential from source immediately"
+            echo "    → Rotate any exposed token/key through the relevant service's dashboard"
+            echo "    → Use chrome.storage or runtime environment for any runtime configuration"
+            echo ""
+            echo "  CSP weakened:"
+            echo "    → Remove 'unsafe-eval' and 'unsafe-inline' from content_security_policy"
+            echo "    → Do not add 'data:' or 'http:' to script-src"
+            echo "    → Rely on the MV3 default CSP unless there is a documented, specific need"
+          fi
+          echo "=========================================="
+          [ "$ALL_PASS" = "true" ]

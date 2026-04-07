@@ -1,0 +1,78 @@
+name: PR Build and Bundle Smoke
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+
+jobs:
+  build-artifacts:
+    name: Build extension and Chrome Web Store bundle
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build distributable extension
+        run: make dist
+
+      - name: Build Chrome Web Store submission bundle
+        run: npm run bundle:chrome-store
+
+      - name: Verify expected build outputs exist
+        run: |
+          PACKAGE_NAME="$(node -p "require('./package.json').name")"
+          VERSION="$(node -p "require('./manifest.json').version")"
+
+          test -f dist/dist.zip
+          test -f "artifacts/chrome-web-store/${PACKAGE_NAME}-v${VERSION}.zip"
+          test -f artifacts/chrome-web-store/manifest.json
+          test -f artifacts/chrome-web-store/submission-metadata.json
+          test -f artifacts/chrome-web-store/checksums.txt
+          test -f artifacts/chrome-web-store/submission-notes.md
+
+      - name: Upload PR build artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr-build-artifacts-${{ github.run_id }}
+          path: |
+            dist/dist.zip
+            artifacts/chrome-web-store/
+          if-no-files-found: warn
+
+      - name: PR safety summary (pass)
+        if: success()
+        run: |
+          {
+            echo "## Safe-to-commit summary"
+            echo "✅ This pull request is safe to commit from a build-and-bundle perspective."
+            echo "Extension packaging and Chrome Web Store bundle generation completed with all required outputs present."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: PR safety summary (fail with diagnostics)
+        if: failure()
+        run: |
+          {
+            echo "## Safe-to-commit summary"
+            echo "❌ This pull request is **not** safe to commit yet."
+            echo "Build or packaging failed, or required artifacts were not produced."
+            echo ""
+            echo "### Diagnostic feedback for AI coding assistants"
+            echo "1. Re-run \\`make dist\\` and \\`npm run bundle:chrome-store\\` locally to isolate the failing stage."
+            echo "2. Verify paths referenced by build scripts still exist (HTML entrypoints, js/, styles/, images/, manifest.json)."
+            echo "3. Confirm generated filename uses current package name and manifest version."
+            echo "4. If minification fails, check for syntax errors in recently changed JS files."
+          } >> "$GITHUB_STEP_SUMMARY"

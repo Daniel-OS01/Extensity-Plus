@@ -1211,7 +1211,7 @@ body.action-layout-vertical .profile-assign-select {
 }
 
 /* Fix profile-count color in active/hover pill state */
-#profiles ul.items li.active .profile-count,
-#profiles ul.items li:hover .profile-count {
+body:not(.profile-pill-icons-only) #profiles ul.items li.active .profile-count,
+body:not(.profile-pill-icons-only) #profiles ul.items li:hover .profile-count {
   color: rgba(255, 255, 255, 0.75);
 }

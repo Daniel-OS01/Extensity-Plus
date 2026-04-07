@@ -441,6 +441,18 @@ body.profiles-portrait #profiles {
   white-space: nowrap;
 }
 
+#profiles .sidebar ul.items li .profile-count {
+  color: var(--muted);
+  font-size: 0.85em;
+  font-weight: normal;
+  opacity: 0.75;
+}
+
+#profiles .sidebar ul.items li.active .profile-count,
+#profiles .sidebar ul.items li:hover .profile-count {
+  color: inherit;
+}
+
 #profiles .sidebar .remove-profile {
   color: var(--muted);
 }

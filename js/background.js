@@ -57,18 +57,25 @@ importScripts(
   }
 
   function cloneRuleEntries(entries) {
-    return (Array.isArray(entries) ? entries : []).map(function(entry) {
-      return {
-        enabled: !!entry.enabled,
-        id: entry.id || entry.extensionId,
-        ruleId: entry.ruleId || null,
-        ruleName: entry.ruleName || null,
-        tabId: entry.tabId != null ? entry.tabId : null,
-        url: entry.url || ""
-      };
-    }).filter(function(entry) {
-      return !!entry.id;
-    });
+    var list = Array.isArray(entries) ? entries : [];
+    var result = [];
+    // Performance optimization: Consolidate .map().filter() into a single for loop
+    // to minimize execution time and avoid intermediate array allocations.
+    for (var i = 0; i < list.length; i++) {
+      var entry = list[i];
+      var id = entry.id || entry.extensionId;
+      if (id) {
+        result.push({
+          enabled: !!entry.enabled,
+          id: id,
+          ruleId: entry.ruleId || null,
+          ruleName: entry.ruleName || null,
+          tabId: entry.tabId != null ? entry.tabId : null,
+          url: entry.url || ""
+        });
+      }
+    }
+    return result;
   }
 
   function buildRuleApplication(entries, url, tabId) {

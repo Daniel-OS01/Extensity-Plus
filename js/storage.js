@@ -269,7 +269,10 @@
   }
 
   function makeId(prefix) {
-    return [prefix, Date.now().toString(36), Math.random().toString(36).slice(2, 8)].join("-");
+    var array = new Uint32Array(1);
+    crypto.getRandomValues(array);
+    var randomStr = ("000000" + array[0].toString(36)).slice(-6);
+    return [prefix, Date.now().toString(36), randomStr].join("-");
   }
 
   root.ExtensityStorage = {

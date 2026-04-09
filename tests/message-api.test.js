@@ -63,6 +63,7 @@ function createChromeStub() {
       get() {},
       onActivated: { addListener() {} },
       onUpdated: { addListener() {} },
+      onRemoved: { addListener() {} },
       query() {},
       sendMessage() {}
     },

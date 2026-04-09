@@ -161,6 +161,7 @@ test("normalizeProfileMap with null input still returns reserved profiles", () =
   const result = root.ExtensityStorage.normalizeProfileMap(null);
   assert.deepEqual(normalize(result.__always_on), []);
   assert.deepEqual(normalize(result.__favorites), []);
+  assert.deepEqual(normalize(result.__base), []);
 });
 
 test("uniqueArray removes duplicates and filters falsy values", () => {

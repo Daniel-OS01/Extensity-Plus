@@ -55,7 +55,7 @@ test("normalizeProfileMap deduplicates extension IDs within each profile", () =>
   const result = root.ExtensityStorage.normalizeProfileMap({
     Work: ["ext-1", "ext-2", "ext-1"]
   });
-  assert.deepEqual(result.Work, ["ext-1", "ext-2"]);
+  assert.deepEqual(normalize(result.Work), ["ext-1", "ext-2"]);
 });
 
 test("normalizeProfileMap with null input returns only reserved profiles", () => {
@@ -63,8 +63,9 @@ test("normalizeProfileMap with null input returns only reserved profiles", () =>
   const result = root.ExtensityStorage.normalizeProfileMap(null);
   assert.deepEqual(normalize(result.__always_on), []);
   assert.deepEqual(normalize(result.__favorites), []);
+  assert.deepEqual(normalize(result.__base), []);
   const keys = Object.keys(result);
-  assert.equal(keys.length, 2, "null input must produce exactly the two reserved profiles");
+  assert.equal(keys.length, 3, "null input must produce exactly the three reserved profiles");
 });
 
 test("normalizeProfileMap ignores falsy extension IDs within a profile", () => {
@@ -72,19 +73,19 @@ test("normalizeProfileMap ignores falsy extension IDs within a profile", () => {
   const result = root.ExtensityStorage.normalizeProfileMap({
     Work: ["ext-1", null, "", undefined, "ext-2"]
   });
-  assert.deepEqual(result.Work, ["ext-1", "ext-2"]);
+  assert.deepEqual(normalize(result.Work), ["ext-1", "ext-2"]);
 });
 
 // --- profileMapToItems ---
 
 test("profileMapToItems places __always_on and __favorites before alphabetical user profiles", () => {
   const root = loadStorage();
-  const items = root.ExtensityStorage.profileMapToItems({
+  const items = normalize(root.ExtensityStorage.profileMapToItems({
     "Zzz Profile": [],
     "Aaa Profile": [],
     "__always_on": [],
     "__favorites": []
-  });
+  }));
 
   const names = items.map(i => i.name);
   const alwaysOnIdx = names.indexOf("__always_on");
@@ -99,10 +100,10 @@ test("profileMapToItems places __always_on and __favorites before alphabetical u
 
 test("profileMapToItems returns correct items array structure", () => {
   const root = loadStorage();
-  const items = root.ExtensityStorage.profileMapToItems({
+  const items = normalize(root.ExtensityStorage.profileMapToItems({
     Work: ["ext-1", "ext-2"],
     __always_on: []
-  });
+  }));
 
   const workItem = items.find(i => i.name === "Work");
   assert.ok(workItem, "Work profile must appear in items");

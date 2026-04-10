@@ -188,14 +188,13 @@ test("storage sync defaults expose popup and profile display settings", () => {
   assert.deepEqual(normalize(localDefaults.webStoreMetadata), {});
 });
 
-test("normalizeProfileMap always includes reserved Base", () => {
+test("normalizeProfileMap always includes reserved profiles", () => {
   const root = loadModule("js/storage.js");
 
   assert.deepEqual(normalize(root.ExtensityStorage.normalizeProfileMap({
     Work: ["ext-1"]
   })), {
     __always_on: [],
-    __base: [],
     __favorites: [],
     Work: ["ext-1"]
   });

@@ -63,6 +63,7 @@ function createChromeStub() {
       get() {},
       onActivated: { addListener() {} },
       onUpdated: { addListener() {} },
+      onRemoved: { addListener() {} },
       query() {},
       sendMessage() {}
     },
@@ -89,7 +90,8 @@ function loadBackground() {
       ExtensityReminders: {},
       ExtensityStorage: {
         clone(value) { return JSON.parse(JSON.stringify(value)); },
-        uniqueArray(items) { return Array.from(new Set(items || [])); }
+        uniqueArray(items) { return Array.from(new Set(items || [])); },
+        profileNames: ["__always_on", "__favorites"]
       },
       ExtensityUrlRules: {}
     }

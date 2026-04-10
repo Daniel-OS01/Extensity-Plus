@@ -208,13 +208,21 @@ document.addEventListener("DOMContentLoaded", function() {
       self.profileCountMap(countMap);
 
       var membershipMap = self.extensionProfileMembership();
+      var cachedProfiles = self.profiles.items();
       self.ext.extensions().forEach(function(extension) {
         var memberProfiles = membershipMap[extension.id()] || {};
-        var badges = self.profiles.items().filter(function(profile) {
-          return !!memberProfiles[profile.name()];
-        }).map(function(profile) {
-          return { name: profile.short_name(), color: profile.color(), iconClass: profile.icon() };
-        });
+
+        // Performance optimization: Using a single for loop pass instead of
+        // `.filter().map()` minimizes execution time and avoids intermediate
+        // array allocations in this performance-sensitive loop.
+        var badges = [];
+        for (var i = 0; i < cachedProfiles.length; i++) {
+          var profile = cachedProfiles[i];
+          if (!!memberProfiles[profile.name()]) {
+            badges.push({ name: profile.short_name(), color: profile.color(), iconClass: profile.icon() });
+          }
+        }
+
         extension.profileBadges(badges);
       });
       document.body.className = self.bodyClass();

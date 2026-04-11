@@ -58,13 +58,15 @@ document.addEventListener("DOMContentLoaded", function() {
         return true;
       }
 
-      var haystacks = [
-        extension.alias(),
-        extension.name(),
-        extension.description()
-      ].filter(Boolean).map(function(item) {
-        return item.toLowerCase();
-      });
+      // Performance optimization: Avoid intermediate array allocations and map/filter callback overhead
+      // in search matching (which runs per item per keystroke).
+      var haystacks = [];
+      var alias = extension.alias();
+      if (alias) { haystacks.push(alias.toLowerCase()); }
+      var name = extension.name();
+      if (name) { haystacks.push(name.toLowerCase()); }
+      var desc = extension.description();
+      if (desc) { haystacks.push(desc.toLowerCase()); }
 
       if (haystacks.some(function(item) {
         return item.indexOf(query) !== -1;

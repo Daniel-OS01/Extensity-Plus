@@ -83,7 +83,7 @@ test("getSyncDefaults returns a fresh clone on each call", () => {
   const a = root.ExtensityStorage.getSyncDefaults();
   const b = root.ExtensityStorage.getSyncDefaults();
   a.sortMode = "MUTATED";
-  assert.equal(b.sortMode, "alpha", "getSyncDefaults must return independent copies");
+  assert.equal(b.sortMode, "recent", "getSyncDefaults must return independent copies");
 });
 
 test("getLocalDefaults returns a fresh clone on each call", () => {

@@ -26,7 +26,7 @@ jobs:
 
           # Exclude js/libs/ (third-party) and test files from the scan
           if grep -rn --include="*.js" \
-            --exclude-dir="js/libs" \
+            --exclude-dir="libs" \
             --exclude-dir="tests" \
             --exclude-dir="scripts" \
             --exclude-dir="node_modules" \
@@ -38,7 +38,7 @@ jobs:
           fi
 
           if grep -rn --include="*.js" \
-            --exclude-dir="js/libs" \
+            --exclude-dir="libs" \
             --exclude-dir="tests" \
             --exclude-dir="scripts" \
             --exclude-dir="node_modules" \
@@ -59,7 +59,7 @@ jobs:
         run: |
           set -e
           if grep -rn --include="*.js" \
-            --exclude-dir="js/libs" \
+            --exclude-dir="libs" \
             --exclude-dir="tests" \
             --exclude-dir="node_modules" \
             -E '\.innerHTML\s*=' js/ 2>/dev/null; then
@@ -76,7 +76,7 @@ jobs:
         run: |
           set -e
           if grep -rn --include="*.js" \
-            --exclude-dir="js/libs" \
+            --exclude-dir="libs" \
             --exclude-dir="tests" \
             --exclude-dir="node_modules" \
             -E '\bdocument\.write\s*\(' js/ 2>/dev/null; then
@@ -108,7 +108,7 @@ jobs:
         run: |
           set -e
           if grep -rn --include="*.html" \
-            -P '<script(?![^>]*src=)[^>]*>' \
+            -P '<script(?![^>]*src=)(?![^>]*type="text/html")[^>]*>' \
             index.html options.html profiles.html dashboard.html 2>/dev/null; then
             echo "FAIL: Inline <script> block found in HTML (blocked by MV3 CSP — use src= only)"
             exit 1

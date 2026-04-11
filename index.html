@@ -17,7 +17,7 @@
 <body class="list-view">
 <section id="header" class="main" data-sbind="visible: opts.showHeader">
   <h1>
-    <a id="title" href="https://github.com/Daniel-OS01/Extensity-Plus" target="_blank" title="Open Extensity-Plus repository" aria-label="Open Extensity-Plus repository">
+    <a id="title" href="https://github.com/Daniel-OS01/Extensity-Plus" target="_blank" rel="noopener noreferrer" title="Open Extensity-Plus repository" aria-label="Open Extensity-Plus repository">
       <img src="images/icon48.png" width="16" height="16" alt="Extensity-Plus" />
     </a>
     <span class="active-profile-badge" data-sbind="visible: activeProfileObj, attr:{style: activeProfileBadgeStyle}">
@@ -27,9 +27,9 @@
     <a href="#" class="page" data-sbind="click: switch.undo, css:{disabled: !canUndo()}"><i class="fa fa-undo" title="Undo"></i></a>
     <a href="#" class="page" data-sbind="click: toggleViewMode"><i class="fa" data-sbind="css: viewToggleIcon" title="Toggle view"></i></a>
     <a href="#" class="page" data-sbind="click: openDashboard"><i class="fa fa-table" title="Open dashboard"></i></a>
-    <a href="options.html" class="page" target="_blank"><i class="fa fa-cog" title="Options"></i></a>
-    <a href="profiles.html" class="page" target="_blank"><i class="fa fa-user-circle-o" title="Profiles"></i></a>
-    <a href="chrome://extensions" class="page" target="_blank" data-sbind="click: openChromeExtensions"><i class="fa fa-puzzle-piece" title="Chrome extensions"></i></a>
+    <a href="options.html" class="page" target="_blank" rel="noopener noreferrer"><i class="fa fa-cog" title="Options"></i></a>
+    <a href="profiles.html" class="page" target="_blank" rel="noopener noreferrer"><i class="fa fa-user-circle-o" title="Profiles"></i></a>
+    <a href="chrome://extensions" class="page" target="_blank" rel="noopener noreferrer" data-sbind="click: openChromeExtensions"><i class="fa fa-puzzle-piece" title="Chrome extensions"></i></a>
     <a href="#" class="switch" data-sbind="click: switch.flip"><i class="fa" data-sbind="css: switch.toggleStyle" title="Toggle all"></i></a>
   </h1>
 </section>

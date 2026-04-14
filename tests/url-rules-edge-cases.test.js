@@ -134,7 +134,7 @@ test("resolveChanges: later rule overwrites earlier conflicting rule for same ex
     { active: true, enableIds: ["ext-1"], disableIds: [], id: "rule-enable", matchMethod: "wildcard", urlPattern: "*://example.com/*" },
     { active: true, enableIds: [], disableIds: ["ext-1"], id: "rule-disable", matchMethod: "wildcard", urlPattern: "*://example.com/*" }
   ]);
-  assert.deepEqual(normalize(changes), { "ext-1": { enabled: false, ruleId: "rule-disable" } });
+  assert.deepEqual(normalize(changes), { "ext-1": { enabled: false, ruleId: "rule-disable", ruleName: "Untitled Rule", urlPattern: "*://example.com/*" } });
 });
 
 test("resolveChanges: applies enable and disable for different extensions independently", () => {
@@ -199,4 +199,55 @@ test("normalizeRules handles non-array input gracefully", () => {
   const root = loadUrlRules();
   assert.deepEqual(normalize(root.ExtensityUrlRules.normalizeRules(null)), []);
   assert.deepEqual(normalize(root.ExtensityUrlRules.normalizeRules(undefined)), []);
+});
+
+test("normalizeRule handles null, undefined, and primitives safely", () => {
+  const root = loadUrlRules();
+  const cases = [null, undefined, 123, true, "string"];
+  cases.forEach(val => {
+    assert.doesNotThrow(() => {
+      const rule = root.ExtensityUrlRules.normalizeRule(val);
+      assert.equal(rule.active, true);
+      assert.equal(rule.name, "Untitled Rule");
+      assert.equal(rule.urlPattern, "");
+      assert.equal(rule.matchMethod, "wildcard");
+      assert.deepEqual(normalize(rule.enableIds), []);
+      assert.deepEqual(normalize(rule.disableIds), []);
+    });
+  });
+});
+
+test("normalizeRule handles non-string values for name and urlPattern", () => {
+  const root = loadUrlRules();
+  assert.doesNotThrow(() => {
+    const rule = root.ExtensityUrlRules.normalizeRule({ name: 123, urlPattern: {} });
+    assert.equal(rule.name, "123");
+    assert.equal(rule.urlPattern, "[object Object]");
+  });
+
+  assert.doesNotThrow(() => {
+    const rule = root.ExtensityUrlRules.normalizeRule({ name: null, urlPattern: undefined });
+    assert.equal(rule.name, "Untitled Rule");
+    assert.equal(rule.urlPattern, "");
+  });
+});
+
+test("normalizeRule handles invalid timeout values safely", () => {
+  const root = loadUrlRules();
+  assert.equal(root.ExtensityUrlRules.normalizeRule({ timeout: -10 }).timeout, 0);
+  assert.equal(root.ExtensityUrlRules.normalizeRule({ timeout: NaN }).timeout, 0);
+  assert.equal(root.ExtensityUrlRules.normalizeRule({ timeout: 1.5 }).timeout, 1);
+  assert.equal(root.ExtensityUrlRules.normalizeRule({ timeout: Infinity }).timeout, 0);
+  assert.equal(root.ExtensityUrlRules.normalizeRule({ timeout: "10" }).timeout, 0); // Must be actual number
+});
+
+test("normalizeRule handles empty object safely", () => {
+  const root = loadUrlRules();
+  assert.doesNotThrow(() => {
+    const rule = root.ExtensityUrlRules.normalizeRule({});
+    assert.equal(rule.active, true);
+    assert.equal(rule.name, "Untitled Rule");
+    assert.equal(rule.urlPattern, "");
+    assert.equal(rule.timeout, 0);
+  });
 });

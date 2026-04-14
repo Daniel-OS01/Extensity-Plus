@@ -48,15 +48,22 @@
   }
 
   function normalizeRule(rule) {
+    var safeRule = rule && typeof rule === "object" ? rule : {};
+
+    // Explicitly handle timeout conversion safely
+    var timeout = typeof safeRule.timeout === "number" && isFinite(safeRule.timeout)
+      ? Math.max(0, Math.floor(safeRule.timeout))
+      : 0;
+
     return {
-      active: rule.active !== false,
-      disableIds: uniqueIds(rule.disableIds),
-      enableIds: uniqueIds(rule.enableIds),
-      id: rule.id || storage.makeId("rule"),
-      matchMethod: rule.matchMethod === "regex" ? "regex" : "wildcard",
-      name: (rule.name || "").trim() || "Untitled Rule",
-      timeout: typeof rule.timeout === "number" && isFinite(rule.timeout) ? Math.max(0, Math.floor(rule.timeout)) : 0,
-      urlPattern: (rule.urlPattern || "").trim()
+      active: safeRule.active !== false,
+      disableIds: uniqueIds(safeRule.disableIds),
+      enableIds: uniqueIds(safeRule.enableIds),
+      id: safeRule.id || storage.makeId("rule"),
+      matchMethod: safeRule.matchMethod === "regex" ? "regex" : "wildcard",
+      name: String(safeRule.name != null ? safeRule.name : "").trim() || "Untitled Rule",
+      timeout: timeout,
+      urlPattern: String(safeRule.urlPattern != null ? safeRule.urlPattern : "").trim()
     };
   }
 

@@ -55,7 +55,7 @@ test("normalizeProfileMap deduplicates extension IDs within each profile", () =>
   const result = root.ExtensityStorage.normalizeProfileMap({
     Work: ["ext-1", "ext-2", "ext-1"]
   });
-  assert.deepEqual(result.Work, ["ext-1", "ext-2"]);
+  assert.deepEqual(normalize(result.Work), ["ext-1", "ext-2"]);
 });
 
 test("normalizeProfileMap with null input returns only reserved profiles", () => {
@@ -64,7 +64,7 @@ test("normalizeProfileMap with null input returns only reserved profiles", () =>
   assert.deepEqual(normalize(result.__always_on), []);
   assert.deepEqual(normalize(result.__favorites), []);
   const keys = Object.keys(result);
-  assert.equal(keys.length, 2, "null input must produce exactly the two reserved profiles");
+  assert.equal(keys.length, 3, "null input must produce exactly the three reserved profiles");
 });
 
 test("normalizeProfileMap ignores falsy extension IDs within a profile", () => {
@@ -72,7 +72,7 @@ test("normalizeProfileMap ignores falsy extension IDs within a profile", () => {
   const result = root.ExtensityStorage.normalizeProfileMap({
     Work: ["ext-1", null, "", undefined, "ext-2"]
   });
-  assert.deepEqual(result.Work, ["ext-1", "ext-2"]);
+  assert.deepEqual(normalize(result.Work), ["ext-1", "ext-2"]);
 });
 
 // --- profileMapToItems ---
@@ -106,7 +106,7 @@ test("profileMapToItems returns correct items array structure", () => {
 
   const workItem = items.find(i => i.name === "Work");
   assert.ok(workItem, "Work profile must appear in items");
-  assert.deepEqual(workItem.items, ["ext-1", "ext-2"]);
+  assert.deepEqual(normalize(workItem.items), ["ext-1", "ext-2"]);
 });
 
 test("profileMapToItems includes all profiles from input", () => {

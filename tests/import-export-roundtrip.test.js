@@ -117,6 +117,26 @@ test("buildBackupEnvelope records correct enabled boolean for each extension", (
 
 // --- validateBackupEnvelope ---
 
+test("validateBackupEnvelope rejects non-object payloads", () => {
+  const root = loadImportExport();
+  const invalidPayloads = [
+    null,
+    undefined,
+    "string",
+    123,
+    true,
+    [],
+    function() {}
+  ];
+
+  for (const payload of invalidPayloads) {
+    assert.throws(
+      () => root.ExtensityImportExport.validateBackupEnvelope(payload),
+      /Backup payload must be a JSON object\./
+    );
+  }
+});
+
 test("validateBackupEnvelope rejects unsupported version strings", () => {
   const root = loadImportExport();
   assert.throws(

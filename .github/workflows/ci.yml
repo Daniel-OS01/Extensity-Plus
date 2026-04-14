@@ -1,6 +1,9 @@
 name: CI And Release
 
 on:
+  pull_request:
+    branches:
+      - main
   push:
     branches:
       - main
@@ -23,7 +26,9 @@ permissions:
 
 jobs:
   build-and-validate:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: |
+      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+      github.event_name == 'pull_request'
     runs-on: ubuntu-latest
 
     steps:

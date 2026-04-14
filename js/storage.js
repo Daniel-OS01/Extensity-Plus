@@ -269,7 +269,13 @@
   }
 
   function makeId(prefix) {
-    return [prefix, Date.now().toString(36), Math.random().toString(36).slice(2, 8)].join("-");
+    var array = new Uint32Array(1);
+    crypto.getRandomValues(array);
+    var randomStr = array[0].toString(36);
+    while (randomStr.length < 6) {
+      randomStr = "0" + randomStr;
+    }
+    return [prefix, Date.now().toString(36), randomStr.slice(0, 6)].join("-");
   }
 
   root.ExtensityStorage = {

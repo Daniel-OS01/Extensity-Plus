@@ -20,13 +20,13 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: pnpm
+          cache: npm
 
       - name: Install dependencies
-        run: pnpm install
+        run: npm ci
 
       - name: Execute Node test suite
-        run: pnpm test
+        run: npm test
 
       - name: PR safety summary (pass)
         if: success()
@@ -46,7 +46,7 @@ jobs:
             echo "One or more unit-regression tests failed."
             echo ""
             echo "### Diagnostic feedback for AI coding assistants"
-            echo "1. Re-run \\`pnpm test\\` locally to reproduce the exact failing test names."
+            echo "1. Re-run \\`npm test\\` locally to reproduce the exact failing test names."
             echo "2. Inspect recent changes in JS modules touched by the PR and align behavior with existing tests in \\`tests/*.test.js\\`."
             echo "3. If behavior changed intentionally, update or add targeted tests first, then fix implementation."
             echo "4. Verify no brittle assumptions were introduced (undefined fields, URL parsing edge cases, storage migration regressions)."

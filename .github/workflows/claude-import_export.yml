@@ -19,11 +19,11 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          cache: pnpm
+          cache: npm
           node-version: 22
 
       - name: Install dependencies
-        run: pnpm install
+        run: npm ci
 
       - name: Run existing import/export unit tests
         id: test-existing

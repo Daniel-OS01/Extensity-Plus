@@ -19,7 +19,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          cache: pnpm
+          cache: npm
           node-version: 22
 
       - name: Set up Python (required by Makefile zipfile step)
@@ -28,7 +28,7 @@ jobs:
           python-version: "3.x"
 
       - name: Install dependencies
-        run: pnpm install
+        run: npm ci
 
       - name: Build distributable extension
         id: build
@@ -186,7 +186,7 @@ jobs:
             echo "=== Suggested fixes ==="
             echo ""
             echo "  make dist failed:"
-            echo "    → Check that uglify-js and sass are in devDependencies and pnpm install was run"
+            echo "    → Check that uglify-js and sass are in devDependencies and npm ci was run"
             echo "    → Check that python3 is available (needed for the zip step)"
             echo "    → Run 'make dist' locally and read the Makefile for the failing target"
             echo ""
@@ -199,7 +199,7 @@ jobs:
             echo "    → Verify the file exists at the root level (not in a subdirectory the Makefile misses)"
             echo ""
             echo "  Minified JS is empty:"
-            echo "    → UglifyJS may have encountered a syntax error — run 'pnpm test' to catch JS errors first"
+            echo "    → UglifyJS may have encountered a syntax error — run 'npm test' to catch JS errors first"
             echo "    → Check that the source file exists before the minification step in the Makefile"
             echo ""
             echo "  Dev files leaked into zip:"

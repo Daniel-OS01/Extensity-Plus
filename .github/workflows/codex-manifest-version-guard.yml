@@ -20,13 +20,13 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: pnpm
+          cache: npm
 
       - name: Install dependencies
-        run: pnpm install
+        run: npm ci
 
       - name: Validate manifest schema and contract
-        run: pnpm run check:manifest
+        run: npm run check:manifest
 
       - name: Ensure package and manifest versions match
         run: |
@@ -56,7 +56,7 @@ jobs:
             echo "Manifest contract validation failed or tracked versions diverged."
             echo ""
             echo "### Diagnostic feedback for AI coding assistants"
-            echo "1. Run \\`pnpm run check:manifest\\` locally and fix every reported field violation in manifest.json."
+            echo "1. Run \\`npm run check:manifest\\` locally and fix every reported field violation in manifest.json."
             echo "2. Compare \\`package.json.version\\` and \\`manifest.json.version\\`; keep them identical for releasable states."
             echo "3. Re-check MV3-specific keys (service_worker, host permissions, action/default_popup) after edits."
             echo "4. Avoid introducing unsupported or misspelled manifest keys."

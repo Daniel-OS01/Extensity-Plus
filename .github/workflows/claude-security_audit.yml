@@ -16,6 +16,15 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install
+
       # MV3 extensions are blocked from eval() at the browser level.
       # Any eval() in source will silently fail at runtime and is a CSP violation.
       - name: Scan for eval() and new Function() in extension JS

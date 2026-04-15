@@ -19,15 +19,15 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          cache: pnpm
+          cache: npm
           node-version: 22
 
       - name: Install dependencies
-        run: pnpm install
+        run: npm ci
 
       - name: Run project manifest validator
         id: check-manifest
-        run: pnpm run check:manifest 2>&1 | tee manifest-check.txt
+        run: npm run check:manifest 2>&1 | tee manifest-check.txt
         continue-on-error: true
 
       - name: Verify manifest_version is 3

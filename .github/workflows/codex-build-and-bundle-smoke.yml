@@ -20,16 +20,16 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: pnpm
+          cache: npm
 
       - name: Install dependencies
-        run: pnpm install
+        run: npm ci
 
       - name: Build distributable extension
         run: make dist
 
       - name: Build Chrome Web Store submission bundle
-        run: pnpm run bundle:chrome-store
+        run: npm run bundle:chrome-store
 
       - name: Verify expected build outputs exist
         run: |
@@ -71,7 +71,7 @@ jobs:
             echo "Build or packaging failed, or required artifacts were not produced."
             echo ""
             echo "### Diagnostic feedback for AI coding assistants"
-            echo "1. Re-run \\`make dist\\` and \\`pnpm run bundle:chrome-store\\` locally to isolate the failing stage."
+            echo "1. Re-run \\`make dist\\` and \\`npm run bundle:chrome-store\\` locally to isolate the failing stage."
             echo "2. Verify paths referenced by build scripts still exist (HTML entrypoints, js/, styles/, images/, manifest.json)."
             echo "3. Confirm generated filename uses current package name and manifest version."
             echo "4. If minification fails, check for syntax errors in recently changed JS files."

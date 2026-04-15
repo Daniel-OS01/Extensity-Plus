@@ -40,16 +40,16 @@ jobs:
         run: pnpm install
 
       - name: Run unit tests
-        run: ppnpm test
+        run: pnpm test
 
       - name: Validate manifest contract
-        run: ppnpm run check:manifest
+        run: pnpm run check:manifest
 
       - name: Build distributable extension
         run: make dist
 
       - name: Build Chrome Web Store submission bundle
-        run: ppnpm run bundle:chrome-store
+        run: pnpm run bundle:chrome-store
 
       - name: Upload distribution artifact
         uses: actions/upload-artifact@v4
@@ -84,10 +84,10 @@ jobs:
         run: pnpm install
 
       - name: Run tests
-        run: ppnpm test
+        run: pnpm test
 
       - name: Validate manifest contract
-        run: ppnpm run check:manifest
+        run: pnpm run check:manifest
 
       - name: Validate package and manifest versions match
         run: |
@@ -124,7 +124,7 @@ jobs:
         run: make dist
 
       - name: Build Chrome Web Store submission bundle
-        run: ppnpm run bundle:chrome-store
+        run: pnpm run bundle:chrome-store
 
       - name: Verify build outputs exist
         run: |
@@ -166,22 +166,22 @@ jobs:
       - name: Bump tracked versions
         id: bump
         run: |
-          VERSION="$(ppnpm run --silent release:bump -- ${{ inputs.version }})"
+          VERSION="$(pnpm run --silent release:bump -- ${{ inputs.version }})"
           PACKAGE_NAME="$(node -p "require('./package.json').name")"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
           echo "package_name=$PACKAGE_NAME" >> "$GITHUB_OUTPUT"
 
       - name: Run tests after version bump
-        run: ppnpm test
+        run: pnpm test
 
       - name: Validate manifest after version bump
-        run: ppnpm run check:manifest
+        run: pnpm run check:manifest
 
       - name: Build release artifacts
         run: |
           make dist
-          ppnpm run bundle:chrome-store
+          pnpm run bundle:chrome-store
           mkdir -p release-assets
           cp dist/dist.zip "release-assets/${{ steps.bump.outputs.package_name }}-extension-v${{ steps.bump.outputs.version }}.zip"
           cp "artifacts/chrome-web-store/${{ steps.bump.outputs.package_name }}-v${{ steps.bump.outputs.version }}.zip" "release-assets/${{ steps.bump.outputs.package_name }}-chrome-web-store-upload-v${{ steps.bump.outputs.version }}.zip"
@@ -251,7 +251,7 @@ jobs:
       - name: Build release artifacts
         run: |
           make dist
-          ppnpm run bundle:chrome-store
+          pnpm run bundle:chrome-store
           mkdir -p release-assets
           cp dist/dist.zip "release-assets/${{ steps.version.outputs.package_name }}-extension-v${{ steps.version.outputs.version }}.zip"
           cp "artifacts/chrome-web-store/${{ steps.version.outputs.package_name }}-v${{ steps.version.outputs.version }}.zip" "release-assets/${{ steps.version.outputs.package_name }}-chrome-web-store-upload-v${{ steps.version.outputs.version }}.zip"

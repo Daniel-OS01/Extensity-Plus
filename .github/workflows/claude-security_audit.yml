@@ -108,7 +108,7 @@ jobs:
         run: |
           set -e
           if grep -rn --include="*.html" \
-            -P '<script(?![^>]*src=)[^>]*>' \
+            -P '<script(?![^>]*src=)(?![^>]*type="text/html")[^>]*>' \
             index.html options.html profiles.html dashboard.html 2>/dev/null; then
             echo "FAIL: Inline <script> block found in HTML (blocked by MV3 CSP — use src= only)"
             exit 1

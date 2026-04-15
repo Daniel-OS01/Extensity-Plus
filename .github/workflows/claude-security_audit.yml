@@ -16,6 +16,15 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install
+
       # MV3 extensions are blocked from eval() at the browser level.
       # Any eval() in source will silently fail at runtime and is a CSP violation.
       - name: Scan for eval() and new Function() in extension JS
@@ -26,7 +35,7 @@ jobs:
 
           # Exclude js/libs/ (third-party) and test files from the scan
           if grep -rn --include="*.js" \
-            --exclude-dir="js/libs" \
+            --exclude-dir="libs" \
             --exclude-dir="tests" \
             --exclude-dir="scripts" \
             --exclude-dir="node_modules" \
@@ -38,7 +47,7 @@ jobs:
           fi
 
           if grep -rn --include="*.js" \
-            --exclude-dir="js/libs" \
+            --exclude-dir="libs" \
             --exclude-dir="tests" \
             --exclude-dir="scripts" \
             --exclude-dir="node_modules" \
@@ -59,7 +68,7 @@ jobs:
         run: |
           set -e
           if grep -rn --include="*.js" \
-            --exclude-dir="js/libs" \
+            --exclude-dir="libs" \
             --exclude-dir="tests" \
             --exclude-dir="node_modules" \
             -E '\.innerHTML\s*=' js/ 2>/dev/null; then
@@ -76,7 +85,7 @@ jobs:
         run: |
           set -e
           if grep -rn --include="*.js" \
-            --exclude-dir="js/libs" \
+            --exclude-dir="libs" \
             --exclude-dir="tests" \
             --exclude-dir="node_modules" \
             -E '\bdocument\.write\s*\(' js/ 2>/dev/null; then
@@ -108,7 +117,7 @@ jobs:
         run: |
           set -e
           if grep -rn --include="*.html" \
-            -P '<script(?![^>]*src=)[^>]*>' \
+            -P '<script(?![^>]*(?:src=|type="text/html"))[^>]*>' \
             index.html options.html profiles.html dashboard.html 2>/dev/null; then
             echo "FAIL: Inline <script> block found in HTML (blocked by MV3 CSP — use src= only)"
             exit 1

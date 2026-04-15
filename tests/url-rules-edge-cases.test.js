@@ -132,9 +132,9 @@ test("resolveChanges: later rule overwrites earlier conflicting rule for same ex
   // URL needs a path segment for *://host/* patterns to match
   const changes = root.ExtensityUrlRules.resolveChanges("https://example.com/page", [
     { active: true, enableIds: ["ext-1"], disableIds: [], id: "rule-enable", matchMethod: "wildcard", urlPattern: "*://example.com/*" },
-    { active: true, enableIds: [], disableIds: ["ext-1"], id: "rule-disable", matchMethod: "wildcard", urlPattern: "*://example.com/*" }
+    { active: true, enableIds: [], disableIds: ["ext-1"], id: "rule-disable", matchMethod: "wildcard", urlPattern: "*://example.com/*", name: "Untitled Rule" }
   ]);
-  assert.deepEqual(normalize(changes), { "ext-1": { enabled: false, ruleId: "rule-disable" } });
+  assert.deepEqual(normalize(changes), { "ext-1": { enabled: false, ruleId: "rule-disable", ruleName: "Untitled Rule", urlPattern: "*://example.com/*" } });
 });
 
 test("resolveChanges: applies enable and disable for different extensions independently", () => {

@@ -143,22 +143,22 @@
         <span class="badge profile-badge" data-sbind="text: name, css: colorClass, attr:{style: badgeStyle, title: title}"></span>
         <!-- /ko -->
       </div>
-      <button type="button" class="table-row-chevron" title="Show extension actions" data-sbind="click: toggleTableRowAction, clickBubble: false, css:{expanded: rowExpanded}">
-        <i class="fa fa-chevron-left"></i>
+      <button type="button" class="table-row-chevron" title="Show extension actions" aria-label="Show extension actions" data-sbind="click: toggleTableRowAction, clickBubble: false, css:{expanded: rowExpanded}">
+        <i class="fa fa-chevron-left" aria-hidden="true"></i>
       </button>
     </div>
     <div class="table-action-line" data-sbind="visible: rowExpanded">
       <div class="action-controls-row">
         <div class="action-icon-row">
-          <button type="button" class="action-icon-button" title="Toggle enable/disable" data-sbind="click: toggleCompactAction, clickBubble: false">
-            <i class="fa" data-sbind="css: toggleIconClass"></i>
+          <button type="button" class="action-icon-button" title="Toggle enable/disable" aria-label="Toggle enable/disable" data-sbind="click: toggleCompactAction, clickBubble: false">
+            <i class="fa" aria-hidden="true" data-sbind="css: toggleIconClass"></i>
           </button>
-          <button type="button" class="action-icon-button" title="Extension options" data-sbind="visible: optionsUrl(), click: launchOptionsAction, clickBubble: false"><i class="fa fa-cog"></i></button>
-          <button type="button" class="action-icon-button" title="Manage extension" data-sbind="click: openManageAction, clickBubble: false"><i class="fa fa-puzzle-piece"></i></button>
-          <button type="button" class="action-icon-button" title="Web permissions" data-sbind="click: openPermissionsAction, clickBubble: false"><i class="fa fa-shield"></i></button>
-          <button type="button" class="action-icon-button" title="Copy link" data-sbind="click: copyLinkAction, clickBubble: false, enable: copyLinkAvailable"><i class="fa fa-files-o"></i></button>
-          <button type="button" class="action-icon-button" title="Open in Chrome Web Store" data-sbind="click: openStoreAction, clickBubble: false, enable: storeLinkAvailable()"><i class="fa fa-external-link"></i></button>
-          <button type="button" class="action-icon-button danger" title="Remove extension" data-sbind="visible: canRemove, click: removeAction, clickBubble: false"><i class="fa fa-trash-o"></i></button>
+          <button type="button" class="action-icon-button" title="Extension options" aria-label="Extension options" data-sbind="visible: optionsUrl(), click: launchOptionsAction, clickBubble: false"><i class="fa fa-cog" aria-hidden="true"></i></button>
+          <button type="button" class="action-icon-button" title="Manage extension" aria-label="Manage extension" data-sbind="click: openManageAction, clickBubble: false"><i class="fa fa-puzzle-piece" aria-hidden="true"></i></button>
+          <button type="button" class="action-icon-button" title="Web permissions" aria-label="Web permissions" data-sbind="click: openPermissionsAction, clickBubble: false"><i class="fa fa-shield" aria-hidden="true"></i></button>
+          <button type="button" class="action-icon-button" title="Copy link" aria-label="Copy link" data-sbind="click: copyLinkAction, clickBubble: false, enable: copyLinkAvailable"><i class="fa fa-files-o" aria-hidden="true"></i></button>
+          <button type="button" class="action-icon-button" title="Open in Chrome Web Store" aria-label="Open in Chrome Web Store" data-sbind="click: openStoreAction, clickBubble: false, enable: storeLinkAvailable()"><i class="fa fa-external-link" aria-hidden="true"></i></button>
+          <button type="button" class="action-icon-button danger" title="Remove extension" aria-label="Remove extension" data-sbind="visible: canRemove, click: removeAction, clickBubble: false"><i class="fa fa-trash-o" aria-hidden="true"></i></button>
         </div>
         <select class="profile-assign-select" title="Assign to profile" data-sbind="event:{change: onProfileMembershipChange}">
           <option value="">Profiles&#8230;</option>
@@ -187,23 +187,23 @@
           <span class="badge profile-badge" data-sbind="text: name, css: colorClass, attr:{style: badgeStyle, title: title}"></span>
           <!-- /ko -->
         </div>
-        <button type="button" class="compact-row-chevron" title="Show extension actions" data-sbind="click: toggleCompactRowAction, clickBubble: false, css:{expanded: rowExpanded}">
-          <i class="fa fa-chevron-down"></i>
+        <button type="button" class="compact-row-chevron" title="Show extension actions" aria-label="Show extension actions" data-sbind="click: toggleCompactRowAction, clickBubble: false, css:{expanded: rowExpanded}">
+          <i class="fa fa-chevron-down" aria-hidden="true"></i>
         </button>
       </div>
     </div>
     <div class="compact-action-line" data-sbind="visible: rowExpanded">
       <div class="action-controls-row">
         <div class="action-icon-row">
-          <button type="button" class="action-icon-button" title="Toggle enable/disable" data-sbind="click: toggleCompactAction, clickBubble: false">
-            <i class="fa" data-sbind="css: toggleIconClass"></i>
+          <button type="button" class="action-icon-button" title="Toggle enable/disable" aria-label="Toggle enable/disable" data-sbind="click: toggleCompactAction, clickBubble: false">
+            <i class="fa" aria-hidden="true" data-sbind="css: toggleIconClass"></i>
           </button>
-          <button type="button" class="action-icon-button" title="Extension options" data-sbind="visible: optionsUrl(), click: launchOptionsAction, clickBubble: false"><i class="fa fa-cog"></i></button>
-          <button type="button" class="action-icon-button" title="Manage extension" data-sbind="click: openManageAction, clickBubble: false"><i class="fa fa-puzzle-piece"></i></button>
-          <button type="button" class="action-icon-button" title="Web permissions" data-sbind="click: openPermissionsAction, clickBubble: false"><i class="fa fa-shield"></i></button>
-          <button type="button" class="action-icon-button" title="Copy link" data-sbind="click: copyLinkAction, clickBubble: false, enable: copyLinkAvailable"><i class="fa fa-files-o"></i></button>
-          <button type="button" class="action-icon-button" title="Open in Chrome Web Store" data-sbind="click: openStoreAction, clickBubble: false, enable: storeLinkAvailable()"><i class="fa fa-external-link"></i></button>
-          <button type="button" class="action-icon-button danger" title="Remove extension" data-sbind="visible: canRemove, click: removeAction, clickBubble: false"><i class="fa fa-trash-o"></i></button>
+          <button type="button" class="action-icon-button" title="Extension options" aria-label="Extension options" data-sbind="visible: optionsUrl(), click: launchOptionsAction, clickBubble: false"><i class="fa fa-cog" aria-hidden="true"></i></button>
+          <button type="button" class="action-icon-button" title="Manage extension" aria-label="Manage extension" data-sbind="click: openManageAction, clickBubble: false"><i class="fa fa-puzzle-piece" aria-hidden="true"></i></button>
+          <button type="button" class="action-icon-button" title="Web permissions" aria-label="Web permissions" data-sbind="click: openPermissionsAction, clickBubble: false"><i class="fa fa-shield" aria-hidden="true"></i></button>
+          <button type="button" class="action-icon-button" title="Copy link" aria-label="Copy link" data-sbind="click: copyLinkAction, clickBubble: false, enable: copyLinkAvailable"><i class="fa fa-files-o" aria-hidden="true"></i></button>
+          <button type="button" class="action-icon-button" title="Open in Chrome Web Store" aria-label="Open in Chrome Web Store" data-sbind="click: openStoreAction, clickBubble: false, enable: storeLinkAvailable()"><i class="fa fa-external-link" aria-hidden="true"></i></button>
+          <button type="button" class="action-icon-button danger" title="Remove extension" aria-label="Remove extension" data-sbind="visible: canRemove, click: removeAction, clickBubble: false"><i class="fa fa-trash-o" aria-hidden="true"></i></button>
         </div>
         <select class="profile-assign-select" title="Assign to profile" data-sbind="event:{change: onProfileMembershipChange}">
           <option value="">Profiles&#8230;</option>

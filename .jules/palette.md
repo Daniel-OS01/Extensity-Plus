@@ -1,0 +1,3 @@
+## 2024-05-14 - Icon-only buttons accessibility pattern
+**Learning:** In the Extensity application, icon-only buttons often used `title` attributes for tooltips, but lacked explicit `aria-label`s and did not hide the presentation icons (`aria-hidden="true"`). When fixing these, it's important to copy the `title` into the `aria-label` to provide the descriptive text to screen readers, and add `aria-hidden="true"` to the inner `<i>` FontAwesome tag to prevent redundant or confusing announcements.
+**Action:** When working on icon-only buttons (`<a>` or `<button>`) with an inner FontAwesome `<i>` element, make sure `aria-label` is present on the interactive element and `aria-hidden="true"` is on the `<i>` element.

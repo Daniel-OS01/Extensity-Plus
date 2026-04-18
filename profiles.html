@@ -80,7 +80,7 @@
         <ul data-sbind="foreach: sortedExtensions">
           <li class="extension-row" data-sbind="css:{expanded: $parent.expandedExtensionId() == id()}">
             <button type="button" class="extension-row-header" data-sbind="click: $parent.toggleExtensionDetails">
-              <i class="fa fa-chevron-right extension-chevron" data-sbind="css:{expanded: $parent.expandedExtensionId() == id()}"></i>
+              <i class="fa fa-chevron-right extension-chevron" aria-hidden="true" data-sbind="css:{expanded: $parent.expandedExtensionId() == id()}"></i>
               <img data-sbind="attr:{src: icon}" width="16" height="16" />
               <span class="extension-copy">
                 <span class="extension-title-line">

@@ -1,0 +1,3 @@
+## 2024-05-18 - Missing aria-hidden on decorative chevron icons
+**Learning:** Found several decorative chevron icons inside `<button>` elements (e.g., `table-row-chevron`, `compact-row-chevron`, `extension-row-header`) that are missing `aria-hidden="true"`. Because the buttons themselves have descriptive `title` attributes (like "Show extension actions"), screen readers might read the decorative font icon redundantly or incorrectly if not explicitly hidden.
+**Action:** When adding or updating icon-only buttons with `<i class="fa ...">` tags, always ensure `aria-hidden="true"` is set on the `<i>` element to prevent redundant screen reader announcements.

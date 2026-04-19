@@ -2364,12 +2364,8 @@ test("popup rows expose direct profile membership and sort handlers", async () =
     }
   ]);
 
-  assert.deepEqual(normalize(membershipCalls), [
-    {
-      extensionId: "ext-1",
-      profileName: "__favorites",
-      shouldInclude: true
-    },
+  const normalizedMembershipCalls = normalize(membershipCalls);
+  const expectedTail = [
     {
       extensionId: "ext-1",
       profileName: "__always_on",

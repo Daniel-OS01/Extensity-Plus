@@ -831,16 +831,18 @@ document.addEventListener("DOMContentLoaded", function() {
 
     self.sortExtensions = function(items) {
       return items.slice().sort(function(left, right) {
-        if (self.opts.enabledFirst() && left.status() !== right.status()) {
-          return left.status() ? -1 : 1;
-        }
+        var sortMode = self.opts.sortMode();
 
-        if (self.opts.sortMode() === "frequency" && left.usageCount() !== right.usageCount()) {
+        if (sortMode === "frequency" && left.usageCount() !== right.usageCount()) {
           return right.usageCount() - left.usageCount();
         }
 
-        if (self.opts.sortMode() === "recent" && left.lastUsed() !== right.lastUsed()) {
+        if (sortMode === "recent" && left.lastUsed() !== right.lastUsed()) {
           return right.lastUsed() - left.lastUsed();
+        }
+
+        if (self.opts.enabledFirst() && sortMode !== "recent" && left.status() !== right.status()) {
+          return left.status() ? -1 : 1;
         }
 
         return left.displayName().toUpperCase().localeCompare(right.displayName().toUpperCase());

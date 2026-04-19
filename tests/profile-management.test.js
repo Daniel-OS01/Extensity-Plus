@@ -63,6 +63,7 @@ test("normalizeProfileMap with null input returns only reserved profiles", () =>
   const root = loadStorage();
   const result = root.ExtensityStorage.normalizeProfileMap(null);
   assert.deepEqual(normalize(result.__always_on), []);
+  assert.deepEqual(normalize(result.__base), []);
   assert.deepEqual(normalize(result.__favorites), []);
   assert.deepEqual(normalize(result.__base), []);
   const keys = Object.keys(result);

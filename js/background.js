@@ -36,6 +36,14 @@ importScripts(
     });
   }
 
+  function addChromeListener(eventTarget, listener) {
+    if (!eventTarget || typeof eventTarget.addListener !== "function") {
+      return false;
+    }
+    eventTarget.addListener(listener);
+    return true;
+  }
+
   function isAppType(type) {
     return ["hosted_app", "legacy_packaged_app", "packaged_app"].indexOf(type) !== -1;
   }
@@ -1308,19 +1316,19 @@ importScripts(
     }
   }
 
-  chrome.runtime.onInstalled.addListener(function() {
+  addChromeListener(chrome.runtime && chrome.runtime.onInstalled, function() {
     runMigrations().catch(function(error) {
       console.error("migration_failed", error);
     });
   });
 
-  chrome.runtime.onStartup.addListener(function() {
+  addChromeListener(chrome.runtime && chrome.runtime.onStartup, function() {
     runMigrations().catch(function(error) {
       console.error("startup_migration_failed", error);
     });
   });
 
-  chrome.runtime.onMessage.addListener(function(message, sender, sendResponse) {
+  addChromeListener(chrome.runtime && chrome.runtime.onMessage, function(message, sender, sendResponse) {
     handleMessage(message).then(function(payload) {
       sendResponse({ ok: true, payload: payload });
     }).catch(function(error) {
@@ -1332,7 +1340,7 @@ importScripts(
     return true;
   });
 
-  chrome.commands.onCommand.addListener(function(command) {
+  addChromeListener(chrome.commands && chrome.commands.onCommand, function(command) {
     if (command === "toggle-all-extensions") {
       runToggleAll().catch(function(error) {
         console.error("toggle_all_command_failed", error);
@@ -1354,7 +1362,7 @@ importScripts(
     }
   });
 
-  chrome.tabs.onUpdated.addListener(function(tabId, changeInfo, tab) {
+  addChromeListener(chrome.tabs && chrome.tabs.onUpdated, function(tabId, changeInfo, tab) {
     var url = changeInfo.url || tab.url;
     if (!url) {
       return;
@@ -1364,7 +1372,7 @@ importScripts(
     }
   });
 
-  chrome.tabs.onActivated.addListener(function(activeInfo) {
+  addChromeListener(chrome.tabs && chrome.tabs.onActivated, function(activeInfo) {
     getTab(activeInfo.tabId).then(function(tab) {
       if (tab && tab.url) {
         scheduleRuleEvaluation(tab.id, tab.url);
@@ -1374,11 +1382,11 @@ importScripts(
     });
   });
 
-  chrome.webNavigation.onHistoryStateUpdated.addListener(function(details) {
+  addChromeListener(chrome.webNavigation && chrome.webNavigation.onHistoryStateUpdated, function(details) {
     scheduleRuleEvaluation(details.tabId, details.url);
   });
 
-  chrome.tabs.onRemoved.addListener(function(tabId) {
+  addChromeListener(chrome.tabs && chrome.tabs.onRemoved, function(tabId) {
     var application = tabRuleApplications[tabId];
     delete tabRuleApplications[tabId];
     if (!application || !application.enabledIds.length) { return; }
@@ -1459,7 +1467,7 @@ importScripts(
     });
   });
 
-  chrome.alarms.onAlarm.addListener(function(alarm) {
+  addChromeListener(chrome.alarms && chrome.alarms.onAlarm, function(alarm) {
     if (reminders.isReminderAlarm(alarm.name)) {
       reminders.handleAlarm(alarm.name).catch(function(error) {
         console.error("reminder_alarm_failed", error);

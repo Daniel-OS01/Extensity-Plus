@@ -378,6 +378,9 @@ document.addEventListener("DOMContentLoaded", function() {
       item.removeAction = function() {
         return self.removeExtension(item);
       };
+      item.openPinToToolbarAction = function() {
+        return self.openPinToToolbarPage(item);
+      };
       item.launchOptionsAction = function() {
         return self.launchOptions(item);
       };
@@ -690,6 +693,10 @@ document.addEventListener("DOMContentLoaded", function() {
       var shouldInclude = !self.isExtensionInProfile(extension, profile.name());
       self.performAction(ExtensityApi.updateExtensionProfileMembership(extension.id(), profile.name(), shouldInclude));
       return false;
+    };
+
+    self.openPinToToolbarPage = function(extension) {
+      return self.openManagePage(extension);
     };
 
     self.extensionMembershipButtonLabel = function(extension, profile) {

@@ -159,6 +159,9 @@
           <button type="button" class="action-icon-button" title="Copy link" aria-label="Copy link" data-sbind="click: copyLinkAction, clickBubble: false, enable: copyLinkAvailable"><i class="fa fa-files-o" aria-hidden="true"></i></button>
           <button type="button" class="action-icon-button" title="Open in Chrome Web Store" aria-label="Open in Chrome Web Store" data-sbind="click: openStoreAction, clickBubble: false, enable: storeLinkAvailable()"><i class="fa fa-external-link" aria-hidden="true"></i></button>
           <button type="button" class="action-icon-button danger" title="Remove extension" aria-label="Remove extension" data-sbind="visible: canRemove, click: removeAction, clickBubble: false"><i class="fa fa-trash-o" aria-hidden="true"></i></button>
+          <button type="button" class="action-icon-button" title="Pin to toolbar (opens extension details)" aria-label="Pin to toolbar (opens extension details)" data-sbind="click: openPinToToolbarAction, clickBubble: false">
+            <i class="fa fa-thumb-tack" aria-hidden="true"></i>
+          </button>
         </div>
         <select class="profile-assign-select" title="Assign to profile" data-sbind="event:{change: onProfileMembershipChange}">
           <option value="">Profiles&#8230;</option>
@@ -204,6 +207,9 @@
           <button type="button" class="action-icon-button" title="Copy link" aria-label="Copy link" data-sbind="click: copyLinkAction, clickBubble: false, enable: copyLinkAvailable"><i class="fa fa-files-o" aria-hidden="true"></i></button>
           <button type="button" class="action-icon-button" title="Open in Chrome Web Store" aria-label="Open in Chrome Web Store" data-sbind="click: openStoreAction, clickBubble: false, enable: storeLinkAvailable()"><i class="fa fa-external-link" aria-hidden="true"></i></button>
           <button type="button" class="action-icon-button danger" title="Remove extension" aria-label="Remove extension" data-sbind="visible: canRemove, click: removeAction, clickBubble: false"><i class="fa fa-trash-o" aria-hidden="true"></i></button>
+          <button type="button" class="action-icon-button" title="Pin to toolbar (opens extension details)" aria-label="Pin to toolbar (opens extension details)" data-sbind="click: openPinToToolbarAction, clickBubble: false">
+            <i class="fa fa-thumb-tack" aria-hidden="true"></i>
+          </button>
         </div>
         <select class="profile-assign-select" title="Assign to profile" data-sbind="event:{change: onProfileMembershipChange}">
           <option value="">Profiles&#8230;</option>

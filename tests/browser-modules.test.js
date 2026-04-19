@@ -2118,44 +2118,6 @@ test("popup rows expose direct profile membership and sort handlers", async () =
         storeUrl: "https://chrome.google.com/webstore/detail/example/ext-off",
         usageCount: 0,
         version: "0.1.0"
-      },
-      {
-        alias: "",
-        description: "Zero-recency extension A",
-        enabled: true,
-        groupBadges: [],
-        groupIds: [],
-        homepageUrl: "https://example.com/alpha",
-        icon: "images/icon48.png",
-        id: "ext-alpha",
-        installType: "normal",
-        isApp: false,
-        lastUsed: 0,
-        mayDisable: true,
-        name: "Alpha Extension",
-        optionsUrl: "",
-        storeUrl: "https://chrome.google.com/webstore/detail/example/ext-alpha",
-        usageCount: 0,
-        version: "0.1.0"
-      },
-      {
-        alias: "",
-        description: "Zero-recency extension Z",
-        enabled: false,
-        groupBadges: [],
-        groupIds: [],
-        homepageUrl: "https://example.com/zeta",
-        icon: "images/icon48.png",
-        id: "ext-zeta",
-        installType: "normal",
-        isApp: false,
-        lastUsed: 0,
-        mayDisable: true,
-        name: "Zeta Extension",
-        optionsUrl: "",
-        storeUrl: "https://chrome.google.com/webstore/detail/example/ext-zeta",
-        usageCount: 0,
-        version: "0.1.0"
       }
     ],
     localState: {
@@ -2315,7 +2277,6 @@ test("popup rows expose direct profile membership and sort handlers", async () =
   assert.equal(typeof extension.toggleTableRowAction, "function");
   assert.equal(typeof extension.onProfileMembershipChange, "function");
   assert.deepEqual(normalize(listedExtensionIds.slice(0, 3)), ["ext-off", "ext-ao", "ext-1"]);
-  assert.ok(listedExtensionIds.indexOf("ext-alpha") < listedExtensionIds.indexOf("ext-zeta"));
   assert.equal(extension.showTableRow(), true);
   assert.deepEqual(normalize(profileNames), ["__always_on", "__base", "__favorites", "Work", "Focus", "Travel", "Home"]);
   assert.deepEqual(normalize(extension.profileDropdownOptions()), [

@@ -378,9 +378,18 @@ document.addEventListener("DOMContentLoaded", function() {
       item.removeAction = function() {
         return self.removeExtension(item);
       };
+      item.pinToFavoritesAction = function() {
+        return self.toggleFavoritePinned(item);
+      };
       item.launchOptionsAction = function() {
         return self.launchOptions(item);
       };
+      item.pinToFavoritesTitle = ko.pureComputed(function() {
+        return item.favorite() ? "Unpin from Favorites" : "Pin to Favorites";
+      });
+      item.pinToFavoritesIconClass = ko.pureComputed(function() {
+        return "fa-thumb-tack";
+      });
       item.showOptionsButton = ko.pureComputed(function() {
         return self.opts.showOptions() && !!item.optionsUrl() && !item.disabled();
       });
@@ -692,6 +701,18 @@ document.addEventListener("DOMContentLoaded", function() {
       return false;
     };
 
+    self.toggleFavoritePinned = function(extension) {
+      if (extension.isApp && extension.isApp()) {
+        return false;
+      }
+      self.performAction(ExtensityApi.updateExtensionProfileMembership(
+        extension.id(),
+        "__favorites",
+        !extension.favorite()
+      ));
+      return false;
+    };
+
     self.extensionMembershipButtonLabel = function(extension, profile) {
       return self.isExtensionInProfile(extension, profile.name()) ? "Remove" : "Add";
     };
@@ -821,24 +842,20 @@ document.addEventListener("DOMContentLoaded", function() {
 
       return items.slice().sort(function(left, right) {
         var sortMode = self.opts.sortMode();
-        var leftUsageCount = Number(left.usageCount()) || 0;
-        var rightUsageCount = Number(right.usageCount()) || 0;
-        var leftLastUsed = Number(left.lastUsed()) || 0;
-        var rightLastUsed = Number(right.lastUsed()) || 0;
 
-        if (sortMode === "frequency" && leftUsageCount !== rightUsageCount) {
-          return rightUsageCount - leftUsageCount;
+        if (sortMode === "frequency" && left.usageCount() !== right.usageCount()) {
+          return right.usageCount() - left.usageCount();
         }
 
-        if (sortMode === "recent" && leftLastUsed !== rightLastUsed) {
-          return rightLastUsed - leftLastUsed;
+        if (sortMode === "recent" && left.lastUsed() !== right.lastUsed()) {
+          return right.lastUsed() - left.lastUsed();
         }
 
         if (self.opts.enabledFirst() && sortMode !== "recent" && left.status() !== right.status()) {
           return left.status() ? -1 : 1;
         }
 
-        return compareByName(left, right);
+        return left.displayName().toUpperCase().localeCompare(right.displayName().toUpperCase());
       });
     };
 

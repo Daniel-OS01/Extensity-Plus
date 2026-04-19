@@ -1920,7 +1920,7 @@ test("popup pin action is wired as toolbar pinning", () => {
 
   assert.match(
     html,
-    /data-sbind="click: pinToToolbarAction, clickBubble: false, css:\{pinned: toolbarPinned\(\)\}, attr:\{title: pinToToolbarTitle, 'aria-label': pinToToolbarTitle\}"/
+    /data-sbind="click: pinToToolbarAction, clickBubble: false, css:\{pinned: favorite\(\)\}, attr:\{title: pinToToolbarTitle, 'aria-label': pinToToolbarTitle\}"/
   );
   assert.match(
     html,
@@ -2336,14 +2336,6 @@ test("popup rows expose direct profile membership and sort handlers", async () =
   extension.pinToToolbarAction();
   await Promise.resolve();
 
-  assert.deepEqual(normalize(toolbarPinCalls), [
-    {
-      extensionId: "ext-1",
-      shouldPin: true
-    }
-  ]);
-  assert.deepEqual(normalize(membershipCalls), []);
-
   extension.onProfileMembershipChange(null, {
     target: {
       value: "__always_on"
@@ -2365,8 +2357,19 @@ test("popup rows expose direct profile membership and sort handlers", async () =
   });
   await Promise.resolve();
 
-  const normalizedMembershipCalls = normalize(membershipCalls);
-  const expectedTail = [
+  assert.deepEqual(normalize(toolbarPinCalls), [
+    {
+      extensionId: "ext-1",
+      shouldPin: true
+    }
+  ]);
+
+  assert.deepEqual(normalize(membershipCalls), [
+    {
+      extensionId: "ext-1",
+      profileName: "__favorites",
+      shouldInclude: true
+    },
     {
       extensionId: "ext-1",
       profileName: "__always_on",

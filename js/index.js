@@ -705,10 +705,9 @@ document.addEventListener("DOMContentLoaded", function() {
       if (extension.isApp && extension.isApp()) {
         return false;
       }
-      self.performAction(ExtensityApi.updateExtensionProfileMembership(
+      self.performAction(ExtensityApi.updateExtensionToolbarPinned(
         extension.id(),
-        "__favorites",
-        !extension.favorite()
+        !extension.toolbarPinned()
       ));
       return false;
     };
@@ -888,9 +887,9 @@ document.addEventListener("DOMContentLoaded", function() {
       return self.profiles.items().filter(self.filterProfile);
     }).extend({ countable: null });
 
-    self.listedFavorites = ko.computed(function() {
+    self.listedToolbarPinned = ko.computed(function() {
       return self.sortExtensions(self.exts.extensions().filter(function(extension) {
-        return extension.favorite() && self.search.matchesExtension(extension);
+        return extension.toolbarPinned() && self.search.matchesExtension(extension);
       }));
     }).extend({ countable: null });
 

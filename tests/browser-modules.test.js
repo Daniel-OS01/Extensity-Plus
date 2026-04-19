@@ -1981,6 +1981,7 @@ test("popup rows expose direct profile membership and sort handlers", async () =
   let domReady = null;
   const deferred = [];
   const membershipCalls = [];
+  const toolbarPinCalls = [];
   const saveOptionsCalls = [];
   const ko = {
     extenders: {},
@@ -2232,6 +2233,10 @@ test("popup rows expose direct profile membership and sort handlers", async () =
       updateExtensionProfileMembership(extensionId, profileName, shouldInclude) {
         membershipCalls.push({ extensionId, profileName, shouldInclude });
         return Promise.resolve({ state });
+      },
+      updateExtensionToolbarPinned(extensionId, shouldPin) {
+        toolbarPinCalls.push({ extensionId, shouldPin });
+        return Promise.resolve({ state });
       }
     },
     ExtensityPopupLabels: windowRoot.ExtensityPopupLabels,
@@ -2351,6 +2356,13 @@ test("popup rows expose direct profile membership and sort handlers", async () =
     }
   });
   await Promise.resolve();
+
+  assert.deepEqual(normalize(toolbarPinCalls), [
+    {
+      extensionId: "ext-1",
+      shouldPin: true
+    }
+  ]);
 
   assert.deepEqual(normalize(membershipCalls), [
     {

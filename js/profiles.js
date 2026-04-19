@@ -130,6 +130,9 @@ document.addEventListener("DOMContentLoaded", function() {
 
       if (mode === "recent") {
         return items.sort(function(left, right) {
+          if (right.installedAt() !== left.installedAt()) {
+            return right.installedAt() - left.installedAt();
+          }
           if (right.lastUsed() !== left.lastUsed()) {
             return right.lastUsed() - left.lastUsed();
           }

@@ -69,9 +69,9 @@
     </ul>
   </section>
 
-  <section data-sbind="if: listedFavorites.any">
-    <h1>Favorites</h1>
-    <ul class="items" data-sbind="template: {name: 'item-template', foreach: listedFavorites}"></ul>
+  <section data-sbind="if: listedToolbarPinned.any">
+    <h1>Toolbar</h1>
+    <ul class="items" data-sbind="template: {name: 'item-template', foreach: listedToolbarPinned}"></ul>
   </section>
 
   <section data-sbind="if: opts.appsFirst() && opts.groupApps()">

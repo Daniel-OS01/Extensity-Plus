@@ -595,10 +595,25 @@ importScripts(
       storage.loadProfiles(),
       getAllManagementItems()
     ]);
+    var localState = results[1];
+    var installFirstSeenAt = storage.clone(localState.installFirstSeenAt || {});
+    var installMapChanged = false;
+
+    results[3].forEach(function(item, index) {
+      if (!installFirstSeenAt[item.id]) {
+        installFirstSeenAt[item.id] = Date.now() + index;
+        installMapChanged = true;
+      }
+    });
+
+    if (installMapChanged) {
+      await storage.saveLocalState({ installFirstSeenAt: installFirstSeenAt });
+      localState = Object.assign({}, localState, { installFirstSeenAt: installFirstSeenAt });
+    }
 
     return {
       items: results[3],
-      localState: results[1],
+      localState: localState,
       options: results[0],
       profiles: results[2]
     };
@@ -613,6 +628,8 @@ importScripts(
     var metadataCache = state.localState.webStoreMetadata || {};
     var alwaysOn = state.profiles.map.__always_on || [];
     var favorites = state.profiles.map.__favorites || [];
+    var toolbarPins = state.localState.toolbarPins || [];
+    var installFirstSeenAt = state.localState.installFirstSeenAt || {};
 
     return items.slice().sort(function(left, right) {
       return left.name.toUpperCase().localeCompare(right.name.toUpperCase());
@@ -648,6 +665,7 @@ importScripts(
         id: item.id,
         installType: item.installType,
         isApp: isAppType(item.type),
+        installedAt: installFirstSeenAt[item.id] || 0,
         lastUsed: recentList.indexOf(item.id) === -1 ? 0 : (recentList.length - recentList.indexOf(item.id)),
         mayDisable: !!item.mayDisable,
         metadataFetchedAt: cachedMetadata.fetchedAt || fallbackMetadata.fetchedAt,
@@ -655,6 +673,7 @@ importScripts(
         name: item.name,
         optionsUrl: item.optionsUrl || "",
         storeUrl: normalizedStoreUrl,
+        toolbarPinned: toolbarPins.indexOf(item.id) !== -1,
         type: item.type,
         usageCount: counters[item.id] || 0,
         version: item.version || ""
@@ -963,6 +982,23 @@ importScripts(
     return buildState();
   }
 
+  async function updateExtensionToolbarPinned(payload) {
+    var extensionId = payload.extensionId;
+    var shouldPin = !!payload.shouldPin;
+    if (!extensionId) {
+      throw new Error("extensionId is required.");
+    }
+
+    var localState = await storage.loadLocalState();
+    var currentPins = Array.isArray(localState.toolbarPins) ? localState.toolbarPins : [];
+    var nextPins = shouldPin
+      ? storage.uniqueArray(currentPins.concat([extensionId]))
+      : currentPins.filter(function(id) { return id !== extensionId; });
+
+    await storage.saveLocalState({ toolbarPins: nextPins });
+    return buildState();
+  }
+
   async function importBackup(payload) {
     var envelope = importExport.validateBackupEnvelope(payload.envelope);
     var currentLocalState = await storage.loadLocalState();
@@ -1251,6 +1287,8 @@ importScripts(
         return { state: await runUndo() };
       case "UNINSTALL_EXTENSION":
         return { state: await runUninstallExtension(message.extensionId) };
+      case "UPDATE_EXTENSION_TOOLBAR_PINNED":
+        return { state: await updateExtensionToolbarPinned(message) };
       case "UPDATE_EXTENSION_PROFILE_MEMBERSHIP":
         return { state: await updateExtensionProfileMembership(message) };
       default:

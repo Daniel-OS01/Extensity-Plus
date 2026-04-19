@@ -385,7 +385,7 @@ document.addEventListener("DOMContentLoaded", function() {
         return self.launchOptions(item);
       };
       item.pinToToolbarTitle = ko.pureComputed(function() {
-        return item.toolbarPinned() ? "Unpin from Toolbar" : "Pin to Toolbar";
+        return item.favorite() ? "Unpin from Toolbar" : "Pin to Toolbar";
       });
       item.pinToToolbarIconClass = ko.pureComputed(function() {
         return "fa-thumb-tack";
@@ -847,9 +847,6 @@ document.addEventListener("DOMContentLoaded", function() {
         }
 
         if (sortMode === "recent") {
-          if (left.installedAt() !== right.installedAt()) {
-            return right.installedAt() - left.installedAt();
-          }
           if (left.lastUsed() !== right.lastUsed()) {
             return right.lastUsed() - left.lastUsed();
           }

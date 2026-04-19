@@ -1920,7 +1920,7 @@ test("popup pin action is wired as toolbar pinning", () => {
 
   assert.match(
     html,
-    /data-sbind="click: pinToToolbarAction, clickBubble: false, css:\{pinned: toolbarPinned\(\)\}, attr:\{title: pinToToolbarTitle, 'aria-label': pinToToolbarTitle\}"/
+    /data-sbind="click: pinToToolbarAction, clickBubble: false, css:\{pinned: favorite\(\)\}, attr:\{title: pinToToolbarTitle, 'aria-label': pinToToolbarTitle\}"/
   );
   assert.match(
     html,
@@ -2365,6 +2365,11 @@ test("popup rows expose direct profile membership and sort handlers", async () =
   ]);
 
   assert.deepEqual(normalize(membershipCalls), [
+    {
+      extensionId: "ext-1",
+      profileName: "__favorites",
+      shouldInclude: true
+    },
     {
       extensionId: "ext-1",
       profileName: "__always_on",

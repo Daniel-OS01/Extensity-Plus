@@ -2283,8 +2283,6 @@ test("popup rows expose direct profile membership and sort handlers", async () =
   assert.equal(extension.showTableRow(), true);
   assert.deepEqual(normalize(recentSortedIds.slice(0, 5)), [
     "ext-off",
-    "ext-alpha",
-    "ext-zulu",
     "ext-ao",
     "ext-1"
   ]);

@@ -32,8 +32,8 @@ const EXPECTED_MESSAGE_TYPES = [
 // Operation context source values attributed to mutations
 const VALID_CONTEXT_SOURCES = ["manual", "bulk", "profile", "rule", "undo", "import"];
 
-function createChromeStub() {
-  return {
+function createChromeStub(overrides = {}) {
+  const stub = {
     alarms: {
       clear() {},
       create() {},
@@ -47,7 +47,9 @@ function createChromeStub() {
       onClicked: { addListener() {} },
       removeAll() {}
     },
-    management: {},
+    management: {
+      onInstalled: { addListener() {} }
+    },
     permissions: {
       contains(permissionObject, callback) {
         callback(false);
@@ -78,11 +80,17 @@ function createChromeStub() {
       onHistoryStateUpdated: { addListener() {} }
     }
   };
+
+  return {
+    ...stub,
+    ...overrides
+  };
 }
 
-function loadBackground() {
+function loadBackground(options = {}) {
+  const storageOverrides = options.storageOverrides || {};
   return loadBrowserScript(path.join(repoRoot, "js/background.js"), {
-    chrome: createChromeStub(),
+    chrome: createChromeStub(options.chromeOverrides),
     fetch: async function() { throw new Error("Unexpected fetch in unit test."); },
     importScripts() {},
     self: {
@@ -97,7 +105,8 @@ function loadBackground() {
       ExtensityReminders: {},
       ExtensityStorage: {
         clone(value) { return JSON.parse(JSON.stringify(value)); },
-        uniqueArray(items) { return Array.from(new Set(items || [])); }
+        uniqueArray(items) { return Array.from(new Set(items || [])); },
+        ...storageOverrides
       },
       ExtensityUrlRules: {}
     }
@@ -279,4 +288,65 @@ test("normalizeExtensions marks toolbar pinned extensions from local state", () 
   );
   assert.equal(result[0].toolbarPinned, true);
   assert.equal(result[0].installedAt, 12345);
+});
+
+test("management onInstalled stores installFirstSeenAt for new items immediately", async () => {
+  let managementInstalledListener = null;
+  const savedLocalStates = [];
+  const fixedNow = 1700000000000;
+
+  loadBrowserScript(path.join(repoRoot, "js/background.js"), {
+    Date: class extends Date {
+      static now() {
+        return fixedNow;
+      }
+    },
+    chrome: createChromeStub({
+      management: {
+        onInstalled: {
+          addListener(listener) {
+            managementInstalledListener = listener;
+          }
+        }
+      }
+    }),
+    fetch: async function() { throw new Error("Unexpected fetch in unit test."); },
+    importScripts() {},
+    self: {
+      ExtensityDriveSync: {},
+      ExtensityHistory: {},
+      ExtensityImportExport: {},
+      ExtensityMigrations: {
+        migrateLegacyLocalStorage: async function() { return false; },
+        migratePopupListStyle: async function() { return false; },
+        migrateTo2_0_0: async function() { return false; }
+      },
+      ExtensityReminders: {},
+      ExtensityStorage: {
+        clone(value) { return JSON.parse(JSON.stringify(value)); },
+        loadLocalState: async function() {
+          return { installFirstSeenAt: { existing: 25 } };
+        },
+        saveLocalState: async function(patch) {
+          savedLocalStates.push(JSON.parse(JSON.stringify(patch)));
+        },
+        uniqueArray(items) { return Array.from(new Set(items || [])); }
+      },
+      ExtensityUrlRules: {}
+    }
+  });
+
+  assert.equal(typeof managementInstalledListener, "function");
+
+  managementInstalledListener({ id: "new-ext", type: "extension" });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  assert.deepEqual(JSON.parse(JSON.stringify(savedLocalStates)), [
+    {
+      installFirstSeenAt: {
+        existing: 25,
+        "new-ext": fixedNow
+      }
+    }
+  ]);
 });

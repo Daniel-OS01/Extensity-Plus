@@ -38,7 +38,7 @@
   <div class="sort-modes">
     <button type="button" title="Sort extensions alphabetically" data-sbind="click: setSortAlpha, css:{selected: opts.sortMode() == 'alpha'}">A-Z</button>
     <button type="button" title="Sort by usage frequency" data-sbind="click: setSortFrequency, css:{selected: opts.sortMode() == 'frequency'}">Popular</button>
-    <button type="button" title="Sort by most recently toggled" data-sbind="click: setSortRecent, css:{selected: opts.sortMode() == 'recent'}">Recent</button>
+    <button type="button" title="Sort by most recently installed" data-sbind="click: setSortRecent, css:{selected: opts.sortMode() == 'recent'}">Recent</button>
   </div>
   <p class="error" data-sbind="visible: error, text: error"></p>
 </section>
@@ -67,11 +67,6 @@
         </div>
       </li>
     </ul>
-  </section>
-
-  <section data-sbind="if: listedToolbarPinned.any">
-    <h1>Toolbar</h1>
-    <ul class="items" data-sbind="template: {name: 'item-template', foreach: listedToolbarPinned}"></ul>
   </section>
 
   <section data-sbind="if: opts.appsFirst() && opts.groupApps()">
@@ -159,7 +154,7 @@
           <button type="button" class="action-icon-button" title="Copy link" aria-label="Copy link" data-sbind="click: copyLinkAction, clickBubble: false, enable: copyLinkAvailable"><i class="fa fa-files-o" aria-hidden="true"></i></button>
           <button type="button" class="action-icon-button" title="Open in Chrome Web Store" aria-label="Open in Chrome Web Store" data-sbind="click: openStoreAction, clickBubble: false, enable: storeLinkAvailable()"><i class="fa fa-external-link" aria-hidden="true"></i></button>
           <button type="button" class="action-icon-button danger" title="Remove extension" aria-label="Remove extension" data-sbind="visible: canRemove, click: removeAction, clickBubble: false"><i class="fa fa-trash-o" aria-hidden="true"></i></button>
-          <button type="button" class="action-icon-button" data-sbind="click: pinToToolbarAction, clickBubble: false, css:{pinned: favorite()}, attr:{title: pinToToolbarTitle, 'aria-label': pinToToolbarTitle}">
+          <button type="button" class="action-icon-button" data-sbind="click: pinToToolbarAction, clickBubble: false, attr:{title: pinToToolbarTitle, 'aria-label': pinToToolbarTitle}">
             <i class="fa" aria-hidden="true" data-sbind="css: pinToToolbarIconClass"></i>
           </button>
         </div>
@@ -207,7 +202,7 @@
           <button type="button" class="action-icon-button" title="Copy link" aria-label="Copy link" data-sbind="click: copyLinkAction, clickBubble: false, enable: copyLinkAvailable"><i class="fa fa-files-o" aria-hidden="true"></i></button>
           <button type="button" class="action-icon-button" title="Open in Chrome Web Store" aria-label="Open in Chrome Web Store" data-sbind="click: openStoreAction, clickBubble: false, enable: storeLinkAvailable()"><i class="fa fa-external-link" aria-hidden="true"></i></button>
           <button type="button" class="action-icon-button danger" title="Remove extension" aria-label="Remove extension" data-sbind="visible: canRemove, click: removeAction, clickBubble: false"><i class="fa fa-trash-o" aria-hidden="true"></i></button>
-          <button type="button" class="action-icon-button" data-sbind="click: pinToToolbarAction, clickBubble: false, css:{pinned: favorite()}, attr:{title: pinToToolbarTitle, 'aria-label': pinToToolbarTitle}">
+          <button type="button" class="action-icon-button" data-sbind="click: pinToToolbarAction, clickBubble: false, attr:{title: pinToToolbarTitle, 'aria-label': pinToToolbarTitle}">
             <i class="fa" aria-hidden="true" data-sbind="css: pinToToolbarIconClass"></i>
           </button>
         </div>

@@ -967,6 +967,21 @@ importScripts(
     return buildState();
   }
 
+  async function recordInstallFirstSeen(itemInfo) {
+    if (!itemInfo || !itemInfo.id || itemInfo.id === chrome.runtime.id || itemInfo.type === "theme") {
+      return;
+    }
+
+    var localState = await storage.loadLocalState();
+    var installFirstSeenAt = storage.clone(localState.installFirstSeenAt || {});
+    if (installFirstSeenAt[itemInfo.id]) {
+      return;
+    }
+
+    installFirstSeenAt[itemInfo.id] = Date.now();
+    await storage.saveLocalState({ installFirstSeenAt: installFirstSeenAt });
+  }
+
   async function updateExtensionProfileMembership(payload) {
     var extensionId = payload.extensionId;
     var profileName = (payload.profileName || "").trim();
@@ -1325,6 +1340,12 @@ importScripts(
   addChromeListener(chrome.runtime && chrome.runtime.onStartup, function() {
     runMigrations().catch(function(error) {
       console.error("startup_migration_failed", error);
+    });
+  });
+
+  addChromeListener(chrome.management && chrome.management.onInstalled, function(itemInfo) {
+    recordInstallFirstSeen(itemInfo).catch(function(error) {
+      console.error("install_first_seen_failed", error);
     });
   });
 

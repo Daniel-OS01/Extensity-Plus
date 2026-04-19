@@ -49,7 +49,9 @@ function createChromeBackgroundStub(overrides = {}) {
       onClicked: { addListener() {} },
       removeAll() {}
     },
-    management: {},
+    management: {
+      onInstalled: { addListener() {} }
+    },
     notifications: {
       clear() {},
       create() {}
@@ -1915,16 +1917,29 @@ test("popup expanded action rows keep the profile selector inline", () => {
   );
 });
 
-test("popup pin action is wired as toolbar pinning", () => {
+test("popup recent label and pin action reflect browser toolbar settings", () => {
   const html = fs.readFileSync(path.join(repoRoot, "index.html"), "utf8");
+  const profilesHtml = fs.readFileSync(path.join(repoRoot, "profiles.html"), "utf8");
 
   assert.match(
     html,
-    /data-sbind="click: pinToToolbarAction, clickBubble: false, css:\{pinned: favorite\(\)\}, attr:\{title: pinToToolbarTitle, 'aria-label': pinToToolbarTitle\}"/
+    /title="Sort by most recently installed" data-sbind="click: setSortRecent/
+  );
+  assert.match(
+    profilesHtml,
+    /title="Sort by most recently installed" data-sbind="click: setSortRecent/
+  );
+  assert.match(
+    html,
+    /data-sbind="click: pinToToolbarAction, clickBubble: false, attr:\{title: pinToToolbarTitle, 'aria-label': pinToToolbarTitle\}"/
   );
   assert.match(
     html,
     /data-sbind="css: pinToToolbarIconClass"/
+  );
+  assert.doesNotMatch(
+    html,
+    /css:\{pinned: favorite\(\)\}|<h1>Toolbar<\/h1>/
   );
   assert.doesNotMatch(
     html,
@@ -1981,6 +1996,7 @@ test("popup rows expose direct profile membership and sort handlers", async () =
   let domReady = null;
   const deferred = [];
   const membershipCalls = [];
+  const openedTabs = [];
   const toolbarPinCalls = [];
   const saveOptionsCalls = [];
   const ko = {
@@ -2037,7 +2053,7 @@ test("popup rows expose direct profile membership and sort handlers", async () =
       extensionIconSizePx: 16,
       fontFamily: "",
       fontSizePx: 12,
-      groupApps: true,
+      groupApps: false,
       itemNameGapPx: 0,
       itemPaddingPx: 0,
       itemPaddingXPx: 0,
@@ -2089,6 +2105,7 @@ test("popup rows expose direct profile membership and sort handlers", async () =
         homepageUrl: "https://example.com/always-on",
         icon: "images/icon48.png",
         id: "ext-ao",
+        installedAt: 400,
         installType: "normal",
         isApp: false,
         lastUsed: 2,
@@ -2096,9 +2113,48 @@ test("popup rows expose direct profile membership and sort handlers", async () =
         name: "Always On Extension",
         optionsUrl: "https://example.com/always-on/options",
         storeUrl: "https://chrome.google.com/webstore/detail/example/ext-ao",
-        lastUsed: 2,
         usageCount: 4,
         version: "4.5.6"
+      },
+      {
+        alias: "",
+        description: "Tie extension A description",
+        enabled: true,
+        groupBadges: [],
+        groupIds: [],
+        homepageUrl: "https://example.com/alpha",
+        icon: "images/icon48.png",
+        id: "ext-alpha",
+        installedAt: 300,
+        installType: "normal",
+        isApp: false,
+        lastUsed: 3,
+        mayDisable: true,
+        name: "Alpha Tie Extension",
+        optionsUrl: "",
+        storeUrl: "https://chrome.google.com/webstore/detail/example/ext-alpha",
+        usageCount: 1,
+        version: "1.0.1"
+      },
+      {
+        alias: "",
+        description: "Tie extension Z description",
+        enabled: true,
+        groupBadges: [],
+        groupIds: [],
+        homepageUrl: "https://example.com/zeta",
+        icon: "images/icon48.png",
+        id: "ext-zeta",
+        installedAt: 300,
+        installType: "normal",
+        isApp: false,
+        lastUsed: 3,
+        mayDisable: true,
+        name: "Zeta Tie Extension",
+        optionsUrl: "",
+        storeUrl: "https://chrome.google.com/webstore/detail/example/ext-zeta",
+        usageCount: 1,
+        version: "1.0.2"
       },
       {
         alias: "",
@@ -2109,14 +2165,14 @@ test("popup rows expose direct profile membership and sort handlers", async () =
         homepageUrl: "https://example.com",
         icon: "images/icon48.png",
         id: "ext-1",
+        installedAt: 100,
         installType: "normal",
         isApp: false,
-        lastUsed: 1,
+        lastUsed: 99,
         mayDisable: true,
         name: "Example Extension",
         optionsUrl: "https://example.com/options",
         storeUrl: "https://chrome.google.com/webstore/detail/example/ext-1",
-        lastUsed: 1,
         usageCount: 2,
         version: "1.2.3"
       },
@@ -2129,9 +2185,10 @@ test("popup rows expose direct profile membership and sort handlers", async () =
         homepageUrl: "https://example.com/disabled",
         icon: "images/icon48.png",
         id: "ext-off",
+        installedAt: 500,
         installType: "normal",
         isApp: false,
-        lastUsed: 7,
+        lastUsed: 1,
         mayDisable: true,
         name: "Disabled Recent Extension",
         optionsUrl: "",
@@ -2169,6 +2226,7 @@ test("popup rows expose direct profile membership and sort handlers", async () =
       },
       tabs: {
         create(details, callback) {
+          openedTabs.push(normalize(details));
           if (callback) {
             callback({});
           }
@@ -2302,12 +2360,21 @@ test("popup rows expose direct profile membership and sort handlers", async () =
   assert.equal(typeof extension.toggleTableRowAction, "function");
   assert.equal(typeof extension.onProfileMembershipChange, "function");
   assert.equal(typeof extension.pinToToolbarAction, "function");
-  assert.equal(extension.pinToToolbarTitle(), "Pin to Toolbar");
-  assert.deepEqual(normalize(listedExtensionIds.slice(0, 3)), ["ext-off", "ext-ao", "ext-1"]);
+  assert.equal(extension.pinToToolbarTitle(), "Open browser Pin to toolbar setting");
+  assert.deepEqual(normalize(listedExtensionIds.slice(0, 5)), ["ext-off", "ext-ao", "ext-alpha", "ext-zeta", "ext-1"]);
   assert.equal(extension.showTableRow(), true);
   assert.deepEqual(normalize(recentSortedIds.slice(0, 5)), [
     "ext-off",
     "ext-ao",
+    "ext-alpha",
+    "ext-zeta",
+    "ext-1"
+  ]);
+  assert.deepEqual(normalize(capturedVm.listedItems().map((item) => item.id()).slice(0, 5)), [
+    "ext-off",
+    "ext-ao",
+    "ext-alpha",
+    "ext-zeta",
     "ext-1"
   ]);
   assert.deepEqual(normalize(profileNames), ["__always_on", "__base", "__favorites", "Work", "Focus", "Travel", "Home"]);
@@ -2333,8 +2400,7 @@ test("popup rows expose direct profile membership and sort handlers", async () =
     { badgeStyle: "", colorClass: "base-badge", name: "Base", title: "Base" }
   ]);
 
-  extension.pinToToolbarAction();
-  await Promise.resolve();
+  await extension.pinToToolbarAction();
 
   extension.onProfileMembershipChange(null, {
     target: {
@@ -2357,12 +2423,13 @@ test("popup rows expose direct profile membership and sort handlers", async () =
   });
   await Promise.resolve();
 
-  assert.deepEqual(normalize(toolbarPinCalls), [
+  assert.deepEqual(normalize(openedTabs), [
     {
-      extensionId: "ext-1",
-      shouldPin: true
+      active: true,
+      url: "chrome://extensions/?id=ext-1"
     }
   ]);
+  assert.deepEqual(normalize(toolbarPinCalls), []);
 
   const normalizedMembershipCalls = normalize(membershipCalls);
   const expectedTail = [
@@ -2383,19 +2450,7 @@ test("popup rows expose direct profile membership and sort handlers", async () =
     }
   ];
 
-  assert.ok(
-    normalizedMembershipCalls.length === 3 || normalizedMembershipCalls.length === 4,
-    "membership calls should include profile toggles, with optional legacy favorites pin call"
-  );
-  assert.deepEqual(normalizedMembershipCalls.slice(-3), expectedTail);
-
-  if (normalizedMembershipCalls.length === 4) {
-    assert.deepEqual(normalizedMembershipCalls[0], {
-      extensionId: "ext-1",
-      profileName: "__favorites",
-      shouldInclude: true
-    });
-  }
+  assert.deepEqual(normalizedMembershipCalls, expectedTail);
 
   capturedVm.setSortAlpha();
   await Promise.resolve();

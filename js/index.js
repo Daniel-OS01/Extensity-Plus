@@ -379,13 +379,13 @@ document.addEventListener("DOMContentLoaded", function() {
         return self.removeExtension(item);
       };
       item.pinToToolbarAction = function() {
-        return self.toggleToolbarPinned(item);
+        return self.openBrowserPinSettings(item);
       };
       item.launchOptionsAction = function() {
         return self.launchOptions(item);
       };
       item.pinToToolbarTitle = ko.pureComputed(function() {
-        return item.favorite() ? "Unpin from Toolbar" : "Pin to Toolbar";
+        return "Open browser Pin to toolbar setting";
       });
       item.pinToToolbarIconClass = ko.pureComputed(function() {
         return "fa-thumb-tack";
@@ -701,15 +701,11 @@ document.addEventListener("DOMContentLoaded", function() {
       return false;
     };
 
-    self.toggleToolbarPinned = function(extension) {
+    self.openBrowserPinSettings = function(extension) {
       if (extension.isApp && extension.isApp()) {
         return false;
       }
-      self.performAction(ExtensityApi.updateExtensionToolbarPinned(
-        extension.id(),
-        !extension.toolbarPinned()
-      ));
-      return false;
+      return self.openManagePage(extension);
     };
 
     self.extensionMembershipButtonLabel = function(extension, profile) {
@@ -847,6 +843,9 @@ document.addEventListener("DOMContentLoaded", function() {
         }
 
         if (sortMode === "recent") {
+          if (left.installedAt() !== right.installedAt()) {
+            return right.installedAt() - left.installedAt();
+          }
           if (left.lastUsed() !== right.lastUsed()) {
             return right.lastUsed() - left.lastUsed();
           }
@@ -876,21 +875,13 @@ document.addEventListener("DOMContentLoaded", function() {
     }).extend({ countable: null });
 
     self.listedItems = ko.computed(function() {
-      return self.exts.items().filter(function(item) {
+      return self.sortExtensions(self.exts.items().filter(function(item) {
         return self.search.matchesExtension(item);
-      }).sort(function(left, right) {
-        return left.displayName().toUpperCase().localeCompare(right.displayName().toUpperCase());
-      });
+      }));
     }).extend({ countable: null });
 
     self.listedProfiles = ko.computed(function() {
       return self.profiles.items().filter(self.filterProfile);
-    }).extend({ countable: null });
-
-    self.listedToolbarPinned = ko.computed(function() {
-      return self.sortExtensions(self.exts.extensions().filter(function(extension) {
-        return extension.toolbarPinned() && self.search.matchesExtension(extension);
-      }));
     }).extend({ countable: null });
 
     self.emptyItems = ko.pureComputed(function() {

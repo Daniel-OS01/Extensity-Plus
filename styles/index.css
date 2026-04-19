@@ -1188,6 +1188,12 @@ body.action-layout-vertical .action-icon-button {
   color: var(--danger);
 }
 
+.action-icon-button.pinned {
+  background: rgba(74, 138, 255, 0.12);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
 /* Profile assignment dropdown in expanded panels */
 .profile-assign-select {
   background: var(--input-bg);

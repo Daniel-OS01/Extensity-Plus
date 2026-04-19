@@ -378,9 +378,18 @@ document.addEventListener("DOMContentLoaded", function() {
       item.removeAction = function() {
         return self.removeExtension(item);
       };
+      item.pinToFavoritesAction = function() {
+        return self.toggleFavoritePinned(item);
+      };
       item.launchOptionsAction = function() {
         return self.launchOptions(item);
       };
+      item.pinToFavoritesTitle = ko.pureComputed(function() {
+        return item.favorite() ? "Unpin from Favorites" : "Pin to Favorites";
+      });
+      item.pinToFavoritesIconClass = ko.pureComputed(function() {
+        return "fa-thumb-tack";
+      });
       item.showOptionsButton = ko.pureComputed(function() {
         return self.opts.showOptions() && !!item.optionsUrl() && !item.disabled();
       });
@@ -689,6 +698,18 @@ document.addEventListener("DOMContentLoaded", function() {
 
       var shouldInclude = !self.isExtensionInProfile(extension, profile.name());
       self.performAction(ExtensityApi.updateExtensionProfileMembership(extension.id(), profile.name(), shouldInclude));
+      return false;
+    };
+
+    self.toggleFavoritePinned = function(extension) {
+      if (extension.isApp && extension.isApp()) {
+        return false;
+      }
+      self.performAction(ExtensityApi.updateExtensionProfileMembership(
+        extension.id(),
+        "__favorites",
+        !extension.favorite()
+      ));
       return false;
     };
 

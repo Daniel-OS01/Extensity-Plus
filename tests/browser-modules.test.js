@@ -2015,7 +2015,7 @@ test("popup rows expose direct profile membership and sort handlers", async () =
       appsFirst: false,
       colorScheme: "auto",
       contrastMode: "normal",
-      enabledFirst: false,
+      enabledFirst: true,
       extensionIconSizePx: 16,
       fontFamily: "",
       fontSizePx: 12,
@@ -2077,6 +2077,7 @@ test("popup rows expose direct profile membership and sort handlers", async () =
         name: "Always On Extension",
         optionsUrl: "https://example.com/always-on/options",
         storeUrl: "https://chrome.google.com/webstore/detail/example/ext-ao",
+        lastUsed: 2,
         usageCount: 4,
         version: "4.5.6"
       },
@@ -2095,8 +2096,28 @@ test("popup rows expose direct profile membership and sort handlers", async () =
         name: "Example Extension",
         optionsUrl: "https://example.com/options",
         storeUrl: "https://chrome.google.com/webstore/detail/example/ext-1",
+        lastUsed: 1,
         usageCount: 2,
         version: "1.2.3"
+      },
+      {
+        alias: "",
+        description: "Disabled extension description",
+        enabled: false,
+        groupBadges: [],
+        groupIds: [],
+        homepageUrl: "https://example.com/disabled",
+        icon: "images/icon48.png",
+        id: "ext-off",
+        installType: "normal",
+        isApp: false,
+        lastUsed: 7,
+        mayDisable: true,
+        name: "Disabled Recent Extension",
+        optionsUrl: "",
+        storeUrl: "https://chrome.google.com/webstore/detail/example/ext-off",
+        usageCount: 0,
+        version: "0.1.0"
       }
     ],
     localState: {
@@ -2250,10 +2271,12 @@ test("popup rows expose direct profile membership and sort handlers", async () =
   const profile = capturedVm.listedProfiles()[0];
   const extension = capturedVm.listedExtensions().find((item) => item.id() === "ext-1");
   const alwaysOnExtension = capturedVm.listedExtensions().find((item) => item.id() === "ext-ao");
+  const listedExtensionIds = capturedVm.listedExtensions().map((item) => item.id());
 
   assert.equal(typeof profile.selectProfile, "function");
   assert.equal(typeof extension.toggleTableRowAction, "function");
   assert.equal(typeof extension.onProfileMembershipChange, "function");
+  assert.deepEqual(normalize(listedExtensionIds.slice(0, 3)), ["ext-off", "ext-ao", "ext-1"]);
   assert.equal(extension.showTableRow(), true);
   assert.deepEqual(normalize(profileNames), ["__always_on", "__base", "__favorites", "Work", "Focus", "Travel", "Home"]);
   assert.deepEqual(normalize(extension.profileDropdownOptions()), [

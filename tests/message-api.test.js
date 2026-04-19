@@ -16,6 +16,7 @@ const EXPECTED_MESSAGE_TYPES = [
   "GET_STATE",
   "IMPORT_BACKUP",
   "OPEN_DASHBOARD",
+  "PIN_EXTENSION_TO_TOOLBAR",
   "SAVE_ALIAS",
   "SAVE_GROUPS",
   "SAVE_OPTIONS",
@@ -47,6 +48,13 @@ function createChromeStub(overrides = {}) {
       onClicked: { addListener() {} },
       removeAll() {}
     },
+    debugger: {
+      attach(target, version, callback) { callback(); },
+      detach(target, callback) { callback(); },
+      sendCommand(target, method, params, callback) {
+        callback({});
+      }
+    },
     management: {
       onInstalled: { addListener() {} }
     },
@@ -74,7 +82,9 @@ function createChromeStub(overrides = {}) {
       onRemoved: { addListener() {} },
       onUpdated: { addListener() {} },
       query() {},
-      sendMessage() {}
+      remove() {},
+      sendMessage() {},
+      update() {}
     },
     webNavigation: {
       onHistoryStateUpdated: { addListener() {} }
@@ -111,6 +121,10 @@ function loadBackground(options = {}) {
       ExtensityUrlRules: {}
     }
   });
+}
+
+function normalize(value) {
+  return JSON.parse(JSON.stringify(value));
 }
 
 // --- Module load ---
@@ -349,4 +363,279 @@ test("management onInstalled stores installFirstSeenAt for new items immediately
       }
     }
   ]);
+});
+
+test("pinExtensionToToolbar clicks the real pin control and closes temporary tabs on success", async () => {
+  const attachCalls = [];
+  const commandCalls = [];
+  const createdTabs = [];
+  const detachedTargets = [];
+  const removedTabs = [];
+  let evaluateCount = 0;
+  const root = loadBackground({
+    chromeOverrides: {
+      debugger: {
+        attach(target, version, callback) {
+          attachCalls.push({ target: { ...target }, version });
+          callback();
+        },
+        detach(target, callback) {
+          detachedTargets.push({ ...target });
+          callback();
+        },
+        sendCommand(target, method, params, callback) {
+          commandCalls.push({ method, target: { ...target } });
+          if (method !== "Runtime.evaluate") {
+            callback({});
+            return;
+          }
+
+          evaluateCount += 1;
+          if (evaluateCount === 1) {
+            callback({ result: { value: { clicked: false, found: true, isPinned: false, stateKnown: true } } });
+            return;
+          }
+          if (evaluateCount === 2) {
+            callback({ result: { value: { clicked: true, found: true, isPinned: false, stateKnown: true } } });
+            return;
+          }
+          callback({ result: { value: { clicked: false, found: true, isPinned: true, stateKnown: true } } });
+        }
+      },
+      tabs: {
+        create(details, callback) {
+          createdTabs.push(JSON.parse(JSON.stringify(details)));
+          callback({ active: false, id: 55, status: "loading", url: details.url });
+        },
+        get(tabId, callback) {
+          callback({ active: false, id: tabId, status: "complete", url: createdTabs[0].url });
+        },
+        query(queryInfo, callback) {
+          callback([]);
+        },
+        remove(tabId, callback) {
+          removedTabs.push(tabId);
+          callback();
+        },
+        update(tabId, updateProperties, callback) {
+          callback({ active: !!updateProperties.active, id: tabId, status: "complete", url: createdTabs[0].url });
+        }
+      }
+    }
+  });
+
+  const result = await root.ExtensityBackground.pinExtensionToToolbar({ extensionId: "ext-1" });
+
+  assert.deepEqual(createdTabs, [
+    {
+      active: false,
+      url: root.ExtensityBackground.buildManageExtensionUrl("ext-1")
+    }
+  ]);
+  assert.deepEqual(attachCalls, [
+    {
+      target: { tabId: 55 },
+      version: "1.3"
+    }
+  ]);
+  assert.deepEqual(commandCalls.map((entry) => entry.method), [
+    "Runtime.evaluate",
+    "Runtime.evaluate",
+    "Runtime.evaluate"
+  ]);
+  assert.deepEqual(detachedTargets, [{ tabId: 55 }]);
+  assert.deepEqual(removedTabs, [55]);
+  assert.deepEqual(normalize(result), {
+    result: "pinned",
+    tabId: 55,
+    url: root.ExtensityBackground.buildManageExtensionUrl("ext-1")
+  });
+});
+
+test("pinExtensionToToolbar skips clicking when the toolbar pin is already enabled", async () => {
+  const detachedTargets = [];
+  const removedTabs = [];
+  let evaluateCount = 0;
+  const root = loadBackground({
+    chromeOverrides: {
+      debugger: {
+        attach(target, version, callback) {
+          callback();
+        },
+        detach(target, callback) {
+          detachedTargets.push({ ...target });
+          callback();
+        },
+        sendCommand(target, method, params, callback) {
+          if (method !== "Runtime.evaluate") {
+            callback({});
+            return;
+          }
+          evaluateCount += 1;
+          callback({ result: { value: { clicked: false, found: true, isPinned: true, stateKnown: true } } });
+        }
+      },
+      tabs: {
+        create(details, callback) {
+          callback({ active: false, id: 77, status: "complete", url: details.url });
+        },
+        get(tabId, callback) {
+          callback({ active: false, id: tabId, status: "complete", url: root.ExtensityBackground.buildManageExtensionUrl("ext-2") });
+        },
+        query(queryInfo, callback) {
+          callback([]);
+        },
+        remove(tabId, callback) {
+          removedTabs.push(tabId);
+          callback();
+        },
+        update(tabId, updateProperties, callback) {
+          callback({ active: !!updateProperties.active, id: tabId, status: "complete", url: root.ExtensityBackground.buildManageExtensionUrl("ext-2") });
+        }
+      }
+    }
+  });
+
+  const result = await root.ExtensityBackground.pinExtensionToToolbar({ extensionId: "ext-2" });
+
+  assert.equal(evaluateCount, 1);
+  assert.deepEqual(detachedTargets, [{ tabId: 77 }]);
+  assert.deepEqual(removedTabs, [77]);
+  assert.deepEqual(normalize(result), {
+    result: "already_pinned",
+    tabId: 77,
+    url: root.ExtensityBackground.buildManageExtensionUrl("ext-2")
+  });
+});
+
+test("pinExtensionToToolbar falls back to the browser details page when debugger attach fails", async () => {
+  const createdTabs = [];
+  const updatedTabs = [];
+  const removedTabs = [];
+  const root = loadBackground({
+    chromeOverrides: {
+      debugger: {
+        attach() {
+          throw new Error("attach failed");
+        },
+        detach(target, callback) {
+          callback();
+        },
+        sendCommand(target, method, params, callback) {
+          callback({});
+        }
+      },
+      tabs: {
+        create(details, callback) {
+          createdTabs.push(JSON.parse(JSON.stringify(details)));
+          callback({ active: !!details.active, id: 88, status: "complete", url: details.url });
+        },
+        get(tabId, callback) {
+          callback({ active: false, id: tabId, status: "complete", url: root.ExtensityBackground.buildManageExtensionUrl("ext-3") });
+        },
+        query(queryInfo, callback) {
+          callback([]);
+        },
+        remove(tabId, callback) {
+          removedTabs.push(tabId);
+          callback();
+        },
+        update(tabId, updateProperties, callback) {
+          updatedTabs.push({ tabId, updateProperties: JSON.parse(JSON.stringify(updateProperties)) });
+          callback({ active: !!updateProperties.active, id: tabId, status: "complete", url: root.ExtensityBackground.buildManageExtensionUrl("ext-3") });
+        }
+      }
+    }
+  });
+
+  const result = await root.ExtensityBackground.pinExtensionToToolbar({ extensionId: "ext-3" });
+
+  assert.deepEqual(createdTabs, [
+    {
+      active: false,
+      url: root.ExtensityBackground.buildManageExtensionUrl("ext-3")
+    }
+  ]);
+  assert.deepEqual(updatedTabs, [
+    {
+      tabId: 88,
+      updateProperties: { active: true }
+    }
+  ]);
+  assert.deepEqual(removedTabs, []);
+  assert.deepEqual(normalize(result), {
+    reason: "attach failed",
+    result: "opened_fallback",
+    tabId: 88,
+    url: root.ExtensityBackground.buildManageExtensionUrl("ext-3")
+  });
+});
+
+test("pinExtensionToToolbar reuses an existing details tab without auto-closing it", async () => {
+  const removedTabs = [];
+  let createCalls = 0;
+  const existingTab = {
+    active: true,
+    id: 99,
+    status: "complete",
+    url: "chrome://extensions/?id=ext-4"
+  };
+  let evaluateCount = 0;
+  const root = loadBackground({
+    chromeOverrides: {
+      debugger: {
+        attach(target, version, callback) {
+          callback();
+        },
+        detach(target, callback) {
+          callback();
+        },
+        sendCommand(target, method, params, callback) {
+          if (method !== "Runtime.evaluate") {
+            callback({});
+            return;
+          }
+          evaluateCount += 1;
+          if (evaluateCount === 1) {
+            callback({ result: { value: { clicked: false, found: true, isPinned: false, stateKnown: true } } });
+            return;
+          }
+          if (evaluateCount === 2) {
+            callback({ result: { value: { clicked: true, found: true, isPinned: false, stateKnown: true } } });
+            return;
+          }
+          callback({ result: { value: { clicked: false, found: true, isPinned: true, stateKnown: true } } });
+        }
+      },
+      tabs: {
+        create(details, callback) {
+          createCalls += 1;
+          callback({ active: false, id: 100, status: "complete", url: details.url });
+        },
+        get(tabId, callback) {
+          callback(existingTab);
+        },
+        query(queryInfo, callback) {
+          callback([existingTab]);
+        },
+        remove(tabId, callback) {
+          removedTabs.push(tabId);
+          callback();
+        },
+        update(tabId, updateProperties, callback) {
+          callback(existingTab);
+        }
+      }
+    }
+  });
+
+  const result = await root.ExtensityBackground.pinExtensionToToolbar({ extensionId: "ext-4" });
+
+  assert.equal(createCalls, 0);
+  assert.deepEqual(removedTabs, []);
+  assert.deepEqual(normalize(result), {
+    result: "pinned",
+    tabId: 99,
+    url: root.ExtensityBackground.buildManageExtensionUrl("ext-4")
+  });
 });

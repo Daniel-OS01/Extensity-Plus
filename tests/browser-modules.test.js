@@ -391,11 +391,13 @@ test("ExtensityApi profile assignment methods emit expected chrome messages", as
   });
 
   assert.equal(typeof windowRoot.ExtensityApi.assignExtensionProfile, "function");
+  assert.equal(typeof windowRoot.ExtensityApi.pinExtensionToToolbar, "function");
   assert.equal(typeof windowRoot.ExtensityApi.updateExtensionProfileMembership, "function");
   assert.equal(typeof windowRoot.ExtensityApi.testUrlRules, "function");
 
   await windowRoot.ExtensityApi.assignExtensionProfile("ext-123", "Work");
   await windowRoot.ExtensityApi.assignExtensionProfile("ext-456", null);
+  await windowRoot.ExtensityApi.pinExtensionToToolbar("ext-321");
   await windowRoot.ExtensityApi.updateExtensionProfileMembership("ext-789", "Focus", true);
   await windowRoot.ExtensityApi.updateExtensionProfileMembership("ext-789", "Focus", false);
   await windowRoot.ExtensityApi.testUrlRules("https://github.com/openai");
@@ -410,6 +412,10 @@ test("ExtensityApi profile assignment methods emit expected chrome messages", as
       extensionId: "ext-456",
       profileName: null,
       type: "ASSIGN_EXTENSION_PROFILE"
+    },
+    {
+      extensionId: "ext-321",
+      type: "PIN_EXTENSION_TO_TOOLBAR"
     },
     {
       extensionId: "ext-789",
@@ -941,6 +947,7 @@ test("ExtensityApi has no duplicate method keys", () => {
 
   const api = windowRoot.ExtensityApi;
   assert.equal(typeof api.assignExtensionProfile, "function");
+  assert.equal(typeof api.pinExtensionToToolbar, "function");
   assert.equal(typeof api.updateExtensionProfileMembership, "function");
 
   // Verify updateExtensionProfileMembership casts shouldInclude to boolean.
@@ -1560,6 +1567,246 @@ test("profiles add decorates custom profiles without parent-context bindings", a
   assert.equal(workProfile.isActive(), true);
 });
 
+test("profiles recent sort keeps enabled extensions above disabled ones and uses stable tie-breakers", async () => {
+  function observable(initialValue) {
+    let value = initialValue;
+    const subscribers = [];
+    const obs = function(nextValue) {
+      if (arguments.length > 0) {
+        value = nextValue;
+        subscribers.forEach((fn) => fn(value));
+        return obs;
+      }
+      return value;
+    };
+    obs.subscribe = function(fn) {
+      subscribers.push(fn);
+    };
+    return obs;
+  }
+
+  function observableArray(initialValue) {
+    const obs = observable(initialValue || []);
+    obs.push = function(item) {
+      const nextValue = obs().slice();
+      nextValue.push(item);
+      obs(nextValue);
+    };
+    obs.remove = function(predicateOrItem) {
+      const predicate = typeof predicateOrItem === "function"
+        ? predicateOrItem
+        : function(item) { return item === predicateOrItem; };
+      obs(obs().filter((item) => !predicate(item)));
+    };
+    obs.indexOf = function(item) {
+      return obs().indexOf(item);
+    };
+    obs.extend = function() {
+      return obs;
+    };
+    return obs;
+  }
+
+  let capturedVm = null;
+  let domReady = null;
+  const ko = {
+    extenders: {},
+    observable,
+    observableArray,
+    computed(fn) {
+      const obs = function() {
+        return fn();
+      };
+      obs.extend = function() {
+        return obs;
+      };
+      return obs;
+    },
+    pureComputed(fn) {
+      const obs = function() {
+        return fn();
+      };
+      obs.extend = function() {
+        return obs;
+      };
+      return obs;
+    },
+    bindingProvider: {},
+    secureBindingsProvider: function() {},
+    applyBindings(vm) {
+      capturedVm = vm;
+    }
+  };
+
+  function OptionsCollection() {
+    this.colorScheme = observable("auto");
+    this.profileDisplay = observable("landscape");
+    this.profileExtensionSide = observable("right");
+    this.profileLayoutDirection = observable("ltr");
+    this.profileNameDirection = observable("ltr");
+    this.showProfilesExtensionMetadata = observable(true);
+    this.apply = function(nextState) {
+      const state = nextState || {};
+      this.colorScheme(state.colorScheme || "auto");
+      this.profileDisplay(state.profileDisplay || "landscape");
+      this.profileExtensionSide(state.profileExtensionSide || "right");
+      this.profileLayoutDirection(state.profileLayoutDirection || "ltr");
+      this.profileNameDirection(state.profileNameDirection || "ltr");
+      this.showProfilesExtensionMetadata(
+        typeof state.showProfilesExtensionMetadata === "boolean" ? state.showProfilesExtensionMetadata : true
+      );
+    };
+  }
+
+  function ProfileCollectionModel(initialState) {
+    this.items = observableArray([]);
+    this.localProfiles = observable(false);
+    this.applyState = function(state) {
+      const payload = state || {};
+      this.localProfiles(!!payload.localProfiles);
+      this.items((payload.items || []).map((profile) => new windowRoot.ProfileModel(profile.name, profile.items, {
+        color: profile.color,
+        icon: profile.icon
+      })));
+    };
+    this.find = function(name) {
+      return this.items().find((profile) => profile.name() === name);
+    };
+    this.applyState(initialState || { items: [], localProfiles: false });
+  }
+
+  const windowRoot = {
+    ExtensityStorage: storageStub
+  };
+
+  loadBrowserScript(path.join(repoRoot, "js/engine.js"), {
+    ko,
+    _: Object.assign(function(items) {
+      return {
+        find(predicate) {
+          return (items || []).find(predicate);
+        }
+      };
+    }, {
+      delay(fn) {
+        fn();
+      }
+    }),
+    window: windowRoot
+  });
+
+  loadBrowserScript(path.join(repoRoot, "js/profiles.js"), {
+    DismissalsCollection: function() {
+      this.dismiss = function() {};
+    },
+    ExtensionCollectionModel: windowRoot.ExtensionCollectionModel,
+    ExtensityApi: {
+      getExtensionMetadata() {
+        return Promise.resolve({ metadata: {} });
+      },
+      getState() {
+        return Promise.resolve({
+          state: {
+            metadata: { version: "2.0.3" },
+            options: {
+              colorScheme: "auto",
+              profileDisplay: "landscape",
+              profileExtensionSide: "right",
+              profileLayoutDirection: "ltr",
+              profileNameDirection: "ltr",
+              showProfilesExtensionMetadata: true
+            },
+            extensions: [
+              { enabled: true, id: "ext-enabled-new", installedAt: 800, isApp: false, lastUsed: 1, mayDisable: true, name: "Enabled New" },
+              { enabled: true, id: "ext-alpha-enabled", installedAt: 500, isApp: false, lastUsed: 30, mayDisable: true, name: "Alpha Enabled" },
+              { enabled: true, id: "ext-zeta-enabled", installedAt: 500, isApp: false, lastUsed: 30, mayDisable: true, name: "Zeta Enabled" },
+              { enabled: true, id: "ext-enabled-old", installedAt: 100, isApp: false, lastUsed: 999, mayDisable: true, name: "Enabled Old" },
+              { enabled: false, id: "ext-disabled-new", installedAt: 900, isApp: false, lastUsed: 100, mayDisable: true, name: "Disabled New" },
+              { enabled: false, id: "ext-disabled-old", installedAt: 50, isApp: false, lastUsed: 800, mayDisable: true, name: "Disabled Old" }
+            ],
+            profiles: {
+              items: [
+                { items: [], name: "__always_on" },
+                { items: [], name: "__base" },
+                { items: [], name: "__favorites" }
+              ],
+              localProfiles: false
+            }
+          }
+        });
+      }
+    },
+    OptionsCollection,
+    ProfileCollectionModel,
+    _: Object.assign(function(items) {
+      return {
+        find(predicate) {
+          return (items || []).find(predicate);
+        }
+      };
+    }, {
+      defer(fn) {
+        fn();
+      }
+    }),
+    chrome: {
+      permissions: {
+        contains(descriptor, callback) {
+          callback(true);
+        },
+        request(descriptor, callback) {
+          callback(false);
+        }
+      }
+    },
+    document: {
+      addEventListener(event, callback) {
+        if (event === "DOMContentLoaded") {
+          domReady = callback;
+        }
+      },
+      body: {
+        className: "",
+        setAttribute() {}
+      },
+      getElementById() {
+        return {};
+      }
+    },
+    fadeOutMessage() {},
+    ko,
+    window: {
+      ExtensityEngine: windowRoot.ExtensityEngine,
+      ExtensityTooltips: {
+        applyAutoTooltips() {}
+      },
+      close() {},
+      confirm() {
+        return true;
+      }
+    }
+  });
+
+  assert.ok(domReady);
+  domReady();
+  await Promise.resolve();
+  await Promise.resolve();
+
+  capturedVm.setSortRecent();
+
+  assert.deepEqual(
+    normalize(capturedVm.sortedExtensions().map((extension) => extension.id())),
+    [
+      "ext-enabled-new",
+      "ext-alpha-enabled",
+      "ext-zeta-enabled",
+      "ext-enabled-old",
+      "ext-disabled-new",
+      "ext-disabled-old"
+    ]
+  );
+});
+
 test("url rules support wildcard, regex, and later-rule precedence", () => {
   const root = loadModule("js/url-rules.js");
 
@@ -1998,6 +2245,10 @@ test("popup rows expose direct profile membership and sort handlers", async () =
   const membershipCalls = [];
   const openedTabs = [];
   const toolbarPinCalls = [];
+  const pinResults = [
+    { result: "pinned" },
+    { result: "opened_fallback" }
+  ];
   const saveOptionsCalls = [];
   const ko = {
     extenders: {},
@@ -2292,9 +2543,9 @@ test("popup rows expose direct profile membership and sort handlers", async () =
         membershipCalls.push({ extensionId, profileName, shouldInclude });
         return Promise.resolve({ state });
       },
-      updateExtensionToolbarPinned(extensionId, shouldPin) {
-        toolbarPinCalls.push({ extensionId, shouldPin });
-        return Promise.resolve({ state });
+      pinExtensionToToolbar(extensionId) {
+        toolbarPinCalls.push({ extensionId });
+        return Promise.resolve(pinResults.shift() || { result: "pinned" });
       }
     },
     ExtensityPopupLabels: windowRoot.ExtensityPopupLabels,
@@ -2360,22 +2611,22 @@ test("popup rows expose direct profile membership and sort handlers", async () =
   assert.equal(typeof extension.toggleTableRowAction, "function");
   assert.equal(typeof extension.onProfileMembershipChange, "function");
   assert.equal(typeof extension.pinToToolbarAction, "function");
-  assert.equal(extension.pinToToolbarTitle(), "Open browser Pin to toolbar setting");
-  assert.deepEqual(normalize(listedExtensionIds.slice(0, 5)), ["ext-off", "ext-ao", "ext-alpha", "ext-zeta", "ext-1"]);
+  assert.equal(extension.pinToToolbarTitle(), "Pin to browser toolbar");
+  assert.deepEqual(normalize(listedExtensionIds.slice(0, 5)), ["ext-ao", "ext-alpha", "ext-zeta", "ext-1", "ext-off"]);
   assert.equal(extension.showTableRow(), true);
   assert.deepEqual(normalize(recentSortedIds.slice(0, 5)), [
-    "ext-off",
     "ext-ao",
     "ext-alpha",
     "ext-zeta",
-    "ext-1"
+    "ext-1",
+    "ext-off"
   ]);
   assert.deepEqual(normalize(capturedVm.listedItems().map((item) => item.id()).slice(0, 5)), [
-    "ext-off",
     "ext-ao",
     "ext-alpha",
     "ext-zeta",
-    "ext-1"
+    "ext-1",
+    "ext-off"
   ]);
   assert.deepEqual(normalize(profileNames), ["__always_on", "__base", "__favorites", "Work", "Focus", "Travel", "Home"]);
   assert.deepEqual(normalize(extension.profileDropdownOptions()), [
@@ -2401,6 +2652,13 @@ test("popup rows expose direct profile membership and sort handlers", async () =
   ]);
 
   await extension.pinToToolbarAction();
+  assert.equal(capturedVm.error(), "");
+
+  await extension.pinToToolbarAction();
+  assert.equal(
+    capturedVm.error(),
+    "Couldn't pin automatically. Opened the browser details page so you can finish pinning there."
+  );
 
   extension.onProfileMembershipChange(null, {
     target: {
@@ -2423,13 +2681,11 @@ test("popup rows expose direct profile membership and sort handlers", async () =
   });
   await Promise.resolve();
 
-  assert.deepEqual(normalize(openedTabs), [
-    {
-      active: true,
-      url: "chrome://extensions/?id=ext-1"
-    }
+  assert.deepEqual(normalize(openedTabs), []);
+  assert.deepEqual(normalize(toolbarPinCalls), [
+    { extensionId: "ext-1" },
+    { extensionId: "ext-1" }
   ]);
-  assert.deepEqual(normalize(toolbarPinCalls), []);
 
   const normalizedMembershipCalls = normalize(membershipCalls);
   const expectedTail = [

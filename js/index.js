@@ -385,7 +385,7 @@ document.addEventListener("DOMContentLoaded", function() {
         return self.launchOptions(item);
       };
       item.pinToToolbarTitle = ko.pureComputed(function() {
-        return "Open browser Pin to toolbar setting";
+        return "Pin to browser toolbar";
       });
       item.pinToToolbarIconClass = ko.pureComputed(function() {
         return "fa-thumb-tack";
@@ -705,7 +705,19 @@ document.addEventListener("DOMContentLoaded", function() {
       if (extension.isApp && extension.isApp()) {
         return false;
       }
-      return self.openManagePage(extension);
+      self.busy(true);
+      self.error("");
+      return ExtensityApi.pinExtensionToToolbar(extension.id()).then(function(payload) {
+        if (payload && payload.result === "opened_fallback") {
+          self.error("Couldn't pin automatically. Opened the browser details page so you can finish pinning there.");
+        }
+        return payload;
+      }).catch(function(error) {
+        self.error(error.message);
+        return { result: "error" };
+      }).finally(function() {
+        self.busy(false);
+      });
     };
 
     self.extensionMembershipButtonLabel = function(extension, profile) {
@@ -835,6 +847,19 @@ document.addEventListener("DOMContentLoaded", function() {
         return left.id().localeCompare(right.id());
       }
 
+      function compareByRecent(left, right) {
+        if (left.status() !== right.status()) {
+          return left.status() ? -1 : 1;
+        }
+        if (left.installedAt() !== right.installedAt()) {
+          return right.installedAt() - left.installedAt();
+        }
+        if (left.lastUsed() !== right.lastUsed()) {
+          return right.lastUsed() - left.lastUsed();
+        }
+        return compareByName(left, right);
+      }
+
       return items.slice().sort(function(left, right) {
         var sortMode = self.opts.sortMode();
 
@@ -843,16 +868,10 @@ document.addEventListener("DOMContentLoaded", function() {
         }
 
         if (sortMode === "recent") {
-          if (left.installedAt() !== right.installedAt()) {
-            return right.installedAt() - left.installedAt();
-          }
-          if (left.lastUsed() !== right.lastUsed()) {
-            return right.lastUsed() - left.lastUsed();
-          }
-          return compareByName(left, right);
+          return compareByRecent(left, right);
         }
 
-        if (self.opts.enabledFirst() && sortMode !== "recent" && left.status() !== right.status()) {
+        if (self.opts.enabledFirst() && left.status() !== right.status()) {
           return left.status() ? -1 : 1;
         }
 

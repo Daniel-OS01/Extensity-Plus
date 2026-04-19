@@ -36,6 +36,10 @@ importScripts(
     });
   }
 
+  function hasChromeMethod(target, method) {
+    return !!target && typeof target[method] === "function";
+  }
+
   function addChromeListener(eventTarget, listener) {
     if (!eventTarget || typeof eventTarget.addListener !== "function") {
       return false;
@@ -588,6 +592,324 @@ importScripts(
     return chromeCall(chrome.tabs, "create", [{ active: true, url: targetUrl }]);
   }
 
+  function buildManageExtensionUrl(extensionId) {
+    return "chrome://extensions/?id=" + encodeURIComponent(extensionId);
+  }
+
+  function wait(delayMs) {
+    return new Promise(function(resolve) {
+      setTimeout(resolve, delayMs);
+    });
+  }
+
+  async function queryTabs(queryInfo) {
+    return chromeCall(chrome.tabs, "query", [queryInfo || {}]);
+  }
+
+  async function updateTab(tabId, updateProperties) {
+    return chromeCall(chrome.tabs, "update", [tabId, updateProperties || {}]);
+  }
+
+  async function removeTab(tabId) {
+    return chromeCall(chrome.tabs, "remove", [tabId]);
+  }
+
+  function hasDebuggerApi() {
+    return hasChromeMethod(chrome.debugger, "attach")
+      && hasChromeMethod(chrome.debugger, "detach")
+      && hasChromeMethod(chrome.debugger, "sendCommand");
+  }
+
+  async function findManageExtensionTab(extensionId) {
+    if (!hasChromeMethod(chrome.tabs, "query")) {
+      return null;
+    }
+
+    var targetUrl = buildManageExtensionUrl(extensionId);
+    var tabs = await queryTabs({});
+    return (tabs || []).find(function(tab) {
+      return tab && tab.url === targetUrl;
+    }) || null;
+  }
+
+  async function ensureManageExtensionTab(extensionId) {
+    var existingTab = await findManageExtensionTab(extensionId);
+    if (existingTab) {
+      return {
+        created: false,
+        tab: existingTab
+      };
+    }
+
+    return {
+      created: true,
+      tab: await chromeCall(chrome.tabs, "create", [{
+        active: false,
+        url: buildManageExtensionUrl(extensionId)
+      }])
+    };
+  }
+
+  function buildToolbarPinAutomationExpression(shouldClick) {
+    return [
+      "(function() {",
+      "  function matchesAny(element, selectors) {",
+      "    if (!element || typeof element.matches !== 'function') {",
+      "      return false;",
+      "    }",
+      "    for (var index = 0; index < selectors.length; index += 1) {",
+      "      if (element.matches(selectors[index])) {",
+      "        return true;",
+      "      }",
+      "    }",
+      "    return false;",
+      "  }",
+      "  function walkTree(root, matcher) {",
+      "    var queue = [root];",
+      "    while (queue.length) {",
+      "      var current = queue.shift();",
+      "      if (!current) {",
+      "        continue;",
+      "      }",
+      "      if (current !== root && current.nodeType === 1 && matcher(current)) {",
+      "        return current;",
+      "      }",
+      "      if (current.shadowRoot && current.shadowRoot.mode === 'open') {",
+      "        queue.push(current.shadowRoot);",
+      "      }",
+      "      var children = current.children || [];",
+      "      for (var childIndex = 0; childIndex < children.length; childIndex += 1) {",
+      "        queue.push(children[childIndex]);",
+      "      }",
+      "    }",
+      "    return null;",
+      "  }",
+      "  function readSwitchState(element) {",
+      "    if (!element) {",
+      "      return null;",
+      "    }",
+      "    var ariaChecked = element.getAttribute && element.getAttribute('aria-checked');",
+      "    if (ariaChecked === 'true') {",
+      "      return true;",
+      "    }",
+      "    if (ariaChecked === 'false') {",
+      "      return false;",
+      "    }",
+      "    if (typeof element.checked === 'boolean') {",
+      "      return !!element.checked;",
+      "    }",
+      "    if (element.hasAttribute && element.hasAttribute('checked')) {",
+      "      return true;",
+      "    }",
+      "    var checkedAttribute = element.getAttribute && element.getAttribute('checked');",
+      "    if (checkedAttribute === 'true' || checkedAttribute === '') {",
+      "      return true;",
+      "    }",
+      "    if (checkedAttribute === 'false') {",
+      "      return false;",
+      "    }",
+      "    return null;",
+      "  }",
+      "  function clickElement(target) {",
+      "    if (!target) {",
+      "      return false;",
+      "    }",
+      "    if (typeof target.scrollIntoView === 'function') {",
+      "      try {",
+      "        target.scrollIntoView({ block: 'center', inline: 'center' });",
+      "      } catch (error) {}",
+      "    }",
+      "    if (typeof target.click === 'function') {",
+      "      target.click();",
+      "      return true;",
+      "    }",
+      "    try {",
+      "      target.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, composed: true, view: window }));",
+      "      return true;",
+      "    } catch (error) {",
+      "      return false;",
+      "    }",
+      "  }",
+      "  var hostSelectors = ['extensions-toggle-row#pin-to-toolbar', '#pin-to-toolbar'];",
+      "  var controlSelectors = [",
+      "    '#pin-to-toolbar [role=\"switch\"]',",
+      "    '#pin-to-toolbar button[role=\"switch\"]',",
+      "    '#pin-to-toolbar cr-toggle',",
+      "    '#pin-to-toolbar leo-toggle button',",
+      "    '#pin-to-toolbar leo-toggle [role=\"switch\"]',",
+      "    '[role=\"switch\"]',",
+      "    'button[role=\"switch\"]',",
+      "    'cr-toggle',",
+      "    'leo-toggle button',",
+      "    'leo-toggle [role=\"switch\"]'",
+      "  ];",
+      "  var host = walkTree(document, function(node) {",
+      "    return matchesAny(node, hostSelectors);",
+      "  });",
+      "  var control = host ? walkTree(host, function(node) {",
+      "    return matchesAny(node, controlSelectors);",
+      "  }) : null;",
+      "  if (!control && host && matchesAny(host, controlSelectors)) {",
+      "    control = host;",
+      "  }",
+      "  var state = readSwitchState(control);",
+      "  if (state === null) {",
+      "    state = readSwitchState(host);",
+      "  }",
+      "  var clicked = false;",
+      "  var clickedTarget = '';",
+      "  if (host && state === false && " + (shouldClick ? "true" : "false") + ") {",
+      "    if (control && control !== host) {",
+      "      clicked = clickElement(control);",
+      "      clickedTarget = clicked ? 'control' : '';",
+      "    }",
+      "    if (!clicked) {",
+      "      clicked = clickElement(host);",
+      "      clickedTarget = clicked ? 'row' : clickedTarget;",
+      "    }",
+      "  }",
+      "  return {",
+      "    clicked: clicked,",
+      "    clickedTarget: clickedTarget,",
+      "    controlFound: !!control,",
+      "    found: !!host,",
+      "    isPinned: state === true,",
+      "    stateKnown: state !== null",
+      "  };",
+      "})()"
+    ].join("\n");
+  }
+
+  async function evaluateToolbarPinState(target, shouldClick) {
+    var response = await chromeCall(chrome.debugger, "sendCommand", [target, "Runtime.evaluate", {
+      awaitPromise: true,
+      expression: buildToolbarPinAutomationExpression(shouldClick),
+      returnByValue: true
+    }]);
+
+    if (response && response.exceptionDetails) {
+      throw new Error("Toolbar pin automation evaluation failed.");
+    }
+
+    return response && response.result ? response.result.value : null;
+  }
+
+  async function waitForTabComplete(tabId, timeoutMs) {
+    var deadline = Date.now() + timeoutMs;
+    var lastTab = null;
+
+    while (Date.now() < deadline) {
+      lastTab = await getTab(tabId).catch(function() {
+        return null;
+      });
+      if (lastTab && (!lastTab.status || lastTab.status === "complete")) {
+        return lastTab;
+      }
+      await wait(100);
+    }
+
+    return lastTab;
+  }
+
+  async function waitForToolbarPinState(target, predicate, timeoutMs) {
+    var deadline = Date.now() + timeoutMs;
+    var lastState = null;
+
+    while (Date.now() < deadline) {
+      lastState = await evaluateToolbarPinState(target, false);
+      if (!predicate || predicate(lastState)) {
+        return lastState;
+      }
+      await wait(150);
+    }
+
+    return lastState;
+  }
+
+  async function revealManageExtensionTab(extensionId, tabState) {
+    if (tabState && tabState.tab && tabState.tab.id != null && hasChromeMethod(chrome.tabs, "update")) {
+      try {
+        return await updateTab(tabState.tab.id, { active: true });
+      } catch (error) {
+        return tabState.tab;
+      }
+    }
+
+    return chromeCall(chrome.tabs, "create", [{
+      active: true,
+      url: buildManageExtensionUrl(extensionId)
+    }]);
+  }
+
+  async function openToolbarPinFallback(extensionId, tabState, reason) {
+    var tab = await revealManageExtensionTab(extensionId, tabState);
+    return {
+      result: "opened_fallback",
+      reason: reason || "pinning_failed",
+      tabId: tab && tab.id != null ? tab.id : null,
+      url: buildManageExtensionUrl(extensionId)
+    };
+  }
+
+  async function attemptToolbarPinWithDebugger(tabId) {
+    var target = { tabId: tabId };
+    var attached = false;
+
+    try {
+      await chromeCall(chrome.debugger, "attach", [target, "1.3"]);
+      attached = true;
+
+      var initialState = await waitForToolbarPinState(target, function(state) {
+        return state && state.found;
+      }, 5000);
+
+      if (!initialState || !initialState.found) {
+        return {
+          reason: "pin_control_not_found",
+          result: "failed"
+        };
+      }
+
+      if (!initialState.stateKnown) {
+        return {
+          reason: "pin_state_unknown",
+          result: "failed"
+        };
+      }
+
+      if (initialState.isPinned) {
+        return { result: "already_pinned" };
+      }
+
+      var clickState = await evaluateToolbarPinState(target, true);
+      if (!clickState || !clickState.clicked) {
+        return {
+          reason: "pin_click_failed",
+          result: "failed"
+        };
+      }
+
+      var finalState = await waitForToolbarPinState(target, function(state) {
+        return state && state.found && state.stateKnown && state.isPinned;
+      }, 2000);
+
+      if (finalState && finalState.found && finalState.stateKnown && finalState.isPinned) {
+        return { result: "pinned" };
+      }
+
+      return {
+        reason: "pin_not_confirmed",
+        result: "failed"
+      };
+    } finally {
+      if (attached) {
+        try {
+          await chromeCall(chrome.debugger, "detach", [target]);
+        } catch (error) {}
+      }
+    }
+  }
+
   async function getTab(tabId) {
     return chromeCall(chrome.tabs, "get", [tabId]);
   }
@@ -1022,6 +1344,51 @@ importScripts(
     return buildState();
   }
 
+  async function pinExtensionToToolbar(payload) {
+    var extensionId = typeof payload === "string" ? payload : payload.extensionId;
+    var tabState = null;
+
+    if (!extensionId) {
+      throw new Error("extensionId is required.");
+    }
+
+    if (!hasDebuggerApi()) {
+      return openToolbarPinFallback(extensionId, null, "debugger_unavailable");
+    }
+
+    try {
+      tabState = await ensureManageExtensionTab(extensionId);
+      if (!tabState.tab || tabState.tab.id == null) {
+        return openToolbarPinFallback(extensionId, tabState, "details_tab_unavailable");
+      }
+
+      await waitForTabComplete(tabState.tab.id, 4000);
+
+      var pinResult = await attemptToolbarPinWithDebugger(tabState.tab.id);
+      if (pinResult.result === "pinned" || pinResult.result === "already_pinned") {
+        if (tabState.created && hasChromeMethod(chrome.tabs, "remove")) {
+          try {
+            await removeTab(tabState.tab.id);
+          } catch (error) {}
+        }
+
+        return {
+          result: pinResult.result,
+          tabId: tabState.tab.id,
+          url: buildManageExtensionUrl(extensionId)
+        };
+      }
+
+      return openToolbarPinFallback(extensionId, tabState, pinResult.reason);
+    } catch (error) {
+      return openToolbarPinFallback(
+        extensionId,
+        tabState,
+        error && error.message ? error.message : "pinning_failed"
+      );
+    }
+  }
+
   async function importBackup(payload) {
     var envelope = importExport.validateBackupEnvelope(payload.envelope);
     var currentLocalState = await storage.loadLocalState();
@@ -1281,6 +1648,8 @@ importScripts(
         return { state: await importBackup(message) };
       case "OPEN_DASHBOARD":
         return await openDashboard();
+      case "PIN_EXTENSION_TO_TOOLBAR":
+        return await pinExtensionToToolbar(message);
       case "SAVE_ALIAS":
         return { state: await saveAliases(message) };
       case "SAVE_GROUPS":
@@ -1509,12 +1878,15 @@ importScripts(
   root.ExtensityBackground = {
     buildFallbackMetadata: buildFallbackMetadata,
     buildGenericStoreUrl: buildGenericStoreUrl,
+    buildManageExtensionUrl: buildManageExtensionUrl,
+    buildToolbarPinAutomationExpression: buildToolbarPinAutomationExpression,
     defaultCategoryForInstallType: defaultCategoryForInstallType,
     firstDescriptionLine: firstDescriptionLine,
     isAppType: isAppType,
     loadExtensionMetadata: loadExtensionMetadata,
     normalizeExtensions: normalizeExtensions,
     normalizeStoreUrl: normalizeStoreUrl,
-    parseChromeWebStoreHtml: parseChromeWebStoreHtml
+    parseChromeWebStoreHtml: parseChromeWebStoreHtml,
+    pinExtensionToToolbar: pinExtensionToToolbar
   };
 })(self);

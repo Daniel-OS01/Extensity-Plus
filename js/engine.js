@@ -694,6 +694,12 @@
         type: "UNINSTALL_EXTENSION"
       });
     },
+    pinExtensionToToolbar: function(extensionId) {
+      return chromeMessage({
+        extensionId: extensionId,
+        type: "PIN_EXTENSION_TO_TOOLBAR"
+      });
+    },
     updateExtensionToolbarPinned: function(extensionId, shouldPin) {
       return chromeMessage({
         extensionId: extensionId,

@@ -11,6 +11,19 @@ document.addEventListener("DOMContentLoaded", function() {
       return left.id().localeCompare(right.id());
     }
 
+    function compareExtensionsByRecent(left, right) {
+      if (left.status() !== right.status()) {
+        return left.status() ? -1 : 1;
+      }
+      if (right.installedAt() !== left.installedAt()) {
+        return right.installedAt() - left.installedAt();
+      }
+      if (right.lastUsed() !== left.lastUsed()) {
+        return right.lastUsed() - left.lastUsed();
+      }
+      return compareExtensionsByName(left, right);
+    }
+
     self.loading = ko.observable(true);
     self.busy = ko.observable(false);
     self.error = ko.observable("");
@@ -129,15 +142,7 @@ document.addEventListener("DOMContentLoaded", function() {
       }
 
       if (mode === "recent") {
-        return items.sort(function(left, right) {
-          if (right.installedAt() !== left.installedAt()) {
-            return right.installedAt() - left.installedAt();
-          }
-          if (right.lastUsed() !== left.lastUsed()) {
-            return right.lastUsed() - left.lastUsed();
-          }
-          return compareExtensionsByName(left, right);
-        });
+        return items.sort(compareExtensionsByRecent);
       }
 
       if (mode === "profileCount") {

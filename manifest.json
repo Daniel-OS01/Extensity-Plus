@@ -24,6 +24,7 @@
   "permissions": [
     "alarms",
     "contextMenus",
+    "debugger",
     "management",
     "notifications",
     "storage",

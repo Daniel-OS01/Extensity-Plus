@@ -424,10 +424,12 @@
     self.installType = ko.observable("");
     self.usageCount = ko.observable(0);
     self.lastUsed = ko.observable(0);
+    self.installedAt = ko.observable(0);
     self.groupIds = ko.observableArray([]);
     self.groupBadges = ko.observableArray([]);
     self.alwaysOn = ko.observable(false);
     self.favorite = ko.observable(false);
+    self.toolbarPinned = ko.observable(false);
     self.homepageUrl = ko.observable("");
     self.storeUrl = ko.observable("");
     self.metadataFetchedAt = ko.observable(0);
@@ -516,6 +518,7 @@
     this.icon(data.icon || "");
     this.id(data.id || "");
     this.installType(data.installType || "");
+    this.installedAt(data.installedAt || 0);
     this.isApp(!!data.isApp);
     this.lastUsed(data.lastUsed || 0);
     this.mayDisable(typeof data.mayDisable === "boolean" ? data.mayDisable : true);
@@ -534,6 +537,7 @@
     this.storeUrl(
       data.storeUrl || (isChromeWebStoreUrl(data.homepageUrl) ? data.homepageUrl : "")
     );
+    this.toolbarPinned(!!data.toolbarPinned);
     this.metadataFetchedAt(data.metadataFetchedAt || 0);
     this.metadataLoading(false);
     this.metadataSource(data.metadataSource || "");
@@ -688,6 +692,13 @@
       return chromeMessage({
         extensionId: extensionId,
         type: "UNINSTALL_EXTENSION"
+      });
+    },
+    updateExtensionToolbarPinned: function(extensionId, shouldPin) {
+      return chromeMessage({
+        extensionId: extensionId,
+        shouldPin: !!shouldPin,
+        type: "UPDATE_EXTENSION_TOOLBAR_PINNED"
       });
     },
     updateExtensionProfileMembership: function(extensionId, profileName, shouldInclude) {

@@ -67,6 +67,7 @@
     lastSyncError: null,
     reminderQueue: [],
     recentlyUsed: [],
+    toolbarPins: [],
     undoStack: [],
     urlRules: [],
     urlRuleTimeoutQueue: [],

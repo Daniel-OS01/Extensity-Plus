@@ -378,16 +378,16 @@ document.addEventListener("DOMContentLoaded", function() {
       item.removeAction = function() {
         return self.removeExtension(item);
       };
-      item.pinToFavoritesAction = function() {
-        return self.toggleFavoritePinned(item);
+      item.pinToToolbarAction = function() {
+        return self.toggleToolbarPinned(item);
       };
       item.launchOptionsAction = function() {
         return self.launchOptions(item);
       };
-      item.pinToFavoritesTitle = ko.pureComputed(function() {
-        return item.favorite() ? "Unpin from Favorites" : "Pin to Favorites";
+      item.pinToToolbarTitle = ko.pureComputed(function() {
+        return item.toolbarPinned() ? "Unpin from Toolbar" : "Pin to Toolbar";
       });
-      item.pinToFavoritesIconClass = ko.pureComputed(function() {
+      item.pinToToolbarIconClass = ko.pureComputed(function() {
         return "fa-thumb-tack";
       });
       item.showOptionsButton = ko.pureComputed(function() {
@@ -701,14 +701,13 @@ document.addEventListener("DOMContentLoaded", function() {
       return false;
     };
 
-    self.toggleFavoritePinned = function(extension) {
+    self.toggleToolbarPinned = function(extension) {
       if (extension.isApp && extension.isApp()) {
         return false;
       }
-      self.performAction(ExtensityApi.updateExtensionProfileMembership(
+      self.performAction(ExtensityApi.updateExtensionToolbarPinned(
         extension.id(),
-        "__favorites",
-        !extension.favorite()
+        !extension.toolbarPinned()
       ));
       return false;
     };
@@ -847,15 +846,21 @@ document.addEventListener("DOMContentLoaded", function() {
           return right.usageCount() - left.usageCount();
         }
 
-        if (sortMode === "recent" && left.lastUsed() !== right.lastUsed()) {
-          return right.lastUsed() - left.lastUsed();
+        if (sortMode === "recent") {
+          if (left.installedAt() !== right.installedAt()) {
+            return right.installedAt() - left.installedAt();
+          }
+          if (left.lastUsed() !== right.lastUsed()) {
+            return right.lastUsed() - left.lastUsed();
+          }
+          return compareByName(left, right);
         }
 
         if (self.opts.enabledFirst() && sortMode !== "recent" && left.status() !== right.status()) {
           return left.status() ? -1 : 1;
         }
 
-        return left.displayName().toUpperCase().localeCompare(right.displayName().toUpperCase());
+        return compareByName(left, right);
       });
     };
 
@@ -885,9 +890,9 @@ document.addEventListener("DOMContentLoaded", function() {
       return self.profiles.items().filter(self.filterProfile);
     }).extend({ countable: null });
 
-    self.listedFavorites = ko.computed(function() {
+    self.listedToolbarPinned = ko.computed(function() {
       return self.sortExtensions(self.exts.extensions().filter(function(extension) {
-        return extension.favorite() && self.search.matchesExtension(extension);
+        return extension.toolbarPinned() && self.search.matchesExtension(extension);
       }));
     }).extend({ countable: null });
 

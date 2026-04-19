@@ -69,9 +69,9 @@
     </ul>
   </section>
 
-  <section data-sbind="if: listedFavorites.any">
-    <h1>Favorites</h1>
-    <ul class="items" data-sbind="template: {name: 'item-template', foreach: listedFavorites}"></ul>
+  <section data-sbind="if: listedToolbarPinned.any">
+    <h1>Toolbar</h1>
+    <ul class="items" data-sbind="template: {name: 'item-template', foreach: listedToolbarPinned}"></ul>
   </section>
 
   <section data-sbind="if: opts.appsFirst() && opts.groupApps()">
@@ -159,8 +159,8 @@
           <button type="button" class="action-icon-button" title="Copy link" aria-label="Copy link" data-sbind="click: copyLinkAction, clickBubble: false, enable: copyLinkAvailable"><i class="fa fa-files-o" aria-hidden="true"></i></button>
           <button type="button" class="action-icon-button" title="Open in Chrome Web Store" aria-label="Open in Chrome Web Store" data-sbind="click: openStoreAction, clickBubble: false, enable: storeLinkAvailable()"><i class="fa fa-external-link" aria-hidden="true"></i></button>
           <button type="button" class="action-icon-button danger" title="Remove extension" aria-label="Remove extension" data-sbind="visible: canRemove, click: removeAction, clickBubble: false"><i class="fa fa-trash-o" aria-hidden="true"></i></button>
-          <button type="button" class="action-icon-button" data-sbind="click: pinToFavoritesAction, clickBubble: false, css:{pinned: favorite()}, attr:{title: pinToFavoritesTitle, 'aria-label': pinToFavoritesTitle}">
-            <i class="fa" aria-hidden="true" data-sbind="css: pinToFavoritesIconClass"></i>
+          <button type="button" class="action-icon-button" data-sbind="click: pinToToolbarAction, clickBubble: false, css:{pinned: toolbarPinned()}, attr:{title: pinToToolbarTitle, 'aria-label': pinToToolbarTitle}">
+            <i class="fa" aria-hidden="true" data-sbind="css: pinToToolbarIconClass"></i>
           </button>
         </div>
         <select class="profile-assign-select" title="Assign to profile" data-sbind="event:{change: onProfileMembershipChange}">
@@ -207,8 +207,8 @@
           <button type="button" class="action-icon-button" title="Copy link" aria-label="Copy link" data-sbind="click: copyLinkAction, clickBubble: false, enable: copyLinkAvailable"><i class="fa fa-files-o" aria-hidden="true"></i></button>
           <button type="button" class="action-icon-button" title="Open in Chrome Web Store" aria-label="Open in Chrome Web Store" data-sbind="click: openStoreAction, clickBubble: false, enable: storeLinkAvailable()"><i class="fa fa-external-link" aria-hidden="true"></i></button>
           <button type="button" class="action-icon-button danger" title="Remove extension" aria-label="Remove extension" data-sbind="visible: canRemove, click: removeAction, clickBubble: false"><i class="fa fa-trash-o" aria-hidden="true"></i></button>
-          <button type="button" class="action-icon-button" data-sbind="click: pinToFavoritesAction, clickBubble: false, css:{pinned: favorite()}, attr:{title: pinToFavoritesTitle, 'aria-label': pinToFavoritesTitle}">
-            <i class="fa" aria-hidden="true" data-sbind="css: pinToFavoritesIconClass"></i>
+          <button type="button" class="action-icon-button" data-sbind="click: pinToToolbarAction, clickBubble: false, css:{pinned: toolbarPinned()}, attr:{title: pinToToolbarTitle, 'aria-label': pinToToolbarTitle}">
+            <i class="fa" aria-hidden="true" data-sbind="css: pinToToolbarIconClass"></i>
           </button>
         </div>
         <select class="profile-assign-select" title="Assign to profile" data-sbind="event:{change: onProfileMembershipChange}">

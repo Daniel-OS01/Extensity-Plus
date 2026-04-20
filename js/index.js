@@ -11,9 +11,9 @@ document.addEventListener("DOMContentLoaded", function() {
       return;
     }
 
-    mountNode.textContent = "";
-    mountNode.setAttribute("data-template-id", nextTemplateId);
     if (!templateId) {
+      mountNode.textContent = "";
+      mountNode.setAttribute("data-template-id", "");
       return;
     }
 
@@ -22,6 +22,8 @@ document.addEventListener("DOMContentLoaded", function() {
       return;
     }
 
+    mountNode.textContent = "";
+    mountNode.setAttribute("data-template-id", nextTemplateId);
     mountNode.appendChild(templateNode.content.cloneNode(true));
     if (viewModel && typeof ko.applyBindingsToDescendants === "function") {
       ko.applyBindingsToDescendants(viewModel, mountNode);

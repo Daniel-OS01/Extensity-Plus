@@ -38,6 +38,7 @@ test("popup chrome mount helper is idempotent and rebind-safe", () => {
 
   assert.match(indexScript, /function syncTemplateMount\(mountId, templateId, viewModel\)/);
   assert.match(indexScript, /currentTemplateId === nextTemplateId/);
+  assert.match(indexScript, /if \(!templateId\) \{\s*mountNode\.textContent = "";\s*mountNode\.setAttribute\("data-template-id", ""\);/);
   assert.match(indexScript, /mountNode\.setAttribute\("data-template-id", nextTemplateId\)/);
   assert.match(indexScript, /ko\.applyBindingsToDescendants\(viewModel, mountNode\)/);
   assert.match(indexScript, /mountPopupHeaderIfEnabled\(state, self\)/);

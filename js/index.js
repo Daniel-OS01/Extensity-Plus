@@ -1,4 +1,28 @@
 document.addEventListener("DOMContentLoaded", function() {
+  function mountTemplate(mountId, templateId) {
+    var mountNode = document.getElementById(mountId);
+    var templateNode = document.getElementById(templateId);
+    if (!mountNode || !templateNode || !templateNode.content) {
+      return;
+    }
+
+    mountNode.appendChild(templateNode.content.cloneNode(true));
+  }
+
+  function mountPopupHeaderIfEnabled(state) {
+    if (!state || !state.options || state.options.showHeader !== true) {
+      return;
+    }
+
+    mountTemplate("popup-header-mount", "popup-header-template");
+  }
+
+  function mountPopupSortToolbar(state) {
+    var showPopupSort = state && state.options && state.options.showPopupSort === true;
+    var templateId = showPopupSort ? "popup-sort-toolbar-template" : "popup-sort-toolbar-error-template";
+    mountTemplate("popup-sort-toolbar-mount", templateId);
+  }
+
   function levenshteinWithin(source, query, limit) {
     var left = source.toLowerCase();
     var right = query.toLowerCase();
@@ -946,7 +970,23 @@ document.addEventListener("DOMContentLoaded", function() {
   _.defer(function() {
     var vm = new ExtensityViewModel();
     ko.bindingProvider.instance = new ko.secureBindingsProvider({});
-    ko.applyBindings(vm, document.body);
-    vm.refresh();
+
+    ExtensityApi.getState().then(function(payload) {
+      var state = payload && payload.state ? payload.state : null;
+      mountPopupHeaderIfEnabled(state);
+      mountPopupSortToolbar(state);
+      ko.applyBindings(vm, document.body);
+
+      if (state) {
+        vm.applyState(state);
+        return;
+      }
+
+      vm.refresh();
+    }).catch(function() {
+      mountPopupSortToolbar(null);
+      ko.applyBindings(vm, document.body);
+      vm.refresh();
+    });
   });
 });

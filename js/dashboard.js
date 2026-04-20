@@ -437,13 +437,35 @@ document.addEventListener("DOMContentLoaded", function() {
       }).catch(function() {});
     };
 
+    function downloadBackup(payload, filenamePrefix) {
+      ExtensityIO.downloadText(
+        ExtensityIO.exportFilename(filenamePrefix, "json"),
+        JSON.stringify(payload.envelope, null, 2),
+        "application/json;charset=utf-8"
+      );
+    }
+
     self.exportJson = function() {
       self.performAction(ExtensityApi.exportBackup()).then(function(payload) {
-        ExtensityIO.downloadText(
-          ExtensityIO.exportFilename("extensity-plus-backup", "json"),
-          JSON.stringify(payload.envelope, null, 2),
-          "application/json;charset=utf-8"
-        );
+        downloadBackup(payload, "extensity-plus-backup");
+      }).catch(function() {});
+    };
+
+    self.exportProfilesJson = function() {
+      self.performAction(ExtensityApi.exportBackup("profiles")).then(function(payload) {
+        downloadBackup(payload, "extensity-plus-profiles");
+      }).catch(function() {});
+    };
+
+    self.exportSettingsJson = function() {
+      self.performAction(ExtensityApi.exportBackup("settings")).then(function(payload) {
+        downloadBackup(payload, "extensity-plus-settings");
+      }).catch(function() {});
+    };
+
+    self.exportProfilesSettingsJson = function() {
+      self.performAction(ExtensityApi.exportBackup("profiles_settings")).then(function(payload) {
+        downloadBackup(payload, "extensity-plus-profiles-settings");
       }).catch(function() {});
     };
 

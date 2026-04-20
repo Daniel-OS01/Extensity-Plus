@@ -44,3 +44,11 @@ test("popup chrome mount helper is idempotent and rebind-safe", () => {
   assert.match(indexScript, /mountPopupHeaderIfEnabled\(state, self\)/);
   assert.match(indexScript, /mountPopupSortToolbar\(state, self\)/);
 });
+
+test("popup files contain no unresolved merge markers", () => {
+  const html = fs.readFileSync(path.join(repoRoot, "index.html"), "utf8");
+  const indexScript = fs.readFileSync(path.join(repoRoot, "js/index.js"), "utf8");
+
+  assert.doesNotMatch(html, /^<<<<<<<|^=======|^>>>>>>>/m);
+  assert.doesNotMatch(indexScript, /^<<<<<<<|^=======|^>>>>>>>/m);
+});

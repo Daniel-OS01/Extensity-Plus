@@ -1,4 +1,80 @@
 document.addEventListener("DOMContentLoaded", function() {
+  /**
+   * Build a safe popup state envelope with guaranteed options object.
+   * @param {Object|null|undefined} state
+   * @returns {{options: Object}}
+   */
+  function normalizePopupState(state) {
+    var source = state && typeof state === "object" ? state : {};
+    var options = source.options && typeof source.options === "object" ? source.options : {};
+    return { options: options };
+  }
+
+  /**
+   * Synchronize a template mount node with the requested template id.
+   * Performs idempotent updates and only binds descendants after a successful mount.
+   * @param {string} mountId
+   * @param {string|null} templateId
+   * @param {Object|null|undefined} viewModel
+   */
+  function syncTemplateMount(mountId, templateId, viewModel) {
+    var mountNode = document.getElementById(mountId);
+    if (!mountNode) {
+      return;
+    }
+
+    var currentTemplateId = mountNode.getAttribute("data-template-id") || "";
+    var nextTemplateId = templateId || "";
+    if (currentTemplateId === nextTemplateId) {
+      return;
+    }
+
+    if (!templateId) {
+      mountNode.textContent = "";
+      mountNode.setAttribute("data-template-id", "");
+      return;
+    }
+
+    var templateNode = document.getElementById(templateId);
+    if (!templateNode || !templateNode.content) {
+      return;
+    }
+
+    mountNode.textContent = "";
+    mountNode.setAttribute("data-template-id", nextTemplateId);
+    mountNode.appendChild(templateNode.content.cloneNode(true));
+    if (viewModel && viewModel._popupBindingsReady === true && typeof ko.applyBindingsToDescendants === "function") {
+      ko.applyBindingsToDescendants(viewModel, mountNode);
+    }
+  }
+
+  /**
+   * Mount or clear popup header template based on strict showHeader state.
+   * @param {Object|null|undefined} state
+   * @param {Object|null|undefined} viewModel
+   */
+  function mountPopupHeaderIfEnabled(state, viewModel) {
+    var safeState = normalizePopupState(state);
+    if (safeState.options.showHeader !== true) {
+      syncTemplateMount("popup-header-mount", null, viewModel);
+      return;
+    }
+
+    syncTemplateMount("popup-header-mount", "popup-header-template", viewModel);
+  }
+
+  /**
+   * Mount popup sort toolbar (or fallback error toolbar) from strict showPopupSort state.
+   * @param {Object|null|undefined} state
+   * @param {Object|null|undefined} viewModel
+   */
+  function mountPopupSortToolbar(state, viewModel) {
+    var safeState = normalizePopupState(state);
+    var showPopupSort = safeState.options.showPopupSort === true;
+    var templateId = showPopupSort ? "popup-sort-toolbar-template" : "popup-sort-toolbar-error-template";
+    syncTemplateMount("popup-sort-toolbar-mount", templateId, viewModel);
+  }
+
   function levenshteinWithin(source, query, limit) {
     var left = source.toLowerCase();
     var right = query.toLowerCase();
@@ -443,6 +519,8 @@ document.addEventListener("DOMContentLoaded", function() {
     });
 
     self.applyState = function(state) {
+      mountPopupHeaderIfEnabled(state, self);
+      mountPopupSortToolbar(state, self);
       self.opts.apply(state.options);
       self.activeProfile(state.options.activeProfile);
       self.profiles.localProfiles(state.profiles && state.profiles.localProfiles ? true : false);
@@ -945,8 +1023,28 @@ document.addEventListener("DOMContentLoaded", function() {
 
   _.defer(function() {
     var vm = new ExtensityViewModel();
+    vm._popupBindingsReady = false;
     ko.bindingProvider.instance = new ko.secureBindingsProvider({});
-    ko.applyBindings(vm, document.body);
-    vm.refresh();
+
+    ExtensityApi.getState().then(function(payload) {
+      var state = payload && payload.state ? payload.state : null;
+      mountPopupHeaderIfEnabled(state, vm);
+      mountPopupSortToolbar(state, vm);
+      ko.applyBindings(vm, document.body);
+      vm._popupBindingsReady = true;
+
+      if (state) {
+        vm.applyState(state);
+        return;
+      }
+
+      vm.refresh();
+    }).catch(function() {
+      mountPopupHeaderIfEnabled(null, vm);
+      mountPopupSortToolbar(null, vm);
+      ko.applyBindings(vm, document.body);
+      vm._popupBindingsReady = true;
+      vm.refresh();
+    });
   });
 });

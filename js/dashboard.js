@@ -19,6 +19,67 @@ document.addEventListener("DOMContentLoaded", function() {
     style.setProperty("--popup-width", numericOption(options.popupWidthPx, 380) + "px");
   }
 
+  function normalizeMapValues(map) {
+    var source = ExtensityStorage.isObject(map) ? map : {};
+    var result = {};
+    Object.keys(source).sort().forEach(function(key) {
+      result[key] = ExtensityStorage.uniqueArray(source[key] || []).slice().sort();
+    });
+    return result;
+  }
+
+  function stableStringify(value) {
+    var sorted = function(input) {
+      if (Array.isArray(input)) {
+        return input.map(sorted);
+      }
+      if (!ExtensityStorage.isObject(input)) {
+        return input;
+      }
+      return Object.keys(input).sort().reduce(function(result, key) {
+        result[key] = sorted(input[key]);
+        return result;
+      }, {});
+    };
+    return JSON.stringify(sorted(value));
+  }
+
+  function readStorageArea(area, keysOrDefaults) {
+    return new Promise(function(resolve, reject) {
+      chrome.storage[area].get(keysOrDefaults, function(payload) {
+        if (chrome.runtime.lastError) {
+          reject(new Error(chrome.runtime.lastError.message));
+          return;
+        }
+        resolve(payload || {});
+      });
+    });
+  }
+
+  function setStorageArea(area, values) {
+    return new Promise(function(resolve, reject) {
+      chrome.storage[area].set(values, function() {
+        if (chrome.runtime.lastError) {
+          reject(new Error(chrome.runtime.lastError.message));
+          return;
+        }
+        resolve();
+      });
+    });
+  }
+
+  function removeStorageArea(area, keys) {
+    return new Promise(function(resolve, reject) {
+      chrome.storage[area].remove(keys, function() {
+        if (chrome.runtime.lastError) {
+          reject(new Error(chrome.runtime.lastError.message));
+          return;
+        }
+        resolve();
+      });
+    });
+  }
+
   function GroupEditor(group) {
     var self = this;
     self.id = ko.observable(group.id || ExtensityStorage.makeId("group"));
@@ -173,15 +234,39 @@ document.addEventListener("DOMContentLoaded", function() {
     self.rulesTab = ko.pureComputed(function() { return self.activeTab() === "rules"; });
     self.aliasesTab = ko.pureComputed(function() { return self.activeTab() === "aliases"; });
     self.dataTab = ko.pureComputed(function() { return self.activeTab() === "data"; });
+    self.syncStatusTab = ko.pureComputed(function() { return self.activeTab() === "sync"; });
     self.aboutTab = ko.pureComputed(function() { return self.activeTab() === "about"; });
     self.showTabHistory = function() { self.activeTab("history"); };
     self.showTabGroups = function() { self.activeTab("groups"); };
     self.showTabRules = function() { self.activeTab("rules"); };
     self.showTabAliases = function() { self.activeTab("aliases"); };
     self.showTabData = function() { self.activeTab("data"); };
+    self.showTabSyncStatus = function() { self.activeTab("sync"); };
     self.showTabAbout = function() { self.activeTab("about"); };
     self.appVersion = ko.observable("");
     self.needsWebStorePermission = ko.observable(false);
+    self.syncStatus = ko.observable("unknown");
+    self.syncStatusDetails = ko.observable('Click "Check sync status" to verify browser sync consistency.');
+    self.syncStatusCheckedAt = ko.observable(null);
+    self.syncStatusLabel = ko.pureComputed(function() {
+      var map = {
+        error: "Sync Error",
+        not_connected: "Not Connected",
+        synced: "Synced",
+        unknown: "Not checked yet"
+      };
+      return map[self.syncStatus()] || "Not checked yet";
+    });
+    self.syncStatusIndicatorClass = ko.pureComputed(function() {
+      return "sync-status-indicator sync-status-" + self.syncStatus();
+    });
+    self.syncStatusCheckedAtLabel = ko.pureComputed(function() {
+      var value = self.syncStatusCheckedAt();
+      if (!value) {
+        return "";
+      }
+      return "Last checked: " + value.toLocaleString();
+    });
 
     self.checkWebStorePermission = function() {
       chrome.permissions.contains(
@@ -484,6 +569,78 @@ document.addEventListener("DOMContentLoaded", function() {
       self.performAction(ExtensityApi.syncDrive()).then(function() {
         self.message("Drive sync completed.");
       }).catch(function() {});
+    };
+
+    self.checkSyncStatus = function() {
+      self.busy(true);
+      self.error("");
+      self.message("");
+      Promise.resolve().then(function() {
+        var heartbeatKey = "__extensity_sync_status_probe__";
+        var heartbeatValue = String(Date.now());
+        return setStorageArea("sync", { __extensity_sync_status_probe__: heartbeatValue }).then(function() {
+          return readStorageArea("sync", [heartbeatKey]);
+        }).then(function(payload) {
+          if (payload[heartbeatKey] !== heartbeatValue) {
+            throw new Error("Browser sync returned an unexpected verification value.");
+          }
+        }).then(function() {
+          return removeStorageArea("sync", [heartbeatKey]);
+        }).then(function() {
+          return Promise.all([
+            ExtensityApi.getState(),
+            readStorageArea("sync", ExtensityStorage.getSyncDefaults())
+          ]);
+        }).then(function(results) {
+          var statePayload = results[0] || {};
+          var syncPayload = results[1] || {};
+          var state = statePayload.state || {};
+          var localState = state.localState || {};
+          var stateOptions = self.options.toJS();
+          var syncDefaults = ExtensityStorage.getSyncDefaults();
+          var expectedSyncOptions = {};
+          var syncKeys = Object.keys(syncDefaults);
+          var profilesSource = localState.profiles || {};
+          var profileMetaSource = localState.profileMeta || {};
+          var localProfilesEnabled = !!syncPayload.localProfiles;
+          var mismatchReason = "";
+          var optionsMismatch = false;
+          var profilesMismatch = false;
+
+          syncKeys.forEach(function(key) {
+            expectedSyncOptions[key] = stateOptions[key];
+          });
+          optionsMismatch = stableStringify(expectedSyncOptions) !== stableStringify(syncPayload);
+          if (localProfilesEnabled) {
+            mismatchReason = "Profiles are currently stored locally, not in browser sync.";
+          } else {
+            profilesMismatch = stableStringify(normalizeMapValues(syncPayload.profiles || {})) !== stableStringify(normalizeMapValues(profilesSource));
+            profilesMismatch = profilesMismatch || stableStringify(syncPayload.profileMeta || {}) !== stableStringify(profileMetaSource);
+          }
+
+          if (optionsMismatch || profilesMismatch || mismatchReason) {
+            self.syncStatus("error");
+            self.syncStatusDetails(mismatchReason || "Settings or profiles differ from browser sync storage.");
+            self.message("");
+            return;
+          }
+
+          self.syncStatus("synced");
+          self.syncStatusDetails("Settings and profiles match browser sync storage.");
+          self.message("Browser sync is healthy.");
+        });
+      }).catch(function(error) {
+        var message = error && error.message ? error.message : "Failed to query browser sync.";
+        var lower = message.toLowerCase();
+        var disconnected = lower.indexOf("sync is disabled") !== -1 ||
+          lower.indexOf("not signed in") !== -1 ||
+          lower.indexOf("storage is disabled") !== -1;
+        self.syncStatus(disconnected ? "not_connected" : "error");
+        self.syncStatusDetails(message);
+      }).finally(function() {
+        self.syncStatusCheckedAt(new Date());
+        self.busy(false);
+      });
     };
   }
 

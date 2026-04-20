@@ -45,6 +45,7 @@
       <button type="button" title="Manage automatic URL-based rules" data-sbind="click: showTabRules, css:{selected: rulesTab}">URL Rules</button>
       <button type="button" title="Edit extension aliases" data-sbind="click: showTabAliases, css:{selected: aliasesTab}">Aliases</button>
       <button type="button" title="Import and export extension data" data-sbind="click: showTabData, css:{selected: dataTab}">Import / Export</button>
+      <button type="button" title="Verify browser sync health for settings and profiles" data-sbind="click: showTabSyncStatus, css:{selected: syncStatusTab}">Sync Status</button>
       <button type="button" title="About Extensity-Plus" data-sbind="click: showTabAbout, css:{selected: aboutTab}">About</button>
     </div>
 
@@ -210,6 +211,18 @@
       <div class="field">
         <label for="dashboard-import">Import JSON backup</label>
         <input type="file" id="dashboard-import" accept=".json,application/json" data-sbind="event:{change: importJson}" />
+      </div>
+    </section>
+
+    <section class="dashboard-section" data-sbind="visible: syncStatusTab">
+      <h2>Sync Status</h2>
+      <div class="card sync-status-card">
+        <div class="card-row">
+          <button type="button" title="Check browser sync consistency" data-sbind="click: checkSyncStatus, enable: !busy()">Check sync status</button>
+          <span class="event-meta" data-sbind="visible: syncStatusCheckedAt, text: syncStatusCheckedAtLabel"></span>
+        </div>
+        <p class="sync-status-indicator" data-sbind="css: syncStatusIndicatorClass, text: syncStatusLabel"></p>
+        <p class="event-meta" data-sbind="visible: syncStatusDetails, text: syncStatusDetails"></p>
       </div>
     </section>
 

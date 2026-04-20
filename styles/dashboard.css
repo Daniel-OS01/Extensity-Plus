@@ -276,6 +276,38 @@ body.dark-mode {
   margin-top: 20px;
 }
 
+#dashboard-page .sync-status-card {
+  margin-top: 0;
+}
+
+#dashboard-page .sync-status-indicator {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: bold;
+  margin: 0 0 8px;
+  padding: 10px 12px;
+}
+
+#dashboard-page .sync-status-synced {
+  background: rgba(42, 173, 124, 0.12);
+  border-color: rgba(42, 173, 124, 0.35);
+  color: #2aad7c;
+}
+
+#dashboard-page .sync-status-error,
+#dashboard-page .sync-status-not_connected {
+  background: rgba(178, 67, 67, 0.1);
+  border-color: rgba(178, 67, 67, 0.32);
+  color: var(--danger);
+}
+
+#dashboard-page .sync-status-unknown {
+  background: rgba(74, 144, 217, 0.1);
+  border-color: rgba(74, 144, 217, 0.28);
+  color: var(--accent);
+}
+
 @media (max-width: 900px) {
   #dashboard-page .rule-columns {
     grid-template-columns: 1fr;

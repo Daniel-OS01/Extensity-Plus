@@ -115,6 +115,35 @@ test("buildBackupEnvelope records correct enabled boolean for each extension", (
   assert.equal(envelope.localState.extensionStates["off-ext"], false);
 });
 
+test("buildScopedExport supports profiles-only, settings-only, and profiles+settings exports", () => {
+  const root = loadImportExport();
+  const input = makeInput({
+    options: { activeProfile: "Work", sortMode: "alpha" },
+    profiles: { map: { Work: ["ext-1"], __always_on: [], __favorites: [] } }
+  });
+
+  const profilesOnly = root.ExtensityImportExport.buildScopedExport(input, "profiles");
+  assert.deepEqual(normalize(Object.keys(profilesOnly).sort()), ["exportedAt", "profiles", "version"]);
+  assert.deepEqual(normalize(profilesOnly.profiles), { Work: ["ext-1"], __always_on: [], __favorites: [] });
+
+  const settingsOnly = root.ExtensityImportExport.buildScopedExport(input, "settings");
+  assert.deepEqual(normalize(Object.keys(settingsOnly).sort()), ["exportedAt", "settings", "version"]);
+  assert.deepEqual(normalize(settingsOnly.settings), { activeProfile: "Work", sortMode: "alpha" });
+
+  const profilesAndSettings = root.ExtensityImportExport.buildScopedExport(input, "profiles_settings");
+  assert.deepEqual(normalize(Object.keys(profilesAndSettings).sort()), ["exportedAt", "profiles", "settings", "version"]);
+  assert.deepEqual(normalize(profilesAndSettings.settings), { activeProfile: "Work", sortMode: "alpha" });
+  assert.deepEqual(normalize(profilesAndSettings.profiles), { Work: ["ext-1"], __always_on: [], __favorites: [] });
+});
+
+test("buildScopedExport rejects unknown export scopes", () => {
+  const root = loadImportExport();
+  assert.throws(
+    () => root.ExtensityImportExport.buildScopedExport(makeInput(), "unsupported"),
+    /Unknown export scope/
+  );
+});
+
 // --- validateBackupEnvelope ---
 
 test("validateBackupEnvelope rejects unsupported version strings", () => {

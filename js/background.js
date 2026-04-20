@@ -1518,10 +1518,11 @@ importScripts(
     );
   }
 
-  async function exportBackup() {
+  async function exportBackup(payload) {
     var state = await buildState();
+    var scope = payload && payload.exportScope ? payload.exportScope : "full";
     return {
-      envelope: importExport.buildBackupEnvelope(state)
+      envelope: importExport.buildScopedExport(state, scope)
     };
   }
 
@@ -1725,7 +1726,7 @@ importScripts(
       case "ASSIGN_EXTENSION_PROFILE":
         return { state: await assignExtensionProfile(message.extensionId, message.profileName) };
       case "EXPORT_BACKUP":
-        return await exportBackup();
+        return await exportBackup(message);
       case "GET_EXTENSION_METADATA":
         return await getExtensionMetadataPayload(message);
       case "GET_STATE":

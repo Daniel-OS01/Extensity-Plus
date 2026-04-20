@@ -1,4 +1,50 @@
 document.addEventListener("DOMContentLoaded", function() {
+  function syncTemplateMount(mountId, templateId, viewModel) {
+    var mountNode = document.getElementById(mountId);
+    if (!mountNode) {
+      return;
+    }
+
+    var currentTemplateId = mountNode.getAttribute("data-template-id") || "";
+    var nextTemplateId = templateId || "";
+    if (currentTemplateId === nextTemplateId) {
+      return;
+    }
+
+    if (!templateId) {
+      mountNode.textContent = "";
+      mountNode.setAttribute("data-template-id", "");
+      return;
+    }
+
+    var templateNode = document.getElementById(templateId);
+    if (!templateNode || !templateNode.content) {
+      return;
+    }
+
+    mountNode.textContent = "";
+    mountNode.setAttribute("data-template-id", nextTemplateId);
+    mountNode.appendChild(templateNode.content.cloneNode(true));
+    if (viewModel && typeof ko.applyBindingsToDescendants === "function") {
+      ko.applyBindingsToDescendants(viewModel, mountNode);
+    }
+  }
+
+  function mountPopupHeaderIfEnabled(state, viewModel) {
+    if (!state || !state.options || state.options.showHeader !== true) {
+      syncTemplateMount("popup-header-mount", null, viewModel);
+      return;
+    }
+
+    syncTemplateMount("popup-header-mount", "popup-header-template", viewModel);
+  }
+
+  function mountPopupSortToolbar(state, viewModel) {
+    var showPopupSort = state && state.options && state.options.showPopupSort === true;
+    var templateId = showPopupSort ? "popup-sort-toolbar-template" : "popup-sort-toolbar-error-template";
+    syncTemplateMount("popup-sort-toolbar-mount", templateId, viewModel);
+  }
+
   function levenshteinWithin(source, query, limit) {
     var left = source.toLowerCase();
     var right = query.toLowerCase();
@@ -443,6 +489,8 @@ document.addEventListener("DOMContentLoaded", function() {
     });
 
     self.applyState = function(state) {
+      mountPopupHeaderIfEnabled(state, self);
+      mountPopupSortToolbar(state, self);
       self.opts.apply(state.options);
       self.activeProfile(state.options.activeProfile);
       self.profiles.localProfiles(state.profiles && state.profiles.localProfiles ? true : false);
@@ -946,7 +994,24 @@ document.addEventListener("DOMContentLoaded", function() {
   _.defer(function() {
     var vm = new ExtensityViewModel();
     ko.bindingProvider.instance = new ko.secureBindingsProvider({});
-    ko.applyBindings(vm, document.body);
-    vm.refresh();
+
+    ExtensityApi.getState().then(function(payload) {
+      var state = payload && payload.state ? payload.state : null;
+      mountPopupHeaderIfEnabled(state);
+      mountPopupSortToolbar(state);
+      ko.applyBindings(vm, document.body);
+
+      if (state) {
+        vm.applyState(state);
+        return;
+      }
+
+      vm.refresh();
+    }).catch(function() {
+      mountPopupHeaderIfEnabled(null);
+      mountPopupSortToolbar(null);
+      ko.applyBindings(vm, document.body);
+      vm.refresh();
+    });
   });
 });

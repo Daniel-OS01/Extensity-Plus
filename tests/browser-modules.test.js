@@ -2767,6 +2767,9 @@ test("popup rows expose direct profile membership and sort handlers", async () =
           setProperty() {}
         }
       },
+      getElementById() {
+        return null;
+      },
       querySelectorAll() {
         return [];
       }

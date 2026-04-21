@@ -55,7 +55,10 @@
     urlRuleTimeoutMinutes: 0,
     accentColor: "#4a90d9",
     popupBgColor: "#1e2530",
-    fontFamily: ""
+    fontFamily: "",
+    cacheManagementItems: true,
+    managementCacheTtlSeconds: 10,
+    pinMethod: "auto"
   };
 
   var localDefaults = {
@@ -228,14 +231,19 @@
   }
 
   async function loadProfiles() {
-    var syncState = await getArea("sync", { localProfiles: false });
-    var area = syncState.localProfiles ? "local" : "sync";
-    var payload = await getArea(area, { profiles: {}, profileMeta: {} });
+    var both = await Promise.all([
+      getArea("sync", { localProfiles: false, profiles: {}, profileMeta: {} }),
+      getArea("local", { profiles: {}, profileMeta: {} })
+    ]);
+    var syncData = both[0];
+    var localData = both[1];
+    var useLocal = !!syncData.localProfiles;
+    var payload = useLocal ? localData : syncData;
     var map = normalizeProfileMap(payload.profiles);
     var meta = isObject(payload.profileMeta) ? payload.profileMeta : {};
     return {
       items: profileMapToItems(map, meta),
-      localProfiles: !!syncState.localProfiles,
+      localProfiles: useLocal,
       map: map,
       meta: meta
     };

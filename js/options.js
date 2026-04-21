@@ -110,6 +110,7 @@ document.addEventListener("DOMContentLoaded", function() {
     normalized.popupProfilePillShowIcons = normalized.popupProfilePillShowIcons === true;
     normalized.popupProfilePillTextMode = normalizePopupTextMode(normalized.popupProfilePillTextMode);
     normalized.popupTableActionPanelPosition = normalizePopupPanelPosition(normalized.popupTableActionPanelPosition);
+    normalized.pinMethod = normalizeEnum(normalized.pinMethod, ["auto", "manual"], "auto");
     return normalized;
   }
 
@@ -230,10 +231,78 @@ document.addEventListener("DOMContentLoaded", function() {
       });
     };
 
-    self.syncDrive = function() {
-      self.performAction(ExtensityApi.syncDrive()).then(function() {
-        self.message("Drive sync completed.");
-      }).catch(function() {});
+  }
+
+  function attachSyncStatusMethods(self) {
+    self.syncStatus = ko.observable("");
+    self.syncStatusReason = ko.observable("");
+    self.syncStatusTimestamp = ko.observable(0);
+
+    self.syncStatusLabel = ko.pureComputed(function() {
+      var status = self.syncStatus();
+      if (!status) { return ""; }
+      var labels = { synced: "Synced", error: "Error", not_connected: "Not connected" };
+      var reason = self.syncStatusReason();
+      var base = labels[status] || status;
+      return reason ? base + ": " + reason : base;
+    });
+
+    self.checkBrowserSyncStatus = function() {
+      self.syncStatus("checking");
+      self.syncStatusReason("");
+      self.syncStatusTimestamp(0);
+
+      if (!chrome.storage || !chrome.storage.sync || typeof chrome.storage.sync.get !== "function") {
+        self.syncStatus("not_connected");
+        self.syncStatusReason("Browser sync storage is unavailable in this environment.");
+        self.syncStatusTimestamp(Date.now());
+        return;
+      }
+
+      chrome.storage.sync.get(["profiles", "localProfiles"], function(syncData) {
+        var syncError = chrome.runtime.lastError;
+        if (syncError) {
+          self.syncStatus("not_connected");
+          self.syncStatusReason("Could not access browser sync storage: " + syncError.message);
+          self.syncStatusTimestamp(Date.now());
+          return;
+        }
+
+        var optionsKeys = self.options.keys || [];
+        chrome.storage.sync.get(optionsKeys, function(optionsData) {
+          var optionsError = chrome.runtime.lastError;
+          if (optionsError) {
+            self.syncStatus("error");
+            self.syncStatusReason("Could not read sync settings data: " + optionsError.message);
+            self.syncStatusTimestamp(Date.now());
+            return;
+          }
+
+          var missingOptions = optionsKeys.filter(function(key) {
+            return typeof optionsData[key] === "undefined";
+          });
+          var localProfilesEnabled = !!syncData.localProfiles;
+          var profiles = syncData.profiles;
+          var profilesInSync = profiles && typeof profiles === "object" && !Array.isArray(profiles);
+          var hasMissingData = missingOptions.length > 0 || (!localProfilesEnabled && !profilesInSync);
+
+          if (localProfilesEnabled) {
+            self.syncStatus("error");
+            self.syncStatusReason("Profiles are local-only because sync quota fallback is active.");
+          } else if (hasMissingData) {
+            self.syncStatus("error");
+            if (!profilesInSync) {
+              self.syncStatusReason("Profiles are missing from sync storage.");
+            } else {
+              self.syncStatusReason("Some settings keys are missing from sync storage: " + missingOptions.slice(0, 5).join(", "));
+            }
+          } else {
+            self.syncStatus("synced");
+            self.syncStatusReason("Settings and profiles are present in browser sync storage.");
+          }
+          self.syncStatusTimestamp(Date.now());
+        });
+      });
     };
   }
 
@@ -301,6 +370,7 @@ document.addEventListener("DOMContentLoaded", function() {
     attachPermissionMethods(self);
     attachDataMethods(self);
     attachPresetMethods(self);
+    attachSyncStatusMethods(self);
 
     self.applyState = function(state) {
       var profileItems = state && state.profiles && Array.isArray(state.profiles.items)

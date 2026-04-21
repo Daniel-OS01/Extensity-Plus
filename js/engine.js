@@ -282,6 +282,23 @@
     return PROFILE_ICONS[Math.floor(Math.random() * PROFILE_ICONS.length)];
   }
 
+  function hashProfileName(name) {
+    var h = 5381;
+    var str = String(name || "");
+    for (var i = 0; i < str.length; i++) {
+      h = ((h << 5) + h + str.charCodeAt(i)) | 0;
+    }
+    return Math.abs(h);
+  }
+
+  function deterministicProfileColor(name) {
+    return PROFILE_COLORS[hashProfileName(name) % PROFILE_COLORS.length];
+  }
+
+  function deterministicProfileIcon(name) {
+    return PROFILE_ICONS[(hashProfileName(name) >> 3) % PROFILE_ICONS.length];
+  }
+
   function ProfileModel(name, items, meta) {
     var self = this;
     var m = meta || {};
@@ -315,7 +332,7 @@
 
     self.popupLabel = ko.observable(self.short_name());
 
-    self.userIcon = ko.observable(m.icon || m.emoji || randomProfileIcon());
+    self.userIcon = ko.observable(m.icon || m.emoji || deterministicProfileIcon(name));
 
     self.icon = ko.pureComputed(function() {
       return reservedIcons[self.name()] || self.userIcon();
@@ -325,7 +342,7 @@
       return self.items().indexOf(extensionId) !== -1;
     };
 
-    self.color = ko.observable(m.color || randomProfileColor());
+    self.color = ko.observable(m.color || deterministicProfileColor(name));
 
     self.rename = function(nextName) {
       var trimmed = (nextName || "").trim();

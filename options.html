@@ -150,10 +150,25 @@
       </fieldset>
 
       <fieldset class="settings-card">
-        <legend>Cloud Sync</legend>
-        <div class="field"><input type="checkbox" id="driveSync" data-sbind="checked: options.driveSync" /><label for="driveSync">Enable Google Drive backup</label></div>
-        <div class="field"><span class="muted">Cloud Sync is a future feature and is not implemented in this build yet.</span></div>
-        <div class="field action-row"><button type="button" title="Sync your backup to Google Drive now" data-sbind="click: syncDrive">Sync now</button></div>
+        <legend>Performance</legend>
+        <div class="field"><input type="checkbox" id="cacheManagementItems" data-sbind="checked: options.cacheManagementItems" /><label for="cacheManagementItems">Cache extension list for faster popup</label></div>
+        <div class="field"><label for="managementCacheTtlSeconds">Cache duration (seconds)</label><input type="number" min="2" max="60" id="managementCacheTtlSeconds" data-sbind="value: options.managementCacheTtlSeconds" /></div>
+      </fieldset>
+
+      <fieldset class="settings-card">
+        <legend>Toolbar Pinning</legend>
+        <div class="field"><label for="pinMethod">Pin to toolbar method</label><select id="pinMethod" data-sbind="value: options.pinMethod"><option value="auto">Automatic (use debugger, fall back to manual)</option><option value="manual">Manual (always open extension page)</option></select></div>
+      </fieldset>
+
+      <fieldset class="settings-card">
+        <legend>Browser Sync</legend>
+        <div class="field"><span class="muted">Settings and profiles sync via Chrome Sync when available. Google Drive backup is not yet enabled in this build.</span></div>
+        <div class="field action-row">
+          <button type="button" title="Check if your settings and profiles are present in browser sync storage" data-sbind="click: checkBrowserSyncStatus">Check sync status</button>
+        </div>
+        <div class="field" data-sbind="visible: syncStatusLabel">
+          <span data-sbind="text: syncStatusLabel"></span>
+        </div>
       </fieldset>
 
       <fieldset class="settings-card">

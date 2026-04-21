@@ -21,6 +21,21 @@ importScripts(
   var tabRuleApplications = {};
   var metadataCacheTtlMs = 7 * 24 * 60 * 60 * 1000;
   var webStorePermissionOrigin = "https://chromewebstore.google.com/*";
+  var _mgmtCache = null;
+  var _mgmtCacheTime = 0;
+  var _mgmtCacheEnabled = true;
+  var _mgmtCacheTtlMs = 10000;
+
+  function applyCacheOptions(opts) {
+    _mgmtCacheEnabled = opts && opts.cacheManagementItems !== false;
+    var ttl = opts && typeof opts.managementCacheTtlSeconds === "number" ? opts.managementCacheTtlSeconds : 10;
+    _mgmtCacheTtlMs = Math.max(2, ttl) * 1000;
+  }
+
+  function invalidateManagementCache() {
+    _mgmtCache = null;
+    _mgmtCacheTime = 0;
+  }
 
   function chromeCall(target, method, args) {
     return new Promise(function(resolve, reject) {
@@ -575,12 +590,19 @@ importScripts(
   }
 
   async function getAllManagementItems() {
+    var now = Date.now();
+    if (_mgmtCache && _mgmtCacheEnabled && (now - _mgmtCacheTime) < _mgmtCacheTtlMs) {
+      return _mgmtCache;
+    }
     var items = await chromeCall(chrome.management, "getAll", []);
-    return filterManagedItems(items);
+    _mgmtCache = filterManagedItems(items);
+    _mgmtCacheTime = Date.now();
+    return _mgmtCache;
   }
 
   async function setExtensionEnabled(extensionId, enabled) {
     await chromeCall(chrome.management, "setEnabled", [extensionId, enabled]);
+    invalidateManagementCache();
   }
 
   async function uninstallExtension(extensionId) {
@@ -753,13 +775,16 @@ importScripts(
       "      return false;",
       "    }",
       "  }",
-      "  var hostSelectors = ['extensions-toggle-row#pin-to-toolbar', '#pin-to-toolbar'];",
+      "  var hostSelectors = ['extensions-toggle-row#pin-to-toolbar', '#pin-to-toolbar', 'extensions-toggle-row'];",
       "  var controlSelectors = [",
       "    '#pin-to-toolbar [role=\"switch\"]',",
       "    '#pin-to-toolbar button[role=\"switch\"]',",
       "    '#pin-to-toolbar cr-toggle',",
       "    '#pin-to-toolbar leo-toggle button',",
       "    '#pin-to-toolbar leo-toggle [role=\"switch\"]',",
+      "    '#pin-to-toolbar-button',",
+      "    'cr-icon-button[aria-label*=\"Pin\"]',",
+      "    '[aria-label*=\"Pin to\"]',",
       "    '[role=\"switch\"]',",
       "    'button[role=\"switch\"]',",
       "    'cr-toggle',",
@@ -769,11 +794,22 @@ importScripts(
       "  var host = walkTree(document, function(node) {",
       "    return matchesAny(node, hostSelectors);",
       "  });",
+      "  if (!host) {",
+      "    host = walkTree(document, function(node) {",
+      "      if (!node || !node.getAttribute) { return false; }",
+      "      var label = node.getAttribute('aria-label') || node.getAttribute('aria-labelledby') || '';",
+      "      return /pin.+toolbar/i.test(label);",
+      "    });",
+      "  }",
       "  var control = host ? walkTree(host, function(node) {",
       "    return matchesAny(node, controlSelectors);",
       "  }) : null;",
       "  if (!control && host && matchesAny(host, controlSelectors)) {",
       "    control = host;",
+      "  }",
+      "  if (control && (control.tagName === 'CR-TOGGLE' || control.tagName === 'LEO-TOGGLE')) {",
+      "    var innerBtn = control.shadowRoot && control.shadowRoot.querySelector('button, [role=\"switch\"]');",
+      "    if (innerBtn) { control = innerBtn; }",
       "  }",
       "  var state = readSwitchState(control);",
       "  if (state === null) {",
@@ -882,13 +918,15 @@ importScripts(
   async function waitForToolbarPinState(target, predicate, timeoutMs) {
     var deadline = Date.now() + timeoutMs;
     var lastState = null;
+    var attempts = 0;
 
     while (Date.now() < deadline) {
       lastState = await evaluateToolbarPinState(target, false);
       if (!predicate || predicate(lastState)) {
         return lastState;
       }
-      await wait(150);
+      await wait(attempts === 0 ? 50 : 150);
+      attempts += 1;
     }
 
     return lastState;
@@ -1359,6 +1397,7 @@ importScripts(
 
   async function saveOptions(payload) {
     var nextOptions = await storage.saveSyncOptions(payload.options || {});
+    applyCacheOptions(nextOptions);
     var localState = await storage.loadLocalState();
 
     if (!nextOptions.enableReminders) {
@@ -1436,6 +1475,13 @@ importScripts(
 
     if (!extensionId) {
       throw new Error("extensionId is required.");
+    }
+
+    var opts = typeof storage.loadSyncOptions === "function" ? await storage.loadSyncOptions() : {};
+    var pinMethod = opts && opts.pinMethod === "manual" ? "manual" : "auto";
+
+    if (pinMethod === "manual") {
+      return openToolbarPinFallback(extensionId, null, "manual_mode");
     }
 
     if (!hasDebuggerApi()) {
@@ -1800,10 +1846,15 @@ importScripts(
   });
 
   addChromeListener(chrome.management && chrome.management.onInstalled, function(itemInfo) {
+    invalidateManagementCache();
     recordInstallFirstSeen(itemInfo).catch(function(error) {
       console.error("install_first_seen_failed", error);
     });
   });
+
+  addChromeListener(chrome.management && chrome.management.onUninstalled, invalidateManagementCache);
+  addChromeListener(chrome.management && chrome.management.onEnabled, invalidateManagementCache);
+  addChromeListener(chrome.management && chrome.management.onDisabled, invalidateManagementCache);
 
   addChromeListener(chrome.runtime && chrome.runtime.onMessage, function(message, sender, sendResponse) {
     handleMessage(message).then(function(payload) {
@@ -1961,6 +2012,12 @@ importScripts(
   runMigrations().catch(function(error) {
     console.error("initial_migration_failed", error);
   });
+
+  if (typeof storage.loadSyncOptions === "function") {
+    storage.loadSyncOptions().then(applyCacheOptions).catch(function(error) {
+      console.error("cache_options_load_failed", error);
+    });
+  }
 
   root.ExtensityBackground = {
     buildFallbackMetadata: buildFallbackMetadata,

@@ -77,9 +77,9 @@ importScripts(
 
   async function clearUrlRuleTimeoutQueue(queue) {
     var entries = Array.isArray(queue) ? queue : [];
-    for (var index = 0; index < entries.length; index += 1) {
-      await chromeCall(chrome.alarms, "clear", [entries[index].alarmName]);
-    }
+    await Promise.all(entries.map(function(entry) {
+      return chromeCall(chrome.alarms, "clear", [entry.alarmName]);
+    }));
     await storage.saveLocalState({ urlRuleTimeoutQueue: [] });
   }
 

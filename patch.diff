@@ -1,13 +1,14 @@
-<<<<<<< SEARCH
-/* Fix profile-count color in active/hover pill state */
-#profiles ul.items li.active .profile-count,
-#profiles ul.items li:hover .profile-count {
-  color: rgba(255, 255, 255, 0.75);
-}
-=======
-/* Fix profile-count color in active/hover pill state */
-body:not(.profile-pill-icons-only) #profiles ul.items li.active .profile-count,
-body:not(.profile-pill-icons-only) #profiles ul.items li:hover .profile-count {
-  color: rgba(255, 255, 255, 0.75);
-}
->>>>>>> REPLACE
+--- js/background.js	2024-05-24 12:00:00.000000000 -0400
++++ js/background.js	2024-05-24 12:01:00.000000000 -0400
+@@ -77,9 +77,9 @@
+
+   async function clearUrlRuleTimeoutQueue(queue) {
+     var entries = Array.isArray(queue) ? queue : [];
+-    for (var index = 0; index < entries.length; index += 1) {
+-      await chromeCall(chrome.alarms, "clear", [entries[index].alarmName]);
+-    }
++    await Promise.all(entries.map(function(entry) {
++      return chromeCall(chrome.alarms, "clear", [entry.alarmName]);
++    }));
+     await storage.saveLocalState({ urlRuleTimeoutQueue: [] });
+   }

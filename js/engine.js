@@ -30,7 +30,7 @@
   }
 
   function buildPermissionsPageUrl(extensionId) {
-    return buildManageExtensionUrl(extensionId) + "#permissions";
+    return "chrome://settings/content/siteDetails?site=chrome-extension://" + encodeURIComponent(extensionId);
   }
 
   function copyText(value) {

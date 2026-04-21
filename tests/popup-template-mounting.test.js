@@ -54,3 +54,22 @@ test("popup files contain no unresolved merge markers", () => {
   assert.doesNotMatch(html, /^<<<<<<<|^=======|^>>>>>>>/m);
   assert.doesNotMatch(indexScript, /^<<<<<<<|^=======|^>>>>>>>/m);
 });
+
+test("popup favorites section renders as a dedicated divider list", () => {
+  const html = fs.readFileSync(path.join(repoRoot, "index.html"), "utf8");
+  const indexScript = fs.readFileSync(path.join(repoRoot, "js/index.js"), "utf8");
+
+  assert.match(html, /<section id="favorites-section" data-sbind="visible: listedFavorites\.any">/);
+  assert.match(html, /<h1>Favorites<\/h1>/);
+  assert.match(html, /template: \{name: 'item-template', foreach: listedFavorites\}/);
+  assert.match(indexScript, /self\.listedFavorites = ko\.computed\(function\(\) \{/);
+  assert.match(indexScript, /self\.isFavoriteItem = function\(item\) \{/);
+  assert.match(indexScript, /return self\.search\.matchesExtension\(item\) && self\.isFavoriteItem\(item\);/);
+});
+
+test("popup hides content by default until knockout applies loading state", () => {
+  const html = fs.readFileSync(path.join(repoRoot, "index.html"), "utf8");
+
+  assert.match(html, /<section id="content" class="main" style="display:none;" data-sbind="visible: !loading\(\)">/);
+  assert.match(html, /<section id="loading-section" class="main" data-sbind="visible: loading">/);
+});

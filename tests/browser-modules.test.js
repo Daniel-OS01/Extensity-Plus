@@ -2805,31 +2805,29 @@ test("popup rows expose direct profile membership and sort handlers", async () =
   const profileNames = capturedVm.listedProfiles().map((profile) => profile.name());
   const profile = capturedVm.listedProfiles()[0];
   const recentSortedIds = capturedVm.listedExtensions().map((item) => item.id());
-  const extension = capturedVm.listedExtensions().find((item) => item.id() === "ext-1");
+  const extension = capturedVm.listedFavorites().find((item) => item.id() === "ext-1");
   const alwaysOnExtension = capturedVm.listedExtensions().find((item) => item.id() === "ext-ao");
   const listedExtensionIds = capturedVm.listedExtensions().map((item) => item.id());
+  const listedFavoriteIds = capturedVm.listedFavorites().map((item) => item.id());
 
   assert.equal(typeof profile.selectProfile, "function");
   assert.equal(typeof extension.toggleTableRowAction, "function");
   assert.equal(typeof extension.onProfileMembershipChange, "function");
   assert.equal(typeof extension.pinToToolbarAction, "function");
   assert.equal(extension.pinToToolbarTitle(), "Pin to browser toolbar");
-  assert.deepEqual(normalize(listedExtensionIds.slice(0, 6)), ["ext-ao", "ext-alpha", "ext-zeta", "ext-1", "ext-fav-off", "ext-off"]);
+  assert.deepEqual(normalize(listedExtensionIds.slice(0, 6)), ["ext-ao", "ext-alpha", "ext-zeta", "ext-off"]);
+  assert.deepEqual(normalize(listedFavoriteIds.slice(0, 6)), ["ext-1", "ext-fav-off"]);
   assert.equal(extension.showTableRow(), true);
   assert.deepEqual(normalize(recentSortedIds.slice(0, 6)), [
     "ext-ao",
     "ext-alpha",
     "ext-zeta",
-    "ext-1",
-    "ext-fav-off",
     "ext-off"
   ]);
   assert.deepEqual(normalize(capturedVm.listedItems().map((item) => item.id()).slice(0, 6)), [
     "ext-ao",
     "ext-alpha",
     "ext-zeta",
-    "ext-1",
-    "ext-fav-off",
     "ext-off"
   ]);
   assert.deepEqual(normalize(profileNames), ["__always_on", "__base", "__favorites", "Work", "Focus", "Travel", "Home"]);
@@ -2919,8 +2917,6 @@ test("popup rows expose direct profile membership and sort handlers", async () =
     "ext-alpha",
     "ext-ao",
     "ext-zeta",
-    "ext-1",
-    "ext-fav-off",
     "ext-off"
   ]);
 
@@ -2931,8 +2927,6 @@ test("popup rows expose direct profile membership and sort handlers", async () =
     "ext-ao",
     "ext-zeta",
     "ext-alpha",
-    "ext-1",
-    "ext-fav-off",
     "ext-off"
   ]);
 

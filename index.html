@@ -59,7 +59,7 @@
   <p><i class="fa fa-search"></i> <input type="text" data-sbind="value: search.q, valueUpdate: 'keyup'" tabindex="1" autofocus /></p>
 </section>
 
-<section id="content" class="main" data-sbind="visible: !loading()">
+<section id="content" class="main" style="display:none;" data-sbind="visible: !loading()">
   <section id="profiles" data-sbind="if: listedProfiles.any, visible: !search.q">
     <h1>Profiles</h1>
     <ul class="items" data-sbind="foreach: listedProfiles">
@@ -75,6 +75,11 @@
         </div>
       </li>
     </ul>
+  </section>
+
+  <section id="favorites-section" data-sbind="visible: listedFavorites.any">
+    <h1>Favorites</h1>
+    <ul class="items" data-sbind="template: {name: 'item-template', foreach: listedFavorites}"></ul>
   </section>
 
   <section data-sbind="if: opts.appsFirst() && opts.groupApps()">
@@ -101,7 +106,7 @@
   </section>
 </section>
 
-<section class="main" data-sbind="visible: loading">
+<section id="loading-section" class="main" data-sbind="visible: loading">
   <p class="empty">Loading…</p>
 </section>
 

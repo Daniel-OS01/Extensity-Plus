@@ -1,6 +1,6 @@
 {
   "name": "Extensity-Plus",
-  "version": "3.0.1",
+  "version": "3.0.2",
   "manifest_version": 3,
   "description": "Quickly enable/disable Google Chrome extensions",
   "options_ui": {

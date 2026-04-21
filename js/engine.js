@@ -619,8 +619,8 @@
     applyProfile: function(profileName) {
       return chromeMessage({ profileName: profileName, type: "APPLY_PROFILE" });
     },
-    exportBackup: function() {
-      return chromeMessage({ type: "EXPORT_BACKUP" });
+    exportBackup: function(exportScope) {
+      return chromeMessage({ exportScope: exportScope || "full", type: "EXPORT_BACKUP" });
     },
     getState: function() {
       return chromeMessage({ type: "GET_STATE" });

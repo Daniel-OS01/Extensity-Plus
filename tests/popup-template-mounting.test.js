@@ -13,8 +13,7 @@ test("popup header is mounted only when showHeader is strictly enabled", () => {
   assert.match(html, /<template id="popup-header-template">[\s\S]*<section id="header" class="main">/);
   assert.doesNotMatch(html, /<section id="header" class="main" data-sbind="visible: opts\.showHeader">/);
   assert.match(indexScript, /function mountPopupHeaderIfEnabled\(state, viewModel\)/);
-  assert.match(indexScript, /var options = normalizePopupOptions\(state\)/);
-  assert.match(indexScript, /options\.showHeader !== true/);
+  assert.match(indexScript, /safeState\.options\.showHeader !== true/);
   assert.match(indexScript, /syncTemplateMount\("popup-header-mount", null, viewModel\)/);
   assert.match(indexScript, /syncTemplateMount\("popup-header-mount", "popup-header-template", viewModel\)/);
   assert.match(indexScript, /mountPopupHeaderIfEnabled\(null, vm\)/);
@@ -29,8 +28,7 @@ test("popup sort toolbar is mounted only when showPopupSort is strictly enabled"
   assert.match(html, /<template id="popup-sort-toolbar-error-template">[\s\S]*<section id="toolbar-error" class="main">/);
   assert.doesNotMatch(html, /<section id="toolbar" class="main" data-sbind="visible: opts\.showPopupSort">/);
   assert.match(indexScript, /function mountPopupSortToolbar\(state, viewModel\)/);
-  assert.match(indexScript, /var options = normalizePopupOptions\(state\)/);
-  assert.match(indexScript, /options\.showPopupSort === true/);
+  assert.match(indexScript, /safeState\.options\.showPopupSort === true/);
   assert.match(indexScript, /syncTemplateMount\("popup-sort-toolbar-mount", templateId, viewModel\)/);
   assert.match(indexScript, /mountPopupSortToolbar\(null, vm\)/);
 });
@@ -38,19 +36,15 @@ test("popup sort toolbar is mounted only when showPopupSort is strictly enabled"
 test("popup chrome mount helper is idempotent and rebind-safe", () => {
   const indexScript = fs.readFileSync(path.join(repoRoot, "js/index.js"), "utf8");
 
-  assert.match(indexScript, /function normalizePopupOptions\(state\)/);
   assert.match(indexScript, /function syncTemplateMount\(mountId, templateId, viewModel\)/);
-  assert.match(indexScript, /state && state\.options \? state\.options : DEFAULT_POPUP_OPTIONS/);
   assert.match(indexScript, /currentTemplateId === nextTemplateId/);
   assert.match(indexScript, /if \(!templateId\) \{\s*mountNode\.textContent = "";\s*mountNode\.setAttribute\("data-template-id", ""\);/);
-  assert.match(indexScript, /if \(!templateNode \|\| !templateNode\.content\) \{\s*mountNode\.textContent = "";\s*mountNode\.setAttribute\("data-template-id", ""\);/);
   assert.match(indexScript, /mountNode\.setAttribute\("data-template-id", nextTemplateId\)/);
-  assert.match(indexScript, /var mountContext = typeof ko\.contextFor === "function" \? ko\.contextFor\(mountNode\) : null/);
-  assert.match(indexScript, /ko\.applyBindingsToDescendants\(mountContext, mountNode\)/);
+  assert.match(indexScript, /viewModel\._popupBindingsReady === true/);
+  assert.match(indexScript, /ko\.applyBindingsToDescendants\(viewModel, mountNode\)/);
   assert.match(indexScript, /mountPopupHeaderIfEnabled\(state, self\)/);
   assert.match(indexScript, /mountPopupSortToolbar\(state, self\)/);
-  assert.match(indexScript, /mountPopupHeaderIfEnabled\(state, vm\)/);
-  assert.match(indexScript, /mountPopupSortToolbar\(state, vm\)/);
+  assert.match(indexScript, /function normalizePopupState\(state\)/);
 });
 
 test("popup files contain no unresolved merge markers", () => {

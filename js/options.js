@@ -159,6 +159,14 @@ document.addEventListener("DOMContentLoaded", function() {
   }
 
   function attachDataMethods(self) {
+    function downloadBackup(payload, filenamePrefix) {
+      ExtensityIO.downloadText(
+        ExtensityIO.exportFilename(filenamePrefix, "json"),
+        JSON.stringify(payload.envelope, null, 2),
+        "application/json;charset=utf-8"
+      );
+    }
+
     self.lastDriveSyncLabel = ko.pureComputed(function() {
       return formatTimestamp(self.options.lastDriveSync());
     });
@@ -170,11 +178,25 @@ document.addEventListener("DOMContentLoaded", function() {
     });
     self.exportJson = function() {
       self.performAction(ExtensityApi.exportBackup()).then(function(payload) {
-        ExtensityIO.downloadText(
-          ExtensityIO.exportFilename("extensity-plus-backup", "json"),
-          JSON.stringify(payload.envelope, null, 2),
-          "application/json;charset=utf-8"
-        );
+        downloadBackup(payload, "extensity-plus-backup");
+      });
+    };
+
+    self.exportProfilesJson = function() {
+      self.performAction(ExtensityApi.exportBackup("profiles")).then(function(payload) {
+        downloadBackup(payload, "extensity-plus-profiles");
+      });
+    };
+
+    self.exportSettingsJson = function() {
+      self.performAction(ExtensityApi.exportBackup("settings")).then(function(payload) {
+        downloadBackup(payload, "extensity-plus-settings");
+      });
+    };
+
+    self.exportProfilesSettingsJson = function() {
+      self.performAction(ExtensityApi.exportBackup("profiles_settings")).then(function(payload) {
+        downloadBackup(payload, "extensity-plus-profiles-settings");
       });
     };
 

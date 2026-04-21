@@ -3,6 +3,24 @@ document.addEventListener("DOMContentLoaded", function() {
     return state && state.options ? state : null;
   }
 
+  function markPopupBindingsReady() {
+    if (!document.body) {
+      return;
+    }
+
+    if (document.body.classList && typeof document.body.classList.add === "function") {
+      document.body.classList.remove("popup-bindings-pending");
+      document.body.classList.add("popup-bindings-ready");
+      return;
+    }
+
+    var classes = (document.body.className || "").split(/\s+/).filter(function(name) {
+      return !!name && name !== "popup-bindings-pending" && name !== "popup-bindings-ready";
+    });
+    classes.push("popup-bindings-ready");
+    document.body.className = classes.join(" ");
+  }
+
   function syncTemplateMount(mountId, templateId, viewModel) {
     var mountNode = document.getElementById(mountId);
     if (!mountNode) {
@@ -608,7 +626,7 @@ document.addEventListener("DOMContentLoaded", function() {
         self.expandedExtensionId(null);
       }
 
-      document.body.className = self.bodyClass();
+      document.body.className = self.bodyClass() + " popup-bindings-ready";
       document.documentElement.className = self.scrollbarClass();
       if (window.ExtensityTooltips && window.ExtensityTooltips.applyAutoTooltips) {
         window.ExtensityTooltips.applyAutoTooltips(document.body);
@@ -998,6 +1016,18 @@ document.addEventListener("DOMContentLoaded", function() {
       }));
     }).extend({ countable: null });
 
+    self.listedFavoriteItems = ko.computed(function() {
+      return self.listedItems().filter(function(item) {
+        return typeof item.favorite === "function" && item.favorite();
+      });
+    }).extend({ countable: null });
+
+    self.listedNonFavoriteItems = ko.computed(function() {
+      return self.listedItems().filter(function(item) {
+        return !(typeof item.favorite === "function" && item.favorite());
+      });
+    }).extend({ countable: null });
+
     self.listedProfiles = ko.computed(function() {
       return self.profiles.items().filter(self.filterProfile);
     }).extend({ countable: null });
@@ -1023,6 +1053,7 @@ document.addEventListener("DOMContentLoaded", function() {
       mountPopupSortToolbar(state, vm);
       ko.applyBindings(vm, document.body);
       vm._popupBindingsReady = true;
+      markPopupBindingsReady();
 
       if (state) {
         vm.applyState(state);
@@ -1035,6 +1066,7 @@ document.addEventListener("DOMContentLoaded", function() {
       mountPopupSortToolbar(null, vm);
       ko.applyBindings(vm, document.body);
       vm._popupBindingsReady = true;
+      markPopupBindingsReady();
       vm.refresh();
     });
   });

@@ -14,7 +14,7 @@
 <script type="text/javascript" src="js/engine.js"></script>
 <script type="text/javascript" src="js/index.js"></script>
 </head>
-<body class="list-view">
+<body class="list-view popup-bindings-pending">
 <div id="popup-header-mount"></div>
 <template id="popup-header-template">
   <section id="header" class="main">
@@ -54,6 +54,10 @@
     <p class="error" data-sbind="visible: error, text: error"></p>
   </section>
 </template>
+
+<section id="boot-loading" class="main">
+  <p class="empty">Loading…</p>
+</section>
 
 <section id="search" class="main" data-sbind="if: opts.searchBox">
   <p><i class="fa fa-search"></i> <input type="text" data-sbind="value: search.q, valueUpdate: 'keyup'" tabindex="1" autofocus /></p>
@@ -97,8 +101,10 @@
   </section>
 
   <section data-sbind="if: !opts.groupApps()">
-    <h1 data-sbind="visible: listedItems.any">Extensions &amp; Apps</h1>
-    <ul class="items" data-sbind="template: {name: 'item-template', foreach: listedItems}"></ul>
+    <h1 data-sbind="visible: listedFavoriteItems.any">Favorites</h1>
+    <ul class="items" data-sbind="template: {name: 'item-template', foreach: listedFavoriteItems}"></ul>
+    <h1 data-sbind="visible: listedNonFavoriteItems.any">Extensions &amp; Apps</h1>
+    <ul class="items" data-sbind="template: {name: 'item-template', foreach: listedNonFavoriteItems}"></ul>
   </section>
 
   <section data-sbind="visible: emptyItems">

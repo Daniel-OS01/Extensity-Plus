@@ -97,6 +97,18 @@ select {
   font: inherit;
 }
 
+#boot-loading {
+  display: none;
+}
+
+body.popup-bindings-pending [data-sbind] {
+  display: none !important;
+}
+
+body.popup-bindings-pending #boot-loading {
+  display: block;
+}
+
 .main {
   box-sizing: border-box;
   padding: 0 var(--popup-main-padding-x, 12px);

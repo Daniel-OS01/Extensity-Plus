@@ -276,6 +276,54 @@ body.dark-mode {
   margin-top: 20px;
 }
 
+#dashboard-page .sync-status-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 560px;
+  padding: 16px;
+}
+
+#dashboard-page .sync-status-line {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+#dashboard-page .sync-status-badge {
+  border-radius: 999px;
+  display: inline-block;
+  font-size: 12px;
+  font-weight: bold;
+  letter-spacing: 0.01em;
+  padding: 4px 10px;
+  text-transform: uppercase;
+}
+
+#dashboard-page .sync-status-synced {
+  background: rgba(42, 173, 124, 0.15);
+  color: #2aad7c;
+}
+
+#dashboard-page .sync-status-error {
+  background: rgba(178, 67, 67, 0.12);
+  color: var(--danger);
+}
+
+#dashboard-page .sync-status-disconnected {
+  background: rgba(74, 144, 217, 0.12);
+  color: var(--accent);
+}
+
+#dashboard-page .sync-status-note {
+  color: var(--muted);
+  margin: 0;
+}
+
 @media (max-width: 900px) {
   #dashboard-page .rule-columns {
     grid-template-columns: 1fr;

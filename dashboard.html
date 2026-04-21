@@ -45,6 +45,7 @@
       <button type="button" title="Manage automatic URL-based rules" data-sbind="click: showTabRules, css:{selected: rulesTab}">URL Rules</button>
       <button type="button" title="Edit extension aliases" data-sbind="click: showTabAliases, css:{selected: aliasesTab}">Aliases</button>
       <button type="button" title="Import and export extension data" data-sbind="click: showTabData, css:{selected: dataTab}">Import / Export</button>
+      <button type="button" title="Check browser sync status for settings and profiles" data-sbind="click: showTabSyncStatus, css:{selected: syncStatusTab}">Sync Status</button>
       <button type="button" title="About Extensity-Plus" data-sbind="click: showTabAbout, css:{selected: aboutTab}">About</button>
     </div>
 
@@ -203,6 +204,9 @@
       <h2>Import / Export</h2>
       <div class="footer-actions">
         <button type="button" title="Export all Extensity-Plus data as JSON" data-sbind="click: exportJson">Export JSON</button>
+        <button type="button" title="Export profiles only as JSON" data-sbind="click: exportProfilesJson">Export Profiles JSON</button>
+        <button type="button" title="Export settings only as JSON" data-sbind="click: exportSettingsJson">Export Settings JSON</button>
+        <button type="button" title="Export profiles and settings as JSON" data-sbind="click: exportProfilesSettingsJson">Export Profiles + Settings JSON</button>
         <button type="button" title="Export extension data as CSV" data-sbind="click: exportCsv">Export CSV</button>
         <button type="button" title="Sync your backup to Google Drive now" data-sbind="click: syncDrive">Sync Drive</button>
       </div>
@@ -210,6 +214,19 @@
       <div class="field">
         <label for="dashboard-import">Import JSON backup</label>
         <input type="file" id="dashboard-import" accept=".json,application/json" data-sbind="event:{change: importJson}" />
+      </div>
+    </section>
+
+    <section class="dashboard-section" data-sbind="visible: syncStatusTab">
+      <h2>Sync Status</h2>
+      <div class="sync-status-card">
+        <p class="event-meta">Verifies whether Extensity-Plus settings and profiles are available in browser-managed sync storage.</p>
+        <div class="sync-status-line">
+          <span class="sync-status-badge" data-sbind="css: syncStatusBadgeClass, text: syncStatusLabel"></span>
+          <span class="event-meta" data-sbind="visible: syncStatusCheckedAt, text: syncStatusCheckedAt"></span>
+        </div>
+        <p class="sync-status-note" data-sbind="visible: syncStatusReason, text: syncStatusReason"></p>
+        <button type="button" title="Check if settings and profiles are synced via browser sync storage" data-sbind="click: checkSyncStatus, disable: busy">Check sync status</button>
       </div>
     </section>
 

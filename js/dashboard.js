@@ -161,6 +161,26 @@ document.addEventListener("DOMContentLoaded", function() {
     return map[event] || (event || "Info");
   }
 
+  function getSyncStatusLabel(status) {
+    if (status === "synced") {
+      return "Synced";
+    }
+    if (status === "error") {
+      return "Sync Error";
+    }
+    return "Not Connected";
+  }
+
+  function getSyncStatusBadgeClass(status) {
+    if (status === "synced") {
+      return "sync-status-badge sync-status-synced";
+    }
+    if (status === "error") {
+      return "sync-status-badge sync-status-error";
+    }
+    return "sync-status-badge sync-status-disconnected";
+  }
+
   function DashboardViewModel() {
     var self = this;
     self.loading = ko.observable(true);
@@ -173,12 +193,14 @@ document.addEventListener("DOMContentLoaded", function() {
     self.rulesTab = ko.pureComputed(function() { return self.activeTab() === "rules"; });
     self.aliasesTab = ko.pureComputed(function() { return self.activeTab() === "aliases"; });
     self.dataTab = ko.pureComputed(function() { return self.activeTab() === "data"; });
+    self.syncStatusTab = ko.pureComputed(function() { return self.activeTab() === "sync_status"; });
     self.aboutTab = ko.pureComputed(function() { return self.activeTab() === "about"; });
     self.showTabHistory = function() { self.activeTab("history"); };
     self.showTabGroups = function() { self.activeTab("groups"); };
     self.showTabRules = function() { self.activeTab("rules"); };
     self.showTabAliases = function() { self.activeTab("aliases"); };
     self.showTabData = function() { self.activeTab("data"); };
+    self.showTabSyncStatus = function() { self.activeTab("sync_status"); };
     self.showTabAbout = function() { self.activeTab("about"); };
     self.appVersion = ko.observable("");
     self.needsWebStorePermission = ko.observable(false);
@@ -208,6 +230,21 @@ document.addEventListener("DOMContentLoaded", function() {
     self.ruleTesterUrl = ko.observable("");
     self.ruleTestResult = ko.observable(null);
     self.selectedRuleId = ko.observable("");
+    self.syncStatus = ko.observable("not_connected");
+    self.syncStatusReason = ko.observable("Run a check to verify browser sync availability.");
+    self.syncStatusTimestamp = ko.observable(null);
+    self.syncStatusLabel = ko.pureComputed(function() {
+      return getSyncStatusLabel(self.syncStatus());
+    });
+    self.syncStatusBadgeClass = ko.pureComputed(function() {
+      return getSyncStatusBadgeClass(self.syncStatus());
+    });
+    self.syncStatusCheckedAt = ko.pureComputed(function() {
+      if (!self.syncStatusTimestamp()) {
+        return "";
+      }
+      return "Last checked: " + new Date(self.syncStatusTimestamp()).toLocaleString();
+    });
 
     self.filteredHistoryRows = ko.pureComputed(function() {
       var sourceFilter = self.historySourceFilter();
@@ -437,13 +474,35 @@ document.addEventListener("DOMContentLoaded", function() {
       }).catch(function() {});
     };
 
+    function downloadBackup(payload, filenamePrefix) {
+      ExtensityIO.downloadText(
+        ExtensityIO.exportFilename(filenamePrefix, "json"),
+        JSON.stringify(payload.envelope, null, 2),
+        "application/json;charset=utf-8"
+      );
+    }
+
     self.exportJson = function() {
       self.performAction(ExtensityApi.exportBackup()).then(function(payload) {
-        ExtensityIO.downloadText(
-          ExtensityIO.exportFilename("extensity-plus-backup", "json"),
-          JSON.stringify(payload.envelope, null, 2),
-          "application/json;charset=utf-8"
-        );
+        downloadBackup(payload, "extensity-plus-backup");
+      }).catch(function() {});
+    };
+
+    self.exportProfilesJson = function() {
+      self.performAction(ExtensityApi.exportBackup("profiles")).then(function(payload) {
+        downloadBackup(payload, "extensity-plus-profiles");
+      }).catch(function() {});
+    };
+
+    self.exportSettingsJson = function() {
+      self.performAction(ExtensityApi.exportBackup("settings")).then(function(payload) {
+        downloadBackup(payload, "extensity-plus-settings");
+      }).catch(function() {});
+    };
+
+    self.exportProfilesSettingsJson = function() {
+      self.performAction(ExtensityApi.exportBackup("profiles_settings")).then(function(payload) {
+        downloadBackup(payload, "extensity-plus-profiles-settings");
       }).catch(function() {});
     };
 
@@ -484,6 +543,71 @@ document.addEventListener("DOMContentLoaded", function() {
       self.performAction(ExtensityApi.syncDrive()).then(function() {
         self.message("Drive sync completed.");
       }).catch(function() {});
+    };
+
+    self.checkSyncStatus = function() {
+      self.busy(true);
+      self.error("");
+      self.message("");
+
+      if (!chrome.storage || !chrome.storage.sync || typeof chrome.storage.sync.get !== "function") {
+        self.syncStatus("not_connected");
+        self.syncStatusReason("Browser sync storage is unavailable in this environment.");
+        self.syncStatusTimestamp(Date.now());
+        self.busy(false);
+        return;
+      }
+
+      chrome.storage.sync.get(["profiles", "localProfiles"], function(syncData) {
+        var syncError = chrome.runtime.lastError;
+        if (syncError) {
+          self.syncStatus("not_connected");
+          self.syncStatusReason("Could not access browser sync storage: " + syncError.message);
+          self.syncStatusTimestamp(Date.now());
+          self.busy(false);
+          return;
+        }
+
+        var optionsKeys = self.options.keys || [];
+        chrome.storage.sync.get(optionsKeys, function(optionsData) {
+          var optionsError = chrome.runtime.lastError;
+          if (optionsError) {
+            self.syncStatus("error");
+            self.syncStatusReason("Could not read sync settings data: " + optionsError.message);
+            self.syncStatusTimestamp(Date.now());
+            self.busy(false);
+            return;
+          }
+
+          var missingOptions = optionsKeys.filter(function(key) {
+            return typeof optionsData[key] === "undefined";
+          });
+          var localProfilesEnabled = !!syncData.localProfiles;
+          var profiles = syncData.profiles;
+          var profilesInSync = profiles && typeof profiles === "object" && !Array.isArray(profiles);
+          var hasMissingData = missingOptions.length > 0 || (!localProfilesEnabled && !profilesInSync);
+          var reason = "Settings and profiles are present in browser sync storage.";
+
+          if (localProfilesEnabled) {
+            self.syncStatus("error");
+            self.syncStatusReason("Profiles are currently local-only because sync fallback is active.");
+          } else if (hasMissingData) {
+            self.syncStatus("error");
+            if (!profilesInSync) {
+              reason = "Profiles are missing from sync storage.";
+            } else {
+              reason = "Some settings keys are missing from sync storage: " + missingOptions.slice(0, 5).join(", ");
+            }
+            self.syncStatusReason(reason);
+          } else {
+            self.syncStatus("synced");
+            self.syncStatusReason(reason);
+          }
+
+          self.syncStatusTimestamp(Date.now());
+          self.busy(false);
+        });
+      });
     };
   }
 

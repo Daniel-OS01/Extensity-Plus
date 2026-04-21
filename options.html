@@ -141,6 +141,9 @@
         <div class="field action-row">
           <button type="button" title="Open the Extensity dashboard page" data-sbind="click: openDashboard">Open dashboard</button>
           <button type="button" title="Export all Extensity data as JSON" data-sbind="click: exportJson">Export JSON</button>
+          <button type="button" title="Export profiles only as JSON" data-sbind="click: exportProfilesJson">Export Profiles JSON</button>
+          <button type="button" title="Export settings only as JSON" data-sbind="click: exportSettingsJson">Export Settings JSON</button>
+          <button type="button" title="Export profiles and settings as JSON" data-sbind="click: exportProfilesSettingsJson">Export Profiles + Settings JSON</button>
           <button type="button" title="Export extension data as CSV" data-sbind="click: exportCsv">Export CSV</button>
         </div>
         <div class="field"><label for="importJson">Import JSON backup</label><input type="file" id="importJson" accept=".json,application/json" data-sbind="event:{change: importJson}" /></div>

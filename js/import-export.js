@@ -39,6 +39,36 @@
     };
   }
 
+  function buildScopedExport(state, exportScope) {
+    var scope = exportScope || "full";
+    var payload = {
+      version: supportedVersion,
+      exportedAt: Date.now()
+    };
+
+    if (scope === "full") {
+      return buildBackupEnvelope(state);
+    }
+
+    if (scope === "profiles") {
+      payload.profiles = storage.clone(state.profiles.map);
+      return payload;
+    }
+
+    if (scope === "settings") {
+      payload.settings = storage.clone(state.options);
+      return payload;
+    }
+
+    if (scope === "profiles_settings") {
+      payload.profiles = storage.clone(state.profiles.map);
+      payload.settings = storage.clone(state.options);
+      return payload;
+    }
+
+    throw new Error("Unknown export scope: " + scope);
+  }
+
   function validateBackupEnvelope(envelope) {
     if (!envelope || Object.prototype.toString.call(envelope) !== "[object Object]") {
       throw new Error("Backup payload must be a JSON object.");
@@ -94,6 +124,7 @@
 
   root.ExtensityImportExport = {
     buildBackupEnvelope: buildBackupEnvelope,
+    buildScopedExport: buildScopedExport,
     buildExtensionsCsv: buildExtensionsCsv,
     validateBackupEnvelope: validateBackupEnvelope,
     _csvEscape: csvEscape

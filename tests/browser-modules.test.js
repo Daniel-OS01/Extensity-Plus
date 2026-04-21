@@ -308,6 +308,25 @@ test("clampInteger enforces boundaries through utility function", () => {
   assert.equal(clampInteger("4.9", 10, 1, 100), 4);
 });
 
+test("extension settings URL builders encode extension IDs consistently", () => {
+  const root = {};
+  loadBrowserScript(path.join(repoRoot, "js/engine.js"), {
+    ko: { extenders: {} },
+    window: root
+  });
+
+  const extensionId = "abc/def?ghi=1";
+
+  assert.equal(
+    root.ExtensityUtils.buildManageExtensionUrl(extensionId),
+    "chrome://extensions/?id=abc%2Fdef%3Fghi%3D1"
+  );
+  assert.equal(
+    root.ExtensityUtils.buildPermissionsPageUrl(extensionId),
+    "chrome://settings/content/siteDetails?site=chrome-extension://abc%2Fdef%3Fghi%3D1"
+  );
+});
+
 test("extension toggle icon reflects the current enabled state", () => {
   function observable(initial) {
     let value = initial;
@@ -2371,6 +2390,20 @@ test("options page exposes active profile and debug status without unsafe sync i
   );
 });
 
+test("permissions actions use helper URL builder and keep manage-page fallback", () => {
+  const indexScript = fs.readFileSync(path.join(repoRoot, "js/index.js"), "utf8");
+  const profilesScript = fs.readFileSync(path.join(repoRoot, "js/profiles.js"), "utf8");
+
+  assert.match(
+    indexScript,
+    /openPermissionsPage\s*=\s*function\(extension\)\s*\{[\s\S]*buildPermissionsPageUrl\(extension\.id\(\)\)[\s\S]*buildManageExtensionUrl\(extension\.id\(\)\)[\s\S]*\}/
+  );
+  assert.match(
+    profilesScript,
+    /openPermissionsPage\s*=\s*function\(extension\)\s*\{[\s\S]*buildPermissionsPageUrl\(extension\.id\(\)\)[\s\S]*buildManageExtensionUrl\(extension\.id\(\)\)[\s\S]*\}/
+  );
+});
+
 test("popup rows expose direct profile membership and sort handlers", async () => {
   function observable(initialValue) {
     let value = initialValue;
@@ -2422,6 +2455,13 @@ test("popup rows expose direct profile membership and sort handlers", async () =
   const membershipCalls = [];
   const openedTabs = [];
   const toolbarPinCalls = [];
+  let shouldFailPermissionsOpen = true;
+  const runtimeApi = {
+    lastError: null,
+    sendMessage(payload, callback) {
+      callback({ ok: true, payload: {} });
+    }
+  };
   const pinResults = [
     { result: "pinned" },
     { result: "opened_fallback" }
@@ -2660,12 +2700,7 @@ test("popup rows expose direct profile membership and sort handlers", async () =
 
   loadBrowserScript(path.join(repoRoot, "js/engine.js"), {
     chrome: {
-      runtime: {
-        lastError: null,
-        sendMessage(payload, callback) {
-          callback({ ok: true, payload: {} });
-        }
-      },
+      runtime: runtimeApi,
       storage: {
         sync: {
           get(defaults, callback) {
@@ -2677,9 +2712,21 @@ test("popup rows expose direct profile membership and sort handlers", async () =
       tabs: {
         create(details, callback) {
           openedTabs.push(normalize(details));
+          if (
+            shouldFailPermissionsOpen &&
+            details &&
+            typeof details.url === "string" &&
+            details.url.indexOf("chrome://settings/content/siteDetails?site=chrome-extension://") === 0
+          ) {
+            runtimeApi.lastError = { message: "Permission details page unavailable." };
+            shouldFailPermissionsOpen = false;
+          } else {
+            runtimeApi.lastError = null;
+          }
           if (callback) {
             callback({});
           }
+          runtimeApi.lastError = null;
         }
       }
     },
@@ -2883,7 +2930,18 @@ test("popup rows expose direct profile membership and sort handlers", async () =
   });
   await Promise.resolve();
 
-  assert.deepEqual(normalize(openedTabs), []);
+  await extension.openPermissionsAction();
+
+  assert.deepEqual(normalize(openedTabs), [
+    {
+      active: true,
+      url: "chrome://settings/content/siteDetails?site=chrome-extension://ext-1"
+    },
+    {
+      active: true,
+      url: "chrome://extensions/?id=ext-1"
+    }
+  ]);
   assert.deepEqual(normalize(toolbarPinCalls), [
     { extensionId: "ext-1" },
     { extensionId: "ext-1" }

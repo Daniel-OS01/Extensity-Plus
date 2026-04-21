@@ -903,6 +903,10 @@ document.addEventListener("DOMContentLoaded", function() {
       return self.opts.showReserved() && profile.hasItems();
     };
 
+    self.isFavoriteItem = function(item) {
+      return typeof item.favorite === "function" && item.favorite();
+    };
+
     self.sortExtensions = function(items) {
       function compareByName(left, right) {
         var leftName = left.displayName().toUpperCase();
@@ -970,21 +974,27 @@ document.addEventListener("DOMContentLoaded", function() {
 
     self.listedExtensions = ko.computed(function() {
       return self.sortExtensions(self.exts.extensions().filter(function(extension) {
-        return self.search.matchesExtension(extension);
+        return self.search.matchesExtension(extension) && !self.isFavoriteItem(extension);
       }));
     }).extend({ countable: null });
 
     self.listedApps = ko.computed(function() {
       return self.exts.apps().filter(function(app) {
-        return self.search.matchesExtension(app);
+        return self.search.matchesExtension(app) && !self.isFavoriteItem(app);
       }).sort(function(left, right) {
         return left.displayName().toUpperCase().localeCompare(right.displayName().toUpperCase());
       });
     }).extend({ countable: null });
 
+    self.listedFavorites = ko.computed(function() {
+      return self.sortExtensions(self.exts.items().filter(function(item) {
+        return self.search.matchesExtension(item) && self.isFavoriteItem(item);
+      }));
+    }).extend({ countable: null });
+
     self.listedItems = ko.computed(function() {
       return self.sortExtensions(self.exts.items().filter(function(item) {
-        return self.search.matchesExtension(item);
+        return self.search.matchesExtension(item) && !self.isFavoriteItem(item);
       }));
     }).extend({ countable: null });
 

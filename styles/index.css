@@ -339,6 +339,10 @@ body.popup-header-icons-compact #header a#title {
   margin-bottom: var(--sp-md);
 }
 
+#loading-section {
+  min-height: 120px;
+}
+
 #content h1 {
   color: var(--accent);
   font-size: 11px;
@@ -351,6 +355,12 @@ body.popup-header-icons-compact #header a#title {
 /* Profiles: compact horizontal pill strip */
 #profiles {
   margin-bottom: var(--sp-md);
+}
+
+#favorites-section > h1 {
+  border-bottom: 1px solid rgba(139, 162, 191, 0.35);
+  margin-bottom: 10px;
+  padding-bottom: 6px;
 }
 
 #profiles h1 {

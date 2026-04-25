@@ -21,6 +21,61 @@
     }
   }
 
+  var HOSTNAME_SAFE = /^[a-z0-9.\-]+$/;
+
+  function buildHostnamePattern(url) {
+    var fallback = {
+      canonicalHost: "",
+      hostname: "",
+      pattern: "",
+      reason: "invalid_url",
+      suggestWww: false,
+      supported: false
+    };
+
+    if (!url || typeof url !== "string") {
+      return fallback;
+    }
+
+    var parsed;
+    try {
+      parsed = new URL(url);
+    } catch (error) {
+      return fallback;
+    }
+
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      return Object.assign({}, fallback, { reason: "unsupported_scheme" });
+    }
+
+    var hostname = (parsed.hostname || "").toLowerCase();
+    if (!hostname) {
+      return Object.assign({}, fallback, { reason: "empty_hostname" });
+    }
+
+    if (!HOSTNAME_SAFE.test(hostname)) {
+      return Object.assign({}, fallback, { reason: "invalid_hostname" });
+    }
+
+    var hadWww = hostname.indexOf("www.") === 0;
+    var canonical = hadWww ? hostname.slice(4) : hostname;
+    if (!canonical || !HOSTNAME_SAFE.test(canonical)) {
+      return Object.assign({}, fallback, { reason: "invalid_hostname" });
+    }
+
+    var labelCount = canonical.split(".").filter(Boolean).length;
+    var suggestWww = hadWww || labelCount === 2;
+
+    return {
+      canonicalHost: canonical,
+      hostname: hostname,
+      pattern: "*://" + canonical + "/*",
+      reason: "",
+      suggestWww: suggestWww,
+      supported: true
+    };
+  }
+
   function matchUrl(url, pattern, method) {
     if (!pattern) {
       return false;
@@ -135,6 +190,7 @@
 
   root.ExtensityUrlRules = {
     analyzeUrl: analyzeUrl,
+    buildHostnamePattern: buildHostnamePattern,
     isSupportedUrl: isSupportedUrl,
     matchUrl: matchUrl,
     normalizeRule: normalizeRule,

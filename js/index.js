@@ -452,9 +452,11 @@ document.addEventListener("DOMContentLoaded", function() {
       item.openPermissionsAction = function() {
         return self.openPermissionsPage(item);
       };
-      item.copyLinkAction = function() {
-        return self.copyExtensionLink(item);
+      item.addActiveSiteToUrlRulesAction = function() {
+        return self.addActiveSiteToUrlRulesAction();
       };
+      item.addActiveSiteEnabled = self.addActiveSiteEnabled;
+      item.addActiveSiteTooltip = self.addActiveSiteTooltip;
       item.openStoreAction = function() {
         return self.openChromeWebStore(item);
       };
@@ -655,6 +657,54 @@ document.addEventListener("DOMContentLoaded", function() {
       return self.performAction(ExtensityApi.getState());
     };
 
+    self.activeSiteSupported = ko.observable(false);
+    self.activeSiteHost = ko.observable("");
+
+    self.addActiveSiteEnabled = ko.pureComputed(function() {
+      return self.activeSiteSupported();
+    });
+
+    self.addActiveSiteTooltip = ko.pureComputed(function() {
+      if (!self.activeSiteSupported()) {
+        return "URL rules only support http and https sites";
+      }
+      var host = self.activeSiteHost();
+      return host ? "Add " + host + " to URL Rules" : "Add this site to URL Rules";
+    });
+
+    self.refreshActiveSiteContext = function() {
+      if (!chrome || !chrome.tabs || typeof chrome.tabs.query !== "function") {
+        self.activeSiteSupported(false);
+        self.activeSiteHost("");
+        return;
+      }
+      chrome.tabs.query({ active: true, lastFocusedWindow: true }, function(tabs) {
+        if (chrome.runtime && chrome.runtime.lastError) {
+          self.activeSiteSupported(false);
+          self.activeSiteHost("");
+          return;
+        }
+        var tab = tabs && tabs.length ? tabs[0] : null;
+        var info = window.ExtensityUrlRules.buildHostnamePattern(tab && tab.url ? tab.url : "");
+        self.activeSiteSupported(!!info.supported);
+        self.activeSiteHost(info.canonicalHost || "");
+      });
+    };
+
+    self.addActiveSiteToUrlRulesAction = function() {
+      if (!self.addActiveSiteEnabled()) {
+        return false;
+      }
+      ExtensityApi.openDashboard({
+        deepLink: { source: "add_active_site", tab: "rules" }
+      }).catch(function(error) {
+        self.error(error.message);
+      }).finally(function() {
+        window.close();
+      });
+      return false;
+    };
+
     self.openChromeExtensions = function() {
       chrome.tabs.create({ url: "chrome://extensions" });
       window.close();
@@ -738,19 +788,6 @@ document.addEventListener("DOMContentLoaded", function() {
       return ExtensityUtils.openTab(ExtensityUtils.buildPermissionsPageUrl(extension.id())).catch(function() {
         return ExtensityUtils.openTab(ExtensityUtils.buildManageExtensionUrl(extension.id()));
       }).catch(function(error) {
-        self.error(error.message);
-      });
-    };
-
-    self.canCopyLink = function(extension) {
-      return !!extension.copyLinkUrl();
-    };
-
-    self.copyExtensionLink = function(extension) {
-      if (!self.canCopyLink(extension)) {
-        return;
-      }
-      ExtensityUtils.copyText(extension.copyLinkUrl()).catch(function(error) {
         self.error(error.message);
       });
     };
@@ -1054,6 +1091,7 @@ document.addEventListener("DOMContentLoaded", function() {
       ko.applyBindings(vm, document.body);
       vm._popupBindingsReady = true;
       markPopupBindingsReady();
+      vm.refreshActiveSiteContext();
 
       if (state) {
         vm.applyState(state);
@@ -1067,6 +1105,7 @@ document.addEventListener("DOMContentLoaded", function() {
       ko.applyBindings(vm, document.body);
       vm._popupBindingsReady = true;
       markPopupBindingsReady();
+      vm.refreshActiveSiteContext();
       vm.refresh();
     });
   });

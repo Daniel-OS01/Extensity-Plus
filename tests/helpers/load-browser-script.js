@@ -5,10 +5,13 @@ function loadBrowserScript(filePath, globals = {}) {
   const code = fs.readFileSync(filePath, "utf8");
   const sandbox = {
     URL,
+    URLSearchParams,
     console,
     Date,
     JSON,
     Math,
+    Object,
+    Array,
     RegExp,
     clearTimeout,
     setTimeout,

@@ -653,8 +653,12 @@
     importBackup: function(envelope) {
       return chromeMessage({ envelope: envelope, type: "IMPORT_BACKUP" });
     },
-    openDashboard: function() {
-      return chromeMessage({ type: "OPEN_DASHBOARD" });
+    openDashboard: function(options) {
+      var payload = { type: "OPEN_DASHBOARD" };
+      if (options && options.deepLink) {
+        payload.deepLink = options.deepLink;
+      }
+      return chromeMessage(payload);
     },
     saveAlias: function(extensionId, alias) {
       return chromeMessage({

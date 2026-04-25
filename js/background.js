@@ -1617,9 +1617,61 @@ importScripts(
       result: await driveSync.syncDrive()
     };
   }
-  async function openDashboard() {
-    await createTab("dashboard.html");
+  async function openDashboard(message) {
+    var deepLink = message && message.deepLink;
+    var targetPath = await buildDashboardTargetPath(deepLink);
+    await focusOrCreateDashboardTab(targetPath);
     return { opened: true };
+  }
+
+  async function buildDashboardTargetPath(deepLink) {
+    if (!deepLink || deepLink.tab !== "rules" || deepLink.source !== "add_active_site") {
+      return "dashboard.html";
+    }
+
+    var activeTab = null;
+    if (hasChromeMethod(chrome.tabs, "query")) {
+      var tabs = await queryTabs({ active: true, lastFocusedWindow: true });
+      activeTab = Array.isArray(tabs) && tabs.length ? tabs[0] : null;
+      if (!activeTab) {
+        var fallbackTabs = await queryTabs({ active: true, currentWindow: true });
+        activeTab = Array.isArray(fallbackTabs) && fallbackTabs.length ? fallbackTabs[0] : null;
+      }
+    }
+
+    var url = activeTab && activeTab.url ? activeTab.url : "";
+    var info = urlRules.buildHostnamePattern(url);
+    if (!info.supported) {
+      return "dashboard.html#rules?error=" + encodeURIComponent(info.reason || "unsupported_url");
+    }
+
+    var draftId = storage.makeId("rule");
+    var params = new URLSearchParams();
+    params.set("draftId", draftId);
+    params.set("host", info.canonicalHost);
+    params.set("pattern", info.pattern);
+    params.set("suggestWww", info.suggestWww ? "1" : "0");
+    params.set("source", "add_active_site");
+    return "dashboard.html#rules?" + params.toString();
+  }
+
+  async function focusOrCreateDashboardTab(targetPath) {
+    var fullUrl = chrome.runtime.getURL(String(targetPath).replace(/^\//, ""));
+    var basePath = String(targetPath).split("#")[0];
+    var existing = null;
+    if (hasChromeMethod(chrome.tabs, "query")) {
+      try {
+        var matches = await queryTabs({ url: chrome.runtime.getURL(basePath.replace(/^\//, "")) });
+        existing = Array.isArray(matches) && matches.length ? matches[0] : null;
+      } catch (error) {
+        existing = null;
+      }
+    }
+    if (existing && existing.id != null && hasChromeMethod(chrome.tabs, "update")) {
+      await chromeCall(chrome.tabs, "update", [existing.id, { active: true, url: fullUrl }]);
+      return existing;
+    }
+    return chromeCall(chrome.tabs, "create", [{ active: true, url: fullUrl }]);
   }
 
   async function testUrlRules(url) {
@@ -1780,7 +1832,7 @@ importScripts(
       case "IMPORT_BACKUP":
         return { state: await importBackup(message) };
       case "OPEN_DASHBOARD":
-        return await openDashboard();
+        return await openDashboard(message);
       case "PIN_EXTENSION_TO_TOOLBAR":
         return await pinExtensionToToolbar(message);
       case "SAVE_ALIAS":
@@ -2020,16 +2072,19 @@ importScripts(
   }
 
   root.ExtensityBackground = {
+    buildDashboardTargetPath: buildDashboardTargetPath,
     buildFallbackMetadata: buildFallbackMetadata,
     buildGenericStoreUrl: buildGenericStoreUrl,
     buildManageExtensionUrl: buildManageExtensionUrl,
     buildToolbarPinAutomationExpression: buildToolbarPinAutomationExpression,
     defaultCategoryForInstallType: defaultCategoryForInstallType,
     firstDescriptionLine: firstDescriptionLine,
+    focusOrCreateDashboardTab: focusOrCreateDashboardTab,
     isAppType: isAppType,
     loadExtensionMetadata: loadExtensionMetadata,
     normalizeExtensions: normalizeExtensions,
     normalizeStoreUrl: normalizeStoreUrl,
+    openDashboard: openDashboard,
     parseChromeWebStoreHtml: parseChromeWebStoreHtml,
     pinExtensionToToolbar: pinExtensionToToolbar
   };

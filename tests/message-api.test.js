@@ -793,6 +793,33 @@ test("buildDashboardTargetPath returns error hash when active tab URL is unsuppo
   assert.equal(path, "dashboard.html#rules?error=unsupported_scheme");
 });
 
+test("buildDashboardTargetPath uses deepLink.tabUrl when provided, skipping tabs.query", async () => {
+  const root = loadBackground({
+    urlRulesOverrides: {
+      buildHostnamePattern() {
+        return {
+          canonicalHost: "github.com",
+          hostname: "github.com",
+          pattern: "*://github.com/*",
+          reason: "",
+          suggestWww: true,
+          supported: true
+        };
+      }
+    }
+  });
+
+  const path = await root.ExtensityBackground.buildDashboardTargetPath({
+    tab: "rules",
+    source: "add_active_site",
+    tabUrl: "https://github.com/openai/foo"
+  });
+  assert.ok(path.startsWith("dashboard.html#rules?"));
+  const params = new URLSearchParams(path.split("?")[1]);
+  assert.equal(params.get("host"), "github.com");
+  assert.equal(params.get("suggestWww"), "1");
+});
+
 test("focusOrCreateDashboardTab updates an existing dashboard tab when present", async () => {
   let createCalls = 0;
   let updateCalls = [];
@@ -836,6 +863,7 @@ test("focusOrCreateDashboardTab updates an existing dashboard tab when present",
   assert.equal(updateCalls[0].tabId, 99);
   assert.equal(updateCalls[0].props.active, true);
   assert.ok(updateCalls[0].props.url.indexOf("#rules?") !== -1);
+  assert.ok(updateCalls[0].props.url.indexOf("?_r=") !== -1, "url must contain cache-bust param to force full reload");
 });
 
 test("focusOrCreateDashboardTab creates a new tab when none exists", async () => {

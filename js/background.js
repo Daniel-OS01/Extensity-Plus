@@ -1629,17 +1629,17 @@ importScripts(
       return "dashboard.html";
     }
 
-    var activeTab = null;
-    if (hasChromeMethod(chrome.tabs, "query")) {
+    var url = deepLink.tabUrl || "";
+    if (!url && hasChromeMethod(chrome.tabs, "query")) {
       var tabs = await queryTabs({ active: true, lastFocusedWindow: true });
-      activeTab = Array.isArray(tabs) && tabs.length ? tabs[0] : null;
+      var activeTab = Array.isArray(tabs) && tabs.length ? tabs[0] : null;
       if (!activeTab) {
         var fallbackTabs = await queryTabs({ active: true, currentWindow: true });
         activeTab = Array.isArray(fallbackTabs) && fallbackTabs.length ? fallbackTabs[0] : null;
       }
+      url = activeTab && activeTab.url ? activeTab.url : "";
     }
 
-    var url = activeTab && activeTab.url ? activeTab.url : "";
     var info = urlRules.buildHostnamePattern(url);
     if (!info.supported) {
       return "dashboard.html#rules?error=" + encodeURIComponent(info.reason || "unsupported_url");
@@ -1657,18 +1657,28 @@ importScripts(
 
   async function focusOrCreateDashboardTab(targetPath) {
     var fullUrl = chrome.runtime.getURL(String(targetPath).replace(/^\//, ""));
-    var basePath = String(targetPath).split("#")[0];
+    var baseDashboardUrl = chrome.runtime.getURL("dashboard.html");
     var existing = null;
     if (hasChromeMethod(chrome.tabs, "query")) {
       try {
-        var matches = await queryTabs({ url: chrome.runtime.getURL(basePath.replace(/^\//, "")) });
-        existing = Array.isArray(matches) && matches.length ? matches[0] : null;
+        var allTabs = await queryTabs({});
+        existing = (Array.isArray(allTabs) ? allTabs : []).find(function(tab) {
+          return tab && tab.url && (
+            tab.url === baseDashboardUrl ||
+            tab.url.startsWith(baseDashboardUrl + "?") ||
+            tab.url.startsWith(baseDashboardUrl + "#")
+          );
+        }) || null;
       } catch (error) {
         existing = null;
       }
     }
     if (existing && existing.id != null && hasChromeMethod(chrome.tabs, "update")) {
-      await chromeCall(chrome.tabs, "update", [existing.id, { active: true, url: fullUrl }]);
+      var hashIndex = fullUrl.indexOf("#");
+      var reloadUrl = hashIndex >= 0
+        ? fullUrl.slice(0, hashIndex) + "?_r=" + Date.now() + fullUrl.slice(hashIndex)
+        : fullUrl;
+      await chromeCall(chrome.tabs, "update", [existing.id, { active: true, url: reloadUrl }]);
       return existing;
     }
     return chromeCall(chrome.tabs, "create", [{ active: true, url: fullUrl }]);

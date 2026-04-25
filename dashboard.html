@@ -154,6 +154,10 @@
             <button type="button" title="Remove this URL rule" data-sbind="click: $parent.removeRule">Remove</button>
           </div>
           <div class="card-row"><input type="text" placeholder="e.g. *://github.com/*" data-sbind="value: urlPattern" /></div>
+          <div class="card-row" data-sbind="visible: isDraft">
+            <label><input type="checkbox" data-sbind="checked: draftWww" /> <span data-sbind="text: draftWwwLabel"></span></label>
+          </div>
+          <p class="event-meta" data-sbind="visible: duplicatePatternNote, text: duplicatePatternNote"></p>
           <div class="rule-columns">
             <div>
               <h3>Enable on match</h3>

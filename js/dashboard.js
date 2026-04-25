@@ -75,6 +75,13 @@ document.addEventListener("DOMContentLoaded", function() {
     self.showEnable = ko.observable(false);
     self.showDisable = ko.observable(false);
     self.availableExtensions = ko.observableArray(extensionList);
+    self.isDraft = ko.observable(!!rule.isDraft);
+    self.draftHost = ko.observable(rule.draftHost || "");
+    self.draftWww = ko.observable(!!rule.draftWww);
+    self.draftWwwLabel = ko.pureComputed(function() {
+      var host = self.draftHost();
+      return host ? "Also match www." + host : "Also match the www. variant";
+    });
 
     self.toggleEnableList = function() {
       self.showEnable(!self.showEnable());
@@ -129,6 +136,21 @@ document.addEventListener("DOMContentLoaded", function() {
     });
 
     self.isSelected = ko.observable(false);
+    self.peerRules = ko.observableArray([]);
+    self.duplicatePatternNote = ko.pureComputed(function() {
+      var pattern = (self.urlPattern() || "").trim();
+      if (!pattern) {
+        return "";
+      }
+      var ownId = self.id();
+      var hasDuplicate = self.peerRules().some(function(peer) {
+        if (!peer || peer === self || peer.id() === ownId) {
+          return false;
+        }
+        return (peer.urlPattern() || "").trim() === pattern;
+      });
+      return hasDuplicate ? "A rule already covers this pattern." : "";
+    });
 
     self.toJS = function() {
       return {
@@ -140,6 +162,56 @@ document.addEventListener("DOMContentLoaded", function() {
         name: (self.name() || "").trim() || "Untitled Rule",
         urlPattern: (self.urlPattern() || "").trim()
       };
+    };
+  }
+
+  var DRAFT_HASH_MAX = 512;
+  var DRAFT_PATTERN_SAFE = /^[A-Za-z0-9.\-:*\/]+$/;
+  var DRAFT_HOST_SAFE = /^[a-z0-9.\-]+$/;
+
+  function parseRuleDraft(hash) {
+    if (!hash || typeof hash !== "string" || hash.length > DRAFT_HASH_MAX) {
+      return null;
+    }
+    var stripped = hash.charAt(0) === "#" ? hash.slice(1) : hash;
+    var queryIndex = stripped.indexOf("?");
+    if (queryIndex === -1) {
+      return null;
+    }
+    var tab = stripped.slice(0, queryIndex);
+    if (tab !== "rules") {
+      return null;
+    }
+    var params;
+    try {
+      params = new URLSearchParams(stripped.slice(queryIndex + 1));
+    } catch (error) {
+      return null;
+    }
+    if (params.get("error")) {
+      return { tab: tab, error: params.get("error") };
+    }
+    var draftId = params.get("draftId") || "";
+    var host = (params.get("host") || "").toLowerCase();
+    var pattern = params.get("pattern") || "";
+    var suggestWww = params.get("suggestWww") === "1";
+    var source = params.get("source") || "";
+    if (!draftId || !host || !pattern || source !== "add_active_site") {
+      return null;
+    }
+    if (!DRAFT_HOST_SAFE.test(host)) {
+      return null;
+    }
+    if (!DRAFT_PATTERN_SAFE.test(pattern) || pattern.indexOf("://") === -1) {
+      return null;
+    }
+    return {
+      draftId: draftId,
+      host: host,
+      pattern: pattern,
+      source: source,
+      suggestWww: suggestWww,
+      tab: tab
     };
   }
 
@@ -352,11 +424,13 @@ document.addEventListener("DOMContentLoaded", function() {
       }).map(function(groupId) {
         return new GroupEditor(groups[groupId]);
       }));
-      self.rules(urlRules.map(function(rule) {
+      var ruleEditors = urlRules.map(function(rule) {
         var editor = new RuleEditor(rule, self.extensions());
         editor.isSelected(editor.id() === self.selectedRuleId());
         return editor;
-      }));
+      });
+      self.rules(ruleEditors);
+      self.refreshPeerRules();
       self.historyRows(eventHistory.slice().reverse().map(function(row) {
         var details = [];
         if (row.action) { details.push("action=" + row.action); }
@@ -384,12 +458,53 @@ document.addEventListener("DOMContentLoaded", function() {
       if (self.ruleTestResult()) {
         self.ruleTestResult(null);
       }
+      self.applyPendingDraft();
       if (window.ExtensityTooltips && window.ExtensityTooltips.applyAutoTooltips) {
         window.ExtensityTooltips.applyAutoTooltips(document.body);
       }
       self.loading(false);
       self.error("");
       self.checkWebStorePermission();
+    };
+
+    self.pendingDraft = null;
+
+    self.applyPendingDraft = function() {
+      var draft = self.pendingDraft;
+      if (!draft) {
+        return;
+      }
+      self.pendingDraft = null;
+      try {
+        if (window.history && typeof window.history.replaceState === "function") {
+          window.history.replaceState(null, "", window.location.pathname + window.location.search);
+        }
+      } catch (error) {
+        // ignore — replaceState is best-effort
+      }
+      self.activeTab("rules");
+      if (draft.error) {
+        self.error("Cannot add a URL rule for this site. URL rules only support http and https.");
+        return;
+      }
+      var editor = new RuleEditor({
+        active: true,
+        draftHost: draft.host,
+        draftWww: draft.suggestWww,
+        enableIds: [],
+        disableIds: [],
+        id: draft.draftId,
+        isDraft: true,
+        matchMethod: "wildcard",
+        name: draft.host,
+        urlPattern: draft.pattern
+      }, self.extensions());
+      editor.showEnable(true);
+      editor.isSelected(true);
+      self.rules.unshift(editor);
+      self.refreshPeerRules();
+      self.selectedRuleId(draft.draftId);
+      self.message("Draft for " + draft.host + " — review extensions and click Save URL rules.");
     };
 
     self.performAction = function(request) {
@@ -456,17 +571,46 @@ document.addEventListener("DOMContentLoaded", function() {
       }).catch(function() {});
     };
 
+    self.refreshPeerRules = function() {
+      var current = self.rules();
+      current.forEach(function(rule) {
+        rule.peerRules(current);
+      });
+    };
+
     self.addRule = function() {
-      self.rules.push(new RuleEditor({}));
+      self.rules.push(new RuleEditor({}, self.extensions()));
+      self.refreshPeerRules();
     };
 
     self.removeRule = function(rule) {
       self.rules.remove(rule);
+      self.refreshPeerRules();
     };
 
     self.saveRules = function() {
-      var rules = self.rules().map(function(rule) {
-        return rule.toJS();
+      var rules = [];
+      self.rules().forEach(function(rule) {
+        var raw = rule.toJS();
+        rules.push(raw);
+        if (rule.isDraft() && rule.draftWww() && rule.draftHost()) {
+          var host = rule.draftHost();
+          var siblingPattern = "*://www." + host + "/*";
+          var siblingExists = rules.some(function(existing) {
+            return existing.urlPattern === siblingPattern;
+          });
+          if (!siblingExists) {
+            rules.push({
+              active: raw.active,
+              disableIds: raw.disableIds.slice(),
+              enableIds: raw.enableIds.slice(),
+              id: ExtensityStorage.makeId("rule"),
+              matchMethod: raw.matchMethod,
+              name: (raw.name || host) + " (www)",
+              urlPattern: siblingPattern
+            });
+          }
+        }
       });
 
       self.performAction(ExtensityApi.saveUrlRules(rules)).then(function() {
@@ -611,8 +755,15 @@ document.addEventListener("DOMContentLoaded", function() {
     };
   }
 
+  if (typeof window !== "undefined") {
+    window.ExtensityDashboardInternals = {
+      parseRuleDraft: parseRuleDraft
+    };
+  }
+
   _.defer(function() {
     var vm = new DashboardViewModel();
+    vm.pendingDraft = parseRuleDraft(window.location.hash);
     ko.bindingProvider.instance = new ko.secureBindingsProvider({});
     ko.applyBindings(vm, document.getElementById("dashboard-page"));
     vm.refresh();

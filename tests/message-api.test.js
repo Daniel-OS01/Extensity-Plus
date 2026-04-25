@@ -99,6 +99,7 @@ function createChromeStub(overrides = {}) {
 
 function loadBackground(options = {}) {
   const storageOverrides = options.storageOverrides || {};
+  const urlRulesOverrides = options.urlRulesOverrides || {};
   return loadBrowserScript(path.join(repoRoot, "js/background.js"), {
     chrome: createChromeStub(options.chromeOverrides),
     fetch: async function() { throw new Error("Unexpected fetch in unit test."); },
@@ -115,10 +116,13 @@ function loadBackground(options = {}) {
       ExtensityReminders: {},
       ExtensityStorage: {
         clone(value) { return JSON.parse(JSON.stringify(value)); },
+        makeId(prefix) { return `${prefix}-stub`; },
         uniqueArray(items) { return Array.from(new Set(items || [])); },
         ...storageOverrides
       },
-      ExtensityUrlRules: {}
+      ExtensityUrlRules: {
+        ...urlRulesOverrides
+      }
     }
   });
 }
@@ -703,4 +707,172 @@ test("pinExtensionToToolbar reuses an existing details tab without auto-closing 
     tabId: 99,
     url: root.ExtensityBackground.buildManageExtensionUrl("ext-4")
   });
+});
+
+// --- OPEN_DASHBOARD deepLink ---
+
+test("buildDashboardTargetPath returns plain dashboard.html when no deepLink", async () => {
+  const root = loadBackground();
+  const path = await root.ExtensityBackground.buildDashboardTargetPath(undefined);
+  assert.equal(path, "dashboard.html");
+});
+
+test("buildDashboardTargetPath builds a draft hash for a supported active tab", async () => {
+  const root = loadBackground({
+    chromeOverrides: {
+      tabs: {
+        create() {},
+        get() {},
+        onActivated: { addListener() {} },
+        onRemoved: { addListener() {} },
+        onUpdated: { addListener() {} },
+        query(queryInfo, callback) {
+          callback([{ id: 1, url: "https://www.github.com/openai/foo" }]);
+        },
+        remove() {},
+        sendMessage() {},
+        update() {}
+      }
+    },
+    urlRulesOverrides: {
+      buildHostnamePattern() {
+        return {
+          canonicalHost: "github.com",
+          hostname: "www.github.com",
+          pattern: "*://github.com/*",
+          reason: "",
+          suggestWww: true,
+          supported: true
+        };
+      }
+    }
+  });
+
+  const path = await root.ExtensityBackground.buildDashboardTargetPath({ tab: "rules", source: "add_active_site" });
+  assert.ok(path.startsWith("dashboard.html#rules?"));
+  const params = new URLSearchParams(path.split("?")[1]);
+  assert.equal(params.get("host"), "github.com");
+  assert.equal(params.get("pattern"), "*://github.com/*");
+  assert.equal(params.get("suggestWww"), "1");
+  assert.equal(params.get("source"), "add_active_site");
+  assert.ok(params.get("draftId"));
+});
+
+test("buildDashboardTargetPath returns error hash when active tab URL is unsupported", async () => {
+  const root = loadBackground({
+    chromeOverrides: {
+      tabs: {
+        create() {},
+        get() {},
+        onActivated: { addListener() {} },
+        onRemoved: { addListener() {} },
+        onUpdated: { addListener() {} },
+        query(queryInfo, callback) {
+          callback([{ id: 2, url: "chrome://extensions" }]);
+        },
+        remove() {},
+        sendMessage() {},
+        update() {}
+      }
+    },
+    urlRulesOverrides: {
+      buildHostnamePattern() {
+        return {
+          canonicalHost: "",
+          hostname: "",
+          pattern: "",
+          reason: "unsupported_scheme",
+          suggestWww: false,
+          supported: false
+        };
+      }
+    }
+  });
+
+  const path = await root.ExtensityBackground.buildDashboardTargetPath({ tab: "rules", source: "add_active_site" });
+  assert.equal(path, "dashboard.html#rules?error=unsupported_scheme");
+});
+
+test("focusOrCreateDashboardTab updates an existing dashboard tab when present", async () => {
+  let createCalls = 0;
+  let updateCalls = [];
+  const root = loadBackground({
+    chromeOverrides: {
+      runtime: {
+        getManifest() { return { version: "2.0.0" }; },
+        getURL(p) { return "chrome-extension://test-id/" + p; },
+        id: "test-id",
+        lastError: null,
+        onInstalled: { addListener() {} },
+        onMessage: { addListener() {} },
+        onStartup: { addListener() {} }
+      },
+      tabs: {
+        create(props, callback) {
+          createCalls += 1;
+          callback({ id: 5 });
+        },
+        get() {},
+        onActivated: { addListener() {} },
+        onRemoved: { addListener() {} },
+        onUpdated: { addListener() {} },
+        query(queryInfo, callback) {
+          callback([{ id: 99, url: "chrome-extension://test-id/dashboard.html" }]);
+        },
+        remove() {},
+        sendMessage() {},
+        update(tabId, props, callback) {
+          updateCalls.push({ tabId, props });
+          callback({ id: tabId });
+        }
+      }
+    }
+  });
+
+  await root.ExtensityBackground.focusOrCreateDashboardTab("dashboard.html#rules?draftId=x&host=h&pattern=*&suggestWww=1&source=add_active_site");
+
+  assert.equal(createCalls, 0);
+  assert.equal(updateCalls.length, 1);
+  assert.equal(updateCalls[0].tabId, 99);
+  assert.equal(updateCalls[0].props.active, true);
+  assert.ok(updateCalls[0].props.url.indexOf("#rules?") !== -1);
+});
+
+test("focusOrCreateDashboardTab creates a new tab when none exists", async () => {
+  let createCalls = [];
+  const root = loadBackground({
+    chromeOverrides: {
+      runtime: {
+        getManifest() { return { version: "2.0.0" }; },
+        getURL(p) { return "chrome-extension://test-id/" + p; },
+        id: "test-id",
+        lastError: null,
+        onInstalled: { addListener() {} },
+        onMessage: { addListener() {} },
+        onStartup: { addListener() {} }
+      },
+      tabs: {
+        create(props, callback) {
+          createCalls.push(props);
+          callback({ id: 7 });
+        },
+        get() {},
+        onActivated: { addListener() {} },
+        onRemoved: { addListener() {} },
+        onUpdated: { addListener() {} },
+        query(queryInfo, callback) {
+          callback([]);
+        },
+        remove() {},
+        sendMessage() {},
+        update() {}
+      }
+    }
+  });
+
+  await root.ExtensityBackground.focusOrCreateDashboardTab("dashboard.html");
+
+  assert.equal(createCalls.length, 1);
+  assert.equal(createCalls[0].active, true);
+  assert.ok(createCalls[0].url.indexOf("dashboard.html") !== -1);
 });

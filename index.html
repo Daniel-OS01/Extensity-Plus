@@ -136,7 +136,7 @@
       <span class="badge profile-badge" data-sbind="text: name, css: colorClass, attr:{style: badgeStyle, title: title}"></span>
       <!-- /ko -->
       <i class="fa fa-flask" title="Development" data-sbind="visible: is_development()"></i>
-      <i class="fa fa-gear" title="Options" data-sbind="visible: showOptionsButton, click: launchOptionsAction, clickBubble: false"></i>
+      <button type="button" class="action-icon-button" title="Options" aria-label="Options" data-sbind="visible: showOptionsButton, click: launchOptionsAction, clickBubble: false"><i class="fa fa-gear" aria-hidden="true"></i></button>
     </div>
   </li>
   <!-- /ko -->
@@ -245,7 +245,7 @@
     </div>
     <div class="item-actions">
       <i class="fa fa-flask" title="Development" data-sbind="visible: is_development()"></i>
-      <i class="fa fa-gear" title="Options" data-sbind="visible: showOptionsButton, click: launchOptionsAction, clickBubble: false"></i>
+      <button type="button" class="action-icon-button" title="Options" aria-label="Options" data-sbind="visible: showOptionsButton, click: launchOptionsAction, clickBubble: false"><i class="fa fa-gear" aria-hidden="true"></i></button>
     </div>
   </li>
   <!-- /ko -->

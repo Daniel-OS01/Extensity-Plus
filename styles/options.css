@@ -455,9 +455,14 @@ body.profiles-portrait #profiles {
 
 #profiles .sidebar .remove-profile {
   color: var(--muted);
+  cursor: pointer;
+}
+#profiles .sidebar .remove-profile .fa-trash-o {
+  color: inherit;
 }
 
-#profiles .sidebar .remove-profile:hover {
+#profiles .sidebar .remove-profile:hover .fa-trash-o,
+#profiles .sidebar .remove-profile:focus .fa-trash-o {
   color: var(--danger);
 }
 

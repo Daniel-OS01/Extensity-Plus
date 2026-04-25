@@ -200,3 +200,62 @@ test("normalizeRules handles non-array input gracefully", () => {
   assert.deepEqual(normalize(root.ExtensityUrlRules.normalizeRules(null)), []);
   assert.deepEqual(normalize(root.ExtensityUrlRules.normalizeRules(undefined)), []);
 });
+
+// --- buildHostnamePattern ---
+
+test("buildHostnamePattern: apex 2-label host suggests www", () => {
+  const root = loadUrlRules();
+  const info = root.ExtensityUrlRules.buildHostnamePattern("https://google.com/search");
+  assert.equal(info.supported, true);
+  assert.equal(info.hostname, "google.com");
+  assert.equal(info.canonicalHost, "google.com");
+  assert.equal(info.pattern, "*://google.com/*");
+  assert.equal(info.suggestWww, true);
+});
+
+test("buildHostnamePattern: www-prefixed host strips and suggests www", () => {
+  const root = loadUrlRules();
+  const info = root.ExtensityUrlRules.buildHostnamePattern("https://www.google.com/");
+  assert.equal(info.canonicalHost, "google.com");
+  assert.equal(info.pattern, "*://google.com/*");
+  assert.equal(info.suggestWww, true);
+});
+
+test("buildHostnamePattern: subdomain (3 labels) does not suggest www", () => {
+  const root = loadUrlRules();
+  const info = root.ExtensityUrlRules.buildHostnamePattern("https://keep.google.com/notes");
+  assert.equal(info.canonicalHost, "keep.google.com");
+  assert.equal(info.pattern, "*://keep.google.com/*");
+  assert.equal(info.suggestWww, false);
+});
+
+test("buildHostnamePattern: hostname is lowercased", () => {
+  const root = loadUrlRules();
+  const info = root.ExtensityUrlRules.buildHostnamePattern("https://WWW.Example.COM/");
+  assert.equal(info.hostname, "www.example.com");
+  assert.equal(info.canonicalHost, "example.com");
+  assert.equal(info.pattern, "*://example.com/*");
+});
+
+test("buildHostnamePattern: rejects chrome:// scheme", () => {
+  const root = loadUrlRules();
+  const info = root.ExtensityUrlRules.buildHostnamePattern("chrome://extensions");
+  assert.equal(info.supported, false);
+  assert.equal(info.reason, "unsupported_scheme");
+});
+
+test("buildHostnamePattern: rejects malformed input", () => {
+  const root = loadUrlRules();
+  assert.equal(root.ExtensityUrlRules.buildHostnamePattern("").supported, false);
+  assert.equal(root.ExtensityUrlRules.buildHostnamePattern("not_a_url").supported, false);
+  assert.equal(root.ExtensityUrlRules.buildHostnamePattern(null).supported, false);
+  assert.equal(root.ExtensityUrlRules.buildHostnamePattern(123).supported, false);
+});
+
+test("buildHostnamePattern: IDN hostnames are punycoded", () => {
+  const root = loadUrlRules();
+  const info = root.ExtensityUrlRules.buildHostnamePattern("https://例え.テスト/");
+  // URL parses IDN to xn-- form and we accept that
+  assert.equal(info.supported, true);
+  assert.ok(info.hostname.indexOf("xn--") === 0);
+});

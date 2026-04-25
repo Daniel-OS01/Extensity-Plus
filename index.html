@@ -11,6 +11,7 @@
 <script type="text/javascript" src="js/libs/knockout-3.5.1.js"></script>
 <script type="text/javascript" src="js/libs/knockout-secure-binding.min.js"></script>
 <script type="text/javascript" src="js/storage.js"></script>
+<script type="text/javascript" src="js/url-rules.js"></script>
 <script type="text/javascript" src="js/engine.js"></script>
 <script type="text/javascript" src="js/index.js"></script>
 </head>
@@ -170,7 +171,7 @@
           <button type="button" class="action-icon-button" title="Extension options" aria-label="Extension options" data-sbind="visible: optionsUrl(), click: launchOptionsAction, clickBubble: false"><i class="fa fa-cog" aria-hidden="true"></i></button>
           <button type="button" class="action-icon-button" title="Manage extension" aria-label="Manage extension" data-sbind="click: openManageAction, clickBubble: false"><i class="fa fa-puzzle-piece" aria-hidden="true"></i></button>
           <button type="button" class="action-icon-button" title="Web permissions" aria-label="Web permissions" data-sbind="click: openPermissionsAction, clickBubble: false"><i class="fa fa-shield" aria-hidden="true"></i></button>
-          <button type="button" class="action-icon-button" title="Copy link" aria-label="Copy link" data-sbind="click: copyLinkAction, clickBubble: false, enable: copyLinkAvailable"><i class="fa fa-files-o" aria-hidden="true"></i></button>
+          <button type="button" class="action-icon-button" data-sbind="click: addActiveSiteToUrlRulesAction, clickBubble: false, enable: addActiveSiteEnabled, attr:{title: addActiveSiteTooltip, 'aria-label': addActiveSiteTooltip}"><i class="fa fa-link" aria-hidden="true"></i></button>
           <button type="button" class="action-icon-button" title="Open in Chrome Web Store" aria-label="Open in Chrome Web Store" data-sbind="click: openStoreAction, clickBubble: false, enable: storeLinkAvailable()"><i class="fa fa-external-link" aria-hidden="true"></i></button>
           <button type="button" class="action-icon-button danger" title="Remove extension" aria-label="Remove extension" data-sbind="visible: canRemove, click: removeAction, clickBubble: false"><i class="fa fa-trash-o" aria-hidden="true"></i></button>
           <button type="button" class="action-icon-button" data-sbind="click: pinToToolbarAction, clickBubble: false, attr:{title: pinToToolbarTitle, 'aria-label': pinToToolbarTitle}">
@@ -218,7 +219,7 @@
           <button type="button" class="action-icon-button" title="Extension options" aria-label="Extension options" data-sbind="visible: optionsUrl(), click: launchOptionsAction, clickBubble: false"><i class="fa fa-cog" aria-hidden="true"></i></button>
           <button type="button" class="action-icon-button" title="Manage extension" aria-label="Manage extension" data-sbind="click: openManageAction, clickBubble: false"><i class="fa fa-puzzle-piece" aria-hidden="true"></i></button>
           <button type="button" class="action-icon-button" title="Web permissions" aria-label="Web permissions" data-sbind="click: openPermissionsAction, clickBubble: false"><i class="fa fa-shield" aria-hidden="true"></i></button>
-          <button type="button" class="action-icon-button" title="Copy link" aria-label="Copy link" data-sbind="click: copyLinkAction, clickBubble: false, enable: copyLinkAvailable"><i class="fa fa-files-o" aria-hidden="true"></i></button>
+          <button type="button" class="action-icon-button" data-sbind="click: addActiveSiteToUrlRulesAction, clickBubble: false, enable: addActiveSiteEnabled, attr:{title: addActiveSiteTooltip, 'aria-label': addActiveSiteTooltip}"><i class="fa fa-link" aria-hidden="true"></i></button>
           <button type="button" class="action-icon-button" title="Open in Chrome Web Store" aria-label="Open in Chrome Web Store" data-sbind="click: openStoreAction, clickBubble: false, enable: storeLinkAvailable()"><i class="fa fa-external-link" aria-hidden="true"></i></button>
           <button type="button" class="action-icon-button danger" title="Remove extension" aria-label="Remove extension" data-sbind="visible: canRemove, click: removeAction, clickBubble: false"><i class="fa fa-trash-o" aria-hidden="true"></i></button>
           <button type="button" class="action-icon-button" data-sbind="click: pinToToolbarAction, clickBubble: false, attr:{title: pinToToolbarTitle, 'aria-label': pinToToolbarTitle}">

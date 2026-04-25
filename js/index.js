@@ -672,20 +672,26 @@ document.addEventListener("DOMContentLoaded", function() {
       return host ? "Add " + host + " to URL Rules" : "Add this site to URL Rules";
     });
 
+    self._activeSiteRawUrl = "";
+
     self.refreshActiveSiteContext = function() {
       if (!chrome || !chrome.tabs || typeof chrome.tabs.query !== "function") {
         self.activeSiteSupported(false);
         self.activeSiteHost("");
+        self._activeSiteRawUrl = "";
         return;
       }
       chrome.tabs.query({ active: true, lastFocusedWindow: true }, function(tabs) {
         if (chrome.runtime && chrome.runtime.lastError) {
           self.activeSiteSupported(false);
           self.activeSiteHost("");
+          self._activeSiteRawUrl = "";
           return;
         }
         var tab = tabs && tabs.length ? tabs[0] : null;
-        var info = window.ExtensityUrlRules.buildHostnamePattern(tab && tab.url ? tab.url : "");
+        var rawUrl = tab && tab.url ? tab.url : "";
+        var info = window.ExtensityUrlRules.buildHostnamePattern(rawUrl);
+        self._activeSiteRawUrl = rawUrl;
         self.activeSiteSupported(!!info.supported);
         self.activeSiteHost(info.canonicalHost || "");
       });
@@ -696,7 +702,7 @@ document.addEventListener("DOMContentLoaded", function() {
         return false;
       }
       ExtensityApi.openDashboard({
-        deepLink: { source: "add_active_site", tab: "rules" }
+        deepLink: { source: "add_active_site", tab: "rules", tabUrl: self._activeSiteRawUrl }
       }).catch(function(error) {
         self.error(error.message);
       }).finally(function() {

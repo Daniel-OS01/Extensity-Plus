@@ -8,3 +8,6 @@
 ## 2024-05-24 - Parallelized Chrome Alarm Clearing
 **Learning:** Sequential `await` statements inside `for` loops used for Chrome API calls (like `chrome.alarms.clear`) represent a hidden I/O bottleneck in the background service worker, particularly when tearing down or rebuilding rule states.
 **Action:** Always look for loops awaiting independent Chrome extension API calls and refactor them to use `Promise.all` with `Array.prototype.map()` for concurrent execution, which drastically cuts down total execution time.
+## 2024-05-14 - Set Lookup Optimization in runApplyProfile
+**Learning:** `indexOf` checks within a `.map()` callback create hidden O(N*M) time complexity. In `js/background.js`'s `runApplyProfile`, scanning for extension IDs via `indexOf` across multiple profiles scales poorly as the number of installed extensions grows.
+**Action:** Always extract array lookups into a `Set` initialized *before* the loop (`var desiredSet = new Set(desiredIds)`) and use `.has()` inside the map/filter callbacks. This converts the complexity to O(N+M).

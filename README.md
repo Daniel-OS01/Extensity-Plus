@@ -15,6 +15,16 @@ It keeps the original Extensity idea simple, but expands it into a more complete
 - URL-triggered automation
 - dashboard tools for history, aliases, groups, rules, and backup
 
+## Latest Release
+
+Current version: `v4.0.1` (published 2026-04-25)
+
+### What's Changed in v4.0.1
+
+- Fixed popup-to-background active-tab URL handoff so URL rules resolve against the actual page tab instead of popup-window focus context.
+
+Full changelog: https://github.com/Daniel-OS01/Extensity-Plus/compare/v4.0.0...v4.0.1
+
 ## What It Looks Like
 
 ### Popup: quick actions and profile-aware controls

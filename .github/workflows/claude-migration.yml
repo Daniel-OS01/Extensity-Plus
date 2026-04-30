@@ -1,0 +1,100 @@
+name: "claude: Migration"
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  migration:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          cache: npm
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run existing migration unit test
+        id: test-existing
+        run: |
+          set -o pipefail
+          node --test --test-name-pattern="migration" tests/browser-modules.test.js 2>&1 | tee migration-existing.txt
+        continue-on-error: true
+
+      - name: Run migration idempotency tests
+        id: test-idempotent
+        run: |
+          set -o pipefail
+          node --test tests/migration-idempotency.test.js 2>&1 | tee migration-idempotent.txt
+        continue-on-error: true
+
+      - name: PR Safety Summary
+        if: always()
+        run: |
+          EXISTING="${{ steps.test-existing.outcome }}"
+          IDEMPOTENT="${{ steps.test-idempotent.outcome }}"
+
+          echo ""
+          echo "=========================================="
+          if [ "$EXISTING" = "success" ] && [ "$IDEMPOTENT" = "success" ]; then
+            echo "✅  PR SAFE TO COMMIT"
+            echo "    Migration: all assertions passed."
+            echo ""
+            echo "    Verified:"
+            echo "    • migratePopupListStyle returns false when already migrated"
+            echo "    • migratePopupListStyle is idempotent (second call is a no-op)"
+            echo "    • migratePopupListStyle maps flatPopupList:true to popupListStyle:flat"
+            echo "    • migratePopupListStyle removes the legacy flatPopupList key"
+            echo "    • migrateTo2_0_0 moves aliases/groups/groupOrder/urlRules to local storage"
+            echo "    • migrateTo2_0_0 migrates toggled list to bulkToggleRestore when local is empty"
+            echo "    • migrateTo2_0_0 does not overwrite non-empty bulkToggleRestore"
+            echo "    • migrateTo2_0_0 sets migration_2_0_0 marker"
+            echo "    • migrateTo2_0_0 completes without error when sync store is empty"
+          else
+            echo "❌  PR NOT SAFE TO COMMIT"
+            echo "    Migration checks failed."
+            echo ""
+            if [ "$EXISTING" != "success" ]; then
+              echo "=== Existing test failures ==="
+              cat migration-existing.txt || true
+              echo ""
+            fi
+            if [ "$IDEMPOTENT" != "success" ]; then
+              echo "=== Idempotency test failures ==="
+              cat migration-idempotent.txt || true
+              echo ""
+            fi
+            echo "=== Suggested fixes ==="
+            echo ""
+            echo "  migratePopupListStyle is not idempotent:"
+            echo "    → Add an early-return guard: if (syncValues.migration_popupListStyle) return false"
+            echo "    → This guard must be checked before any writes"
+            echo ""
+            echo "  flatPopupList key is not removed after migration:"
+            echo "    → Call storage.removeArea('sync', ['flatPopupList']) after writing the patch"
+            echo "    → Only remove it if it was defined (typeof syncValues.flatPopupList !== 'undefined')"
+            echo ""
+            echo "  migrateTo2_0_0 overwrites existing bulkToggleRestore:"
+            echo "    → Only copy syncValues.toggled to bulkToggleRestore if localState.bulkToggleRestore.length === 0"
+            echo ""
+            echo "  migrateTo2_0_0 throws on empty storage:"
+            echo "    → Ensure ensureSyncDefaults() and ensureLocalDefaults() are called first"
+            echo "    → All getArea calls must handle undefined values gracefully"
+            echo ""
+            echo "  Key not moved from sync to local:"
+            echo "    → Check that 'movedLocalKeys' in js/migration.js includes the key"
+            echo "    → The key must be in ['aliases', 'groupOrder', 'groups', 'urlRules']"
+          fi
+          echo "=========================================="
+          [ "$EXISTING" = "success" ] && [ "$IDEMPOTENT" = "success" ]

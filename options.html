@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8" />
+<title>Extensity-Plus Options</title>
+<link rel="stylesheet" type="text/css" href="styles/options.css" />
+<link rel="stylesheet" type="text/css" href="styles/font-awesome.min.css" />
+<script type="text/javascript" src="js/libs/underscore-min.js"></script>
+<script type="text/javascript" src="js/libs/knockout-3.5.1.js"></script>
+<script type="text/javascript" src="js/libs/knockout-secure-binding.min.js"></script>
+<script type="text/javascript" src="js/storage.js"></script>
+<script type="text/javascript" src="js/engine.js"></script>
+<script type="text/javascript" src="js/import-export.js"></script>
+<script type="text/javascript" src="js/options.js"></script>
+</head>
+<body>
+<section id="options-page">
+  <section id="header">
+    <div class="tabs">
+      <h1><img src="images/icon48.png" /> Extensity-Plus Options</h1>
+      <div id="menu">
+        <a href="options.html" class="selected" title="Open Options settings">Options</a>
+        <a href="profiles.html" title="Open Profiles manager">Profiles</a>
+        <a href="dashboard.html" title="Open Dashboard tools">Dashboard</a>
+      </div>
+    </div>
+  </section>
+
+  <div class="clear"></div>
+
+  <section id="content">
+    <p class="status error" data-sbind="visible: error, text: error"></p>
+    <div class="permission-banner" data-sbind="visible: needsWebStorePermission">
+      <i class="fa fa-exclamation-triangle"></i>
+      <span>Grant Chrome Web Store access to enable extension metadata and store links.</span>
+      <button type="button" title="Grant Chrome Web Store access" data-sbind="click: requestWebStorePermission">Grant access</button>
+    </div>
+    <div class="option-grid">
+      <fieldset class="settings-card">
+        <legend>Layout</legend>
+        <div class="field"><input type="checkbox" id="showHeader" data-sbind="checked: options.showHeader" /><label for="showHeader">Show popup header</label></div>
+        <div class="field"><input type="checkbox" id="searchBox" data-sbind="checked: options.searchBox" /><label for="searchBox">Show search box</label></div>
+        <div class="field"><input type="checkbox" id="groupApps" data-sbind="checked: options.groupApps" /><label for="groupApps">Group apps and extensions</label></div>
+        <div class="field"><input type="checkbox" id="appsFirst" data-sbind="checked: options.appsFirst" /><label for="appsFirst">Show apps first when grouped</label></div>
+        <div class="field"><input type="checkbox" id="enabledFirst" data-sbind="checked: options.enabledFirst" /><label for="enabledFirst">Show enabled extensions first</label></div>
+        <div class="field"><input type="checkbox" id="showOptions" data-sbind="checked: options.showOptions" /><label for="showOptions">Show per-item options button</label></div>
+        <div class="field"><input type="checkbox" id="showPopupSort" data-sbind="checked: options.showPopupSort" /><label for="showPopupSort">Show sort buttons in popup</label></div>
+      </fieldset>
+
+      <fieldset class="settings-card">
+        <legend>View &amp; Sorting</legend>
+        <div class="field"><label for="viewMode">Default popup view</label><select id="viewMode" data-sbind="value: options.viewMode"><option value="list">List</option><option value="grid">Grid</option></select></div>
+        <div class="field"><label for="popupListStyle">Popup list style</label><select id="popupListStyle" data-sbind="value: options.popupListStyle"><option value="card">Card</option><option value="flat">Flat</option><option value="compact">Compact</option><option value="table">Table rows (screenshot)</option></select></div>
+        <div class="field"><label for="sortMode">Default popup sort</label><select id="sortMode" data-sbind="value: options.sortMode"><option value="alpha">A-Z</option><option value="frequency">Popular</option><option value="recent">Recent</option></select></div>
+        <div class="field"><label for="contrastMode">Contrast mode</label><select id="contrastMode" data-sbind="value: options.contrastMode"><option value="normal">Normal</option><option value="high">High contrast</option></select></div>
+        <div class="field"><input type="checkbox" id="showAlwaysOnBadge" data-sbind="checked: options.showAlwaysOnBadge" /><label for="showAlwaysOnBadge">Show Always On badge</label></div>
+        <div class="field"><input type="checkbox" id="showPopupVersionChips" data-sbind="checked: options.showPopupVersionChips" /><label for="showPopupVersionChips">Show popup version chips</label></div>
+      </fieldset>
+
+      <fieldset class="settings-card">
+        <legend>Appearance &amp; Theme</legend>
+        <div class="field"><label for="colorScheme">Color scheme</label><select id="colorScheme" data-sbind="value: options.colorScheme"><option value="auto">Auto (system)</option><option value="light">Light</option><option value="dark">Dark</option></select></div>
+        <div class="field"><label for="popupWidthPx">Popup width (px)</label><input type="number" min="300" max="600" id="popupWidthPx" data-sbind="value: options.popupWidthPx" /></div>
+        <div class="field"><input type="checkbox" id="dynamicSizing" data-sbind="checked: options.dynamicSizing" /><label for="dynamicSizing">Dynamic sizing (adapts to screen)</label></div>
+        <div class="field"><label for="accentColor">Accent color (hex, e.g. #4a90d9)</label>
+          <div class="action-row">
+            <input type="text" id="accentColor" placeholder="#4a90d9" data-sbind="value: options.accentColor" />
+            <button type="button" title="Reset accent color to default" data-sbind="click: resetAccentColor">Reset</button>
+          </div>
+        </div>
+        <div class="field"><label for="popupBgColor">Popup background color (hex, e.g. #1e2530)</label>
+          <div class="action-row">
+            <input type="text" id="popupBgColor" placeholder="#1e2530" data-sbind="value: options.popupBgColor" />
+            <button type="button" title="Reset background to default" data-sbind="click: resetPopupBgColor">Reset</button>
+          </div>
+        </div>
+        <div class="field"><label for="fontFamily">Font family</label>
+          <select id="fontFamily" data-sbind="value: options.fontFamily">
+            <option value="">Default</option>
+            <option value="system-ui, sans-serif">System UI</option>
+            <option value="Arial, sans-serif">Arial</option>
+            <option value="'Segoe UI', sans-serif">Segoe UI</option>
+            <option value="Georgia, serif">Georgia</option>
+            <option value="'Courier New', monospace">Courier New</option>
+          </select>
+        </div>
+      </fieldset>
+
+      <fieldset class="settings-card">
+        <legend>Popup Density &amp; Controls</legend>
+        <div class="field"><label for="fontSizePx">Font size (px)</label><input type="number" min="8" max="20" id="fontSizePx" data-sbind="value: options.fontSizePx" /></div>
+        <div class="field"><label for="itemPaddingPx">Item padding (px)</label><input type="number" min="-8" max="24" id="itemPaddingPx" data-sbind="value: options.itemPaddingPx" /></div>
+        <div class="field"><label for="itemPaddingXPx">Item horizontal padding (px)</label><input type="number" min="-8" max="32" id="itemPaddingXPx" data-sbind="value: options.itemPaddingXPx" /></div>
+        <div class="field"><label for="itemSpacingPx">Item spacing (px)</label><input type="number" min="-8" max="24" id="itemSpacingPx" data-sbind="value: options.itemSpacingPx" /></div>
+        <div class="field"><label for="itemNameGapPx">Icon/name gap (px)</label><input type="number" min="-8" max="24" id="itemNameGapPx" data-sbind="value: options.itemNameGapPx" /></div>
+        <div class="field"><label for="itemVerticalSpacePx">Item vertical space (px)</label><input type="number" min="-12" max="32" id="itemVerticalSpacePx" data-sbind="value: options.itemVerticalSpacePx" /></div>
+        <div class="field"><label for="extensionIconSizePx">Extension icon size (px)</label><input type="number" min="8" max="24" id="extensionIconSizePx" data-sbind="value: options.extensionIconSizePx" /></div>
+        <div class="field"><label for="popupHeaderIconSize">Popup header icon size</label><select id="popupHeaderIconSize" data-sbind="value: options.popupHeaderIconSize"><option value="normal">Normal</option><option value="compact">Compact</option></select></div>
+        <div class="field"><label for="popupMainPaddingPx">Popup content padding (.main) (px)</label><input type="number" min="0" max="24" id="popupMainPaddingPx" data-sbind="value: options.popupMainPaddingPx" /></div>
+        <div class="field"><label for="popupScrollbarMode">Popup scrollbar</label><select id="popupScrollbarMode" data-sbind="value: options.popupScrollbarMode"><option value="visible">Visible</option><option value="compact">Compact</option><option value="invisible">Invisible</option></select></div>
+        <div class="field"><label for="popupTableActionPanelPosition">Table-row action panel position</label><select id="popupTableActionPanelPosition" data-sbind="value: options.popupTableActionPanelPosition"><option value="side">Side</option><option value="below_name">Below extension name</option></select></div>
+        <div class="field"><label for="popupActionRowLayout">Expanded action layout</label><select id="popupActionRowLayout" data-sbind="value: options.popupActionRowLayout"><option value="horizontal">Horizontal</option><option value="vertical">Vertical</option></select></div>
+        <div class="field"><input type="checkbox" id="popupProfilePillShowIcons" data-sbind="checked: options.popupProfilePillShowIcons" /><label for="popupProfilePillShowIcons">Show icons in popup profile buttons</label></div>
+        <div class="field"><label for="popupProfilePillTextMode">Popup profile button labels</label><select id="popupProfilePillTextMode" data-sbind="value: options.popupProfilePillTextMode"><option value="full">Full</option><option value="compact">Compact</option><option value="icons_only">Icons only</option></select></div>
+        <div class="field"><label for="popupProfilePillSingleWordChars">Popup profile compact single-word length</label><input type="number" min="1" max="8" id="popupProfilePillSingleWordChars" data-sbind="value: options.popupProfilePillSingleWordChars, enable: options.popupProfilePillTextMode() == 'compact'" /></div>
+        <div class="field"><label for="popupProfileBadgeTextMode">Popup profile badge labels</label><select id="popupProfileBadgeTextMode" data-sbind="value: options.popupProfileBadgeTextMode"><option value="full">Full</option><option value="compact">Compact</option></select></div>
+        <div class="field"><label for="popupProfileBadgeSingleWordChars">Single-word compact badge length</label><input type="number" min="1" max="8" id="popupProfileBadgeSingleWordChars" data-sbind="value: options.popupProfileBadgeSingleWordChars, enable: options.popupProfileBadgeTextMode() == 'compact'" /></div>
+        <div class="field"><label>Presets</label>
+          <div class="action-row">
+            <button type="button" title="Apply no spacing preset" data-sbind="click: applyPresetNone">None</button>
+            <button type="button" title="Apply compact spacing preset" data-sbind="click: applyPresetCompact">Compact</button>
+            <button type="button" title="Apply default spacing preset" data-sbind="click: applyPresetDefault">Default</button>
+            <button type="button" title="Apply comfortable spacing preset" data-sbind="click: applyPresetComfortable">Comfortable</button>
+          </div>
+        </div>
+      </fieldset>
+
+      <fieldset class="settings-card">
+        <legend>Profiles &amp; Shortcuts</legend>
+        <div class="field"><input type="checkbox" id="showReserved" data-sbind="checked: options.showReserved" /><label for="showReserved">Show reserved profiles in the popup</label></div>
+        <div class="field"><input type="checkbox" id="keepAlwaysOn" data-sbind="checked: options.keepAlwaysOn" /><label for="keepAlwaysOn">Keep Always On extensions enabled when toggling all off</label></div>
+        <div class="field"><label for="profileDisplay">Profiles page layout</label><select id="profileDisplay" data-sbind="value: options.profileDisplay"><option value="landscape">Landscape</option><option value="portrait">Portrait</option></select></div>
+        <div class="field"><label for="profileLayoutDirection" title="Controls left-to-right or right-to-left layout flow on the Profiles page.">Profiles page direction</label><select id="profileLayoutDirection" title="Controls left-to-right or right-to-left layout flow on the Profiles page." data-sbind="value: options.profileLayoutDirection"><option value="ltr">Left to right (LTR)</option><option value="rtl">Right to left (RTL)</option></select></div>
+        <div class="field"><label for="profileNameDirection" title="Controls text direction for profile names in labels and inputs.">Profile name text direction</label><select id="profileNameDirection" title="Controls text direction for profile names in labels and inputs." data-sbind="value: options.profileNameDirection"><option value="ltr">Left to right (LTR)</option><option value="rtl">Right to left (RTL)</option></select></div>
+        <div class="field"><input type="checkbox" id="showProfilesExtensionMetadata" data-sbind="checked: options.showProfilesExtensionMetadata" /><label for="showProfilesExtensionMetadata">Show extension descriptions and categories on Profiles page</label></div>
+        <div class="field"><label for="profileExtensionSide" title="Controls which side the extension list panel appears on in landscape layout.">Extension list panel side (landscape)</label><select id="profileExtensionSide" title="Controls which side the extension list panel appears on in landscape layout." data-sbind="value: options.profileExtensionSide"><option value="left">Left</option><option value="right">Right</option></select></div>
+        <div class="field action-row"><button type="button" title="Open Chrome shortcut settings" data-sbind="click: openShortcutSettings">Open keyboard shortcuts</button></div>
+      </fieldset>
+
+      <fieldset class="settings-card">
+        <legend>Reminders</legend>
+        <div class="field"><input type="checkbox" id="enableReminders" data-sbind="checked: options.enableReminders" /><label for="enableReminders">Enable extension reminders</label></div>
+        <div class="field"><label for="reminderDelayMinutes">Reminder delay in minutes</label><input type="number" min="1" id="reminderDelayMinutes" data-sbind="value: options.reminderDelayMinutes" /></div>
+        <div class="field"><label for="urlRuleTimeoutMinutes">URL rule auto-disable delay (minutes, 0=off)</label><input type="number" min="0" id="urlRuleTimeoutMinutes" data-sbind="value: options.urlRuleTimeoutMinutes" /></div>
+        <div class="field"><input type="checkbox" id="urlRuleDisableOnClose" data-sbind="checked: options.urlRuleDisableOnClose" /><label for="urlRuleDisableOnClose">Disable URL-rule-enabled extensions when the tab closes</label></div>
+        <div class="field"><input type="checkbox" id="debugHistoryVerbose" data-sbind="checked: options.debugHistoryVerbose" /><label for="debugHistoryVerbose">Debug mode: log full rule/context details in Dashboard History</label></div>
+      </fieldset>
+
+      <fieldset class="settings-card">
+        <legend>Data &amp; Dashboard</legend>
+        <div class="field action-row">
+          <button type="button" title="Open the Extensity dashboard page" data-sbind="click: openDashboard">Open dashboard</button>
+          <button type="button" title="Export all Extensity data as JSON" data-sbind="click: exportJson">Export JSON</button>
+          <button type="button" title="Export profiles only as JSON" data-sbind="click: exportProfilesJson">Export Profiles JSON</button>
+          <button type="button" title="Export settings only as JSON" data-sbind="click: exportSettingsJson">Export Settings JSON</button>
+          <button type="button" title="Export profiles and settings as JSON" data-sbind="click: exportProfilesSettingsJson">Export Profiles + Settings JSON</button>
+          <button type="button" title="Export extension data as CSV" data-sbind="click: exportCsv">Export CSV</button>
+        </div>
+        <div class="field"><label for="importJson">Import JSON backup</label><input type="file" id="importJson" accept=".json,application/json" data-sbind="event:{change: importJson}" /></div>
+      </fieldset>
+
+      <fieldset class="settings-card">
+        <legend>Performance</legend>
+        <div class="field"><input type="checkbox" id="cacheManagementItems" data-sbind="checked: options.cacheManagementItems" /><label for="cacheManagementItems">Cache extension list for faster popup</label></div>
+        <div class="field"><label for="managementCacheTtlSeconds">Cache duration (seconds)</label><input type="number" min="2" max="60" id="managementCacheTtlSeconds" data-sbind="value: options.managementCacheTtlSeconds" /></div>
+      </fieldset>
+
+      <fieldset class="settings-card">
+        <legend>Toolbar Pinning</legend>
+        <div class="field"><label for="pinMethod">Pin to toolbar method</label><select id="pinMethod" data-sbind="value: options.pinMethod"><option value="auto">Automatic (use debugger, fall back to manual)</option><option value="manual">Manual (always open extension page)</option></select></div>
+      </fieldset>
+
+      <fieldset class="settings-card">
+        <legend>Browser Sync</legend>
+        <div class="field"><span class="muted">Settings and profiles sync via Chrome Sync when available. Google Drive backup is not yet enabled in this build.</span></div>
+        <div class="field action-row">
+          <button type="button" title="Check if your settings and profiles are present in browser sync storage" data-sbind="click: checkBrowserSyncStatus">Check sync status</button>
+        </div>
+        <div class="field" data-sbind="visible: syncStatusLabel">
+          <span data-sbind="text: syncStatusLabel"></span>
+        </div>
+      </fieldset>
+
+      <fieldset class="settings-card">
+        <legend>Advanced &amp; Debug</legend>
+        <div class="field">
+          <label for="activeProfile">Active profile</label>
+          <select id="activeProfile" data-sbind="options: activeProfileOptions, optionsText: 'label', optionsValue: 'value', value: options.activeProfile"></select>
+        </div>
+        <div class="field"><span class="muted">Profile storage:</span> <span data-sbind="text: localProfilesLabel"></span></div>
+        <div class="field"><span class="muted">Last Drive sync:</span> <span data-sbind="text: lastDriveSyncLabel"></span></div>
+      </fieldset>
+    </div>
+
+    <div class="footer-actions page-actions">
+      <button id="save" type="button" title="Save option changes" data-sbind="click: save">Save</button>
+      <a href="#" id="close" title="Close options without saving more changes" data-sbind="click: close">Close</a>
+      <span id="save-result" class="hidden" data-sbind="text: message"></span>
+    </div>
+  </section>
+</section>
+</body>
+</html>

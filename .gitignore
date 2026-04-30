@@ -1,0 +1,15 @@
+dist/
+artifacts/
+node_modules/
+.DS_Store
+*.log
+*.tmp
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.project
+.vscode
+.agent/skills/*
+.agents/skills/*
+.claude/skills/*
+.claude/worktrees/

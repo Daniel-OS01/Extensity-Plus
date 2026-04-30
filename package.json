@@ -1,0 +1,18 @@
+{
+  "name": "extensity-plus",
+  "version": "3.0.5",
+  "private": true,
+  "scripts": {
+    "build": "make dist",
+    "bundle:chrome-store": "node scripts/create-chrome-store-bundle.js",
+    "check:manifest": "node scripts/validate-manifest.js",
+    "generate:icons": "node scripts/generate-icons.js",
+    "release:bump": "node scripts/bump-version.js",
+    "test": "node --test tests/*.test.js"
+  },
+  "devDependencies": {
+    "sass": "^1.93.2",
+    "sharp": "^0.34.5",
+    "uglify-js": "^3.19.3"
+  }
+}

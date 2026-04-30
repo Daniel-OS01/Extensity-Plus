@@ -1,0 +1,83 @@
+name: "claude: Storage Schema"
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  storage-schema:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          cache: npm
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run storage schema tests
+        id: test
+        run: |
+          set -o pipefail
+          node --test tests/storage-schema.test.js 2>&1 | tee storage-test-output.txt
+        continue-on-error: true
+
+      - name: PR Safety Summary
+        if: always()
+        run: |
+          echo ""
+          echo "=========================================="
+          if [ "${{ steps.test.outcome }}" = "success" ]; then
+            echo "✅  PR SAFE TO COMMIT"
+            echo "    Storage schema: all assertions passed."
+            echo ""
+            echo "    Verified:"
+            echo "    • All required sync default keys are present"
+            echo "    • Sync defaults fit within Chrome 8KB per-item / 100KB total quota"
+            echo "    • All required local default keys are present"
+            echo "    • mergeDefaults does not mutate its input"
+            echo "    • normalizeProfileMap always includes __always_on and __favorites"
+            echo "    • uniqueArray deduplicates and removes falsy values"
+            echo "    • profileMapToItems sorts reserved profiles before user profiles"
+          else
+            echo "❌  PR NOT SAFE TO COMMIT"
+            echo "    Storage schema checks failed. See diagnostic output below."
+            echo ""
+            echo "=== Test output ==="
+            cat storage-test-output.txt || true
+            echo ""
+            echo "=== Suggested fixes ==="
+            echo ""
+            echo "  Missing sync key:"
+            echo "    → Add it to the 'syncDefaults' object in js/storage.js"
+            echo "    → If it is a new feature flag, pick a safe default (e.g. false/null)"
+            echo ""
+            echo "  Sync quota exceeded:"
+            echo "    → Move large or unbounded collections (arrays, objects) to chrome.storage.local"
+            echo "    → 'localDefaults' in js/storage.js is the right home for these"
+            echo "    → Never put aliases, groups, urlRules, eventHistory in sync storage"
+            echo ""
+            echo "  Missing local key:"
+            echo "    → Add it to the 'localDefaults' object in js/storage.js"
+            echo ""
+            echo "  mergeDefaults mutates input:"
+            echo "    → Ensure clone() is called on the defaults argument before merging"
+            echo ""
+            echo "  normalizeProfileMap missing reserved profile:"
+            echo "    → Check the 'profileNames' array in js/storage.js contains '__always_on' and '__favorites'"
+            echo ""
+            echo "  uniqueArray retains falsy values:"
+            echo "    → The filter in uniqueArray must check '!item' before the seen-set check"
+          fi
+          echo "=========================================="
+          [ "${{ steps.test.outcome }}" = "success" ]

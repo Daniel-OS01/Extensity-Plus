@@ -1,0 +1,102 @@
+name: "claude: Import / Export"
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  import-export:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          cache: npm
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run existing import/export unit tests
+        id: test-existing
+        run: |
+          set -o pipefail
+          node --test --test-name-pattern="import/export" tests/browser-modules.test.js 2>&1 | tee ie-test-existing.txt
+        continue-on-error: true
+
+      - name: Run import/export round-trip tests
+        id: test-roundtrip
+        run: |
+          set -o pipefail
+          node --test tests/import-export-roundtrip.test.js 2>&1 | tee ie-test-roundtrip.txt
+        continue-on-error: true
+
+      - name: PR Safety Summary
+        if: always()
+        run: |
+          EXISTING="${{ steps.test-existing.outcome }}"
+          ROUNDTRIP="${{ steps.test-roundtrip.outcome }}"
+
+          echo ""
+          echo "=========================================="
+          if [ "$EXISTING" = "success" ] && [ "$ROUNDTRIP" = "success" ]; then
+            echo "✅  PR SAFE TO COMMIT"
+            echo "    Import/export: all assertions passed."
+            echo ""
+            echo "    Verified:"
+            echo "    • buildBackupEnvelope produces a v2.0.0 envelope"
+            echo "    • Only mayDisable extensions appear in extensionStates"
+            echo "    • Enabled/disabled booleans are recorded correctly"
+            echo "    • validateBackupEnvelope rejects v1.0.0 and unknown versions"
+            echo "    • validateBackupEnvelope rejects envelopes missing required keys"
+            echo "    • validateBackupEnvelope deduplicates profile extension IDs"
+            echo "    • Round-trip: buildBackupEnvelope output passes validateBackupEnvelope unchanged"
+            echo "    • CSV header contains all expected columns"
+            echo "    • CSV aliases with commas and double-quotes are correctly escaped"
+            echo "    • Multiple group IDs are pipe-separated and double-quoted"
+          else
+            echo "❌  PR NOT SAFE TO COMMIT"
+            echo "    Import/export checks failed."
+            echo ""
+            if [ "$EXISTING" != "success" ]; then
+              echo "=== Existing test failures ==="
+              cat ie-test-existing.txt || true
+              echo ""
+            fi
+            if [ "$ROUNDTRIP" != "success" ]; then
+              echo "=== Round-trip test failures ==="
+              cat ie-test-roundtrip.txt || true
+              echo ""
+            fi
+            echo "=== Suggested fixes ==="
+            echo ""
+            echo "  buildBackupEnvelope version is wrong:"
+            echo "    → Check the hardcoded version string in buildBackupEnvelope in js/import-export.js"
+            echo "    → It must be '2.0.0' to match the current schema"
+            echo ""
+            echo "  Non-mayDisable extensions appear in extensionStates:"
+            echo "    → In buildBackupEnvelope, filter extensions by ext.mayDisable === true before recording states"
+            echo ""
+            echo "  validateBackupEnvelope does not reject old versions:"
+            echo "    → The version check must explicitly allow only '2.0.0'"
+            echo "    → The /Unsupported backup version/ error must be thrown for all other versions"
+            echo ""
+            echo "  Round-trip validation fails:"
+            echo "    → The envelope schema produced by buildBackupEnvelope must satisfy all keys"
+            echo "      that validateBackupEnvelope checks. Align the two functions."
+            echo ""
+            echo "  CSV escaping is wrong:"
+            echo "    → Double-quotes must be escaped as '' (two double-quotes) per RFC 4180"
+            echo "    → Any field containing a comma, quote, or newline must be wrapped in double-quotes"
+            echo "    → Group IDs must be joined with '|' and the resulting string wrapped in double-quotes"
+          fi
+          echo "=========================================="
+          [ "$EXISTING" = "success" ] && [ "$ROUNDTRIP" = "success" ]

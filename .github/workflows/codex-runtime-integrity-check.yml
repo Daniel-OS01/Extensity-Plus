@@ -1,0 +1,124 @@
+name: PR Runtime Integrity Check
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+
+jobs:
+  runtime-integrity:
+    name: Validate MV3 entrypoints and script references
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Validate manifest-referenced files exist
+        run: |
+          node <<'NODE'
+          var fs = require('node:fs');
+          var manifest = JSON.parse(fs.readFileSync('manifest.json', 'utf8'));
+          var missing = [];
+
+          function ensureFile(path) {
+            if (!path) {
+              return;
+            }
+            if (!fs.existsSync(path)) {
+              missing.push(path);
+            }
+          }
+
+          ensureFile(manifest.action && manifest.action.default_popup);
+          ensureFile(manifest.background && manifest.background.service_worker);
+
+          (manifest.icons ? Object.keys(manifest.icons) : []).forEach(function(key) {
+            ensureFile(manifest.icons[key]);
+          });
+
+          (manifest.web_accessible_resources || []).forEach(function(group) {
+            (group.resources || []).forEach(function(resourcePath) {
+              ensureFile(resourcePath);
+            });
+          });
+
+          if (missing.length) {
+            console.error('Missing files declared in manifest.json:');
+            missing.forEach(function(path) {
+              console.error('- ' + path);
+            });
+            process.exit(1);
+          }
+
+          console.log('All manifest-declared file paths are present.');
+          NODE
+
+      - name: Validate required HTML entrypoints are present
+        run: |
+          for entry in index.html dashboard.html options.html profiles.html; do
+            if [ ! -f "$entry" ]; then
+              echo "Missing required entrypoint: $entry"
+              exit 1
+            fi
+          done
+
+      - name: Validate service worker importScripts targets exist
+        run: |
+          node <<'NODE'
+          var fs = require('node:fs');
+          var workerPath = 'js/background.js';
+          var source = fs.readFileSync(workerPath, 'utf8');
+          var importBlockMatch = source.match(/importScripts\(([\s\S]*?)\);/);
+          if (!importBlockMatch) {
+            console.error('Could not find importScripts(...) block in js/background.js');
+            process.exit(1);
+          }
+
+          var scripts = importBlockMatch[1]
+            .split(',')
+            .map(function(value) {
+              return value.trim().replace(/^"|"$/g, '');
+            })
+            .filter(Boolean);
+
+          var missing = scripts.filter(function(relativePath) {
+            return !fs.existsSync('js/' + relativePath);
+          });
+
+          if (missing.length) {
+            console.error('Missing importScripts targets referenced by js/background.js:');
+            missing.forEach(function(path) {
+              console.error('- js/' + path);
+            });
+            process.exit(1);
+          }
+
+          console.log('All importScripts targets exist.');
+          NODE
+
+      - name: PR safety summary (pass)
+        if: success()
+        run: |
+          {
+            echo "## Safe-to-commit summary"
+            echo "✅ This pull request is safe to commit from a runtime-integrity perspective."
+            echo "Manifest references, required entrypoint pages, and service-worker script dependencies are intact."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: PR safety summary (fail with diagnostics)
+        if: failure()
+        run: |
+          {
+            echo "## Safe-to-commit summary"
+            echo "❌ This pull request is **not** safe to commit yet."
+            echo "Runtime-integrity checks detected missing or broken file references."
+            echo ""
+            echo "### Diagnostic feedback for AI coding assistants"
+            echo "1. Match every path in manifest.json (popup, service worker, icons, web_accessible_resources) to an actual tracked file."
+            echo "2. Ensure top-level entrypoints still include index.html, dashboard.html, options.html, and profiles.html."
+            echo "3. If js/background.js importScripts list changed, create/move files accordingly or update imports to valid paths."
+            echo "4. Re-run this workflow and verify all reference checks pass before merging."
+          } >> "$GITHUB_STEP_SUMMARY"

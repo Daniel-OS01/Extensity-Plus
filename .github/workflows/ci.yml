@@ -1,0 +1,304 @@
+name: CI And Release
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version bump for a new release"
+        required: true
+        default: patch
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-validate:
+    if: |
+      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+      github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          cache: pnpm
+          node-version: 22
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Run unit tests
+        run: pnpm test
+
+      - name: Validate manifest contract
+        run: pnpm run check:manifest
+
+      - name: Build distributable extension
+        run: make dist
+
+      - name: Build Chrome Web Store submission bundle
+        run: pnpm run bundle:chrome-store
+
+      - name: Upload distribution artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: extensity-dist
+          path: dist/dist.zip
+
+      - name: Upload Chrome Web Store submission bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: chrome-web-store-submission
+          path: artifacts/chrome-web-store/
+
+  pre-release-contracts:
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_dispatch' && 'main' || github.ref }}
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          cache: pnpm
+          node-version: 22
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Run tests
+        run: pnpm test
+
+      - name: Validate manifest contract
+        run: pnpm run check:manifest
+
+      - name: Validate package and manifest versions match
+        run: |
+          PACKAGE_VERSION="$(node -p "require('./package.json').version")"
+          MANIFEST_VERSION="$(node -p "require('./manifest.json').version")"
+          if [ "$PACKAGE_VERSION" != "$MANIFEST_VERSION" ]; then
+            echo "package.json and manifest.json versions must match."
+            exit 1
+          fi
+
+  pre-release-build-checks:
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    needs:
+      - pre-release-contracts
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_dispatch' && 'main' || github.ref }}
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          cache: pnpm
+          node-version: 22
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Build distributable extension
+        run: make dist
+
+      - name: Build Chrome Web Store submission bundle
+        run: pnpm run bundle:chrome-store
+
+      - name: Verify build outputs exist
+        run: |
+          test -f dist/dist.zip
+          test -f "artifacts/chrome-web-store/$(node -p "require('./package.json').name")-v$(node -p "require('./manifest.json').version").zip"
+          test -f artifacts/chrome-web-store/manifest.json
+          test -f artifacts/chrome-web-store/submission-metadata.json
+          test -f artifacts/chrome-web-store/checksums.txt
+          test -f artifacts/chrome-web-store/submission-notes.md
+
+  manual-release:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    needs:
+      - pre-release-contracts
+      - pre-release-build-checks
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: main
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          cache: pnpm
+          node-version: 22
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Bump tracked versions
+        id: bump
+        run: |
+          VERSION="$(pnpm run --silent release:bump -- ${{ inputs.version }})"
+          PACKAGE_NAME="$(node -p "require('./package.json').name")"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
+          echo "package_name=$PACKAGE_NAME" >> "$GITHUB_OUTPUT"
+
+      - name: Run tests after version bump
+        run: pnpm test
+
+      - name: Validate manifest after version bump
+        run: pnpm run check:manifest
+
+      - name: Build release artifacts
+        run: |
+          make dist
+          pnpm run bundle:chrome-store
+          mkdir -p release-assets
+          cp dist/dist.zip "release-assets/${{ steps.bump.outputs.package_name }}-extension-v${{ steps.bump.outputs.version }}.zip"
+          cp "artifacts/chrome-web-store/${{ steps.bump.outputs.package_name }}-v${{ steps.bump.outputs.version }}.zip" "release-assets/${{ steps.bump.outputs.package_name }}-chrome-web-store-upload-v${{ steps.bump.outputs.version }}.zip"
+          cp artifacts/chrome-web-store/submission-metadata.json release-assets/submission-metadata.json
+          cp artifacts/chrome-web-store/checksums.txt release-assets/checksums.txt
+          cp artifacts/chrome-web-store/submission-notes.md release-assets/submission-notes.md
+
+      - name: Upload release artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-assets-v${{ steps.bump.outputs.version }}
+          path: release-assets/
+
+      - name: Commit and push release version
+        run: |
+          git add package.json package-lock.json manifest.json
+          git commit -m "chore(release): bump version to ${{ steps.bump.outputs.version }} [skip ci]"
+          git tag "${{ steps.bump.outputs.tag }}"
+          git push origin main
+          git push origin "${{ steps.bump.outputs.tag }}"
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.bump.outputs.tag }}
+          target_commitish: main
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  tag-release:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    needs:
+      - pre-release-contracts
+      - pre-release-build-checks
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          cache: pnpm
+          node-version: 22
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Validate tag version matches tracked files
+        id: version
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          PACKAGE_VERSION="$(node -p "require('./package.json').version")"
+          MANIFEST_VERSION="$(node -p "require('./manifest.json').version")"
+          PACKAGE_NAME="$(node -p "require('./package.json').name")"
+          if [ "$TAG_VERSION" != "$PACKAGE_VERSION" ] || [ "$TAG_VERSION" != "$MANIFEST_VERSION" ]; then
+            echo "Tag version, package.json, and manifest.json must match."
+            exit 1
+          fi
+          echo "version=$TAG_VERSION" >> "$GITHUB_OUTPUT"
+          echo "package_name=$PACKAGE_NAME" >> "$GITHUB_OUTPUT"
+
+      - name: Build release artifacts
+        run: |
+          make dist
+          pnpm run bundle:chrome-store
+          mkdir -p release-assets
+          cp dist/dist.zip "release-assets/${{ steps.version.outputs.package_name }}-extension-v${{ steps.version.outputs.version }}.zip"
+          cp "artifacts/chrome-web-store/${{ steps.version.outputs.package_name }}-v${{ steps.version.outputs.version }}.zip" "release-assets/${{ steps.version.outputs.package_name }}-chrome-web-store-upload-v${{ steps.version.outputs.version }}.zip"
+          cp artifacts/chrome-web-store/submission-metadata.json release-assets/submission-metadata.json
+          cp artifacts/chrome-web-store/checksums.txt release-assets/checksums.txt
+          cp artifacts/chrome-web-store/submission-notes.md release-assets/submission-notes.md
+
+      - name: Upload release artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-assets-v${{ steps.version.outputs.version }}
+          path: release-assets/
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

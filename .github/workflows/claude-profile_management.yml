@@ -1,0 +1,212 @@
+name: "claude: Profile Management Regression"
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  profile-management:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          cache: npm
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run existing profile badge label tests
+        id: test-existing
+        run: |
+          set -o pipefail
+          node --test --test-name-pattern="badge" tests/browser-modules.test.js 2>&1 | tee profile-existing.txt
+        continue-on-error: true
+
+      - name: Run profile management regression tests
+        id: test-profile
+        run: |
+          set -o pipefail
+          node --test tests/profile-management.test.js 2>&1 | tee profile-regression.txt
+        continue-on-error: true
+
+      # Verify reserved profile names are still hardcoded correctly in storage.js.
+      # These values are referenced by engine.js, background.js, and import-export.js.
+      # A rename would silently break always-on pinning, favorites, and profile cycling.
+      - name: Verify reserved profile name constants in storage.js
+        id: reserved-names-check
+        run: |
+          set -e
+          FAIL=0
+
+          if grep -q '"__always_on"' js/storage.js; then
+            echo "  ✓ __always_on present in storage.js"
+          else
+            echo "  ✗ MISSING: '__always_on' not found in js/storage.js"
+            FAIL=$((FAIL + 1))
+          fi
+
+          if grep -q '"__favorites"' js/storage.js; then
+            echo "  ✓ __favorites present in storage.js"
+          else
+            echo "  ✗ MISSING: '__favorites' not found in js/storage.js"
+            FAIL=$((FAIL + 1))
+          fi
+
+          if [ $FAIL -gt 0 ]; then
+            echo ""
+            echo "FAIL: Reserved profile name constant(s) missing from js/storage.js"
+            exit 1
+          fi
+        continue-on-error: true
+
+      # Verify engine.js handles __always_on and __favorites badge labels.
+      # If these special cases are removed, the popup will show raw __always_on text.
+      - name: Verify engine.js formatProfileBadgeLabel handles reserved profile names
+        id: badge-label-check
+        run: |
+          set -e
+          FAIL=0
+
+          if grep -q "__always_on" js/engine.js; then
+            echo "  ✓ __always_on handled in engine.js"
+          else
+            echo "  ✗ MISSING: __always_on not referenced in js/engine.js (badge label will be broken)"
+            FAIL=$((FAIL + 1))
+          fi
+
+          if grep -q "__favorites" js/engine.js; then
+            echo "  ✓ __favorites handled in engine.js"
+          else
+            echo "  ✗ MISSING: __favorites not referenced in js/engine.js (badge label will be broken)"
+            FAIL=$((FAIL + 1))
+          fi
+
+          if [ $FAIL -gt 0 ]; then
+            echo ""
+            echo "FAIL: Reserved profile name handling missing from engine.js"
+            exit 1
+          fi
+        continue-on-error: true
+
+      # Verify the profile cycling command names match what manifest.json declares.
+      # A mismatch means keyboard shortcuts silently do nothing.
+      - name: Verify cycle-profile command names match manifest.json
+        id: cycle-commands-check
+        run: |
+          node -e "
+          const fs = require('fs');
+          const manifest = require('./manifest.json');
+          const bgSource = fs.readFileSync('js/background.js', 'utf8');
+          const commands = manifest.commands || {};
+          let failed = 0;
+
+          Object.keys(commands).forEach(cmd => {
+            if (bgSource.includes('\"' + cmd + '\"')) {
+              console.log('  ✓', cmd, 'handled in background.js');
+            } else {
+              console.error('  ✗ MISSING handler for manifest command:', cmd);
+              failed++;
+            }
+          });
+
+          if (failed > 0) {
+            console.error('FAIL: ' + failed + ' manifest command(s) not handled in background.js');
+            process.exit(1);
+          }
+          " 2>&1
+        continue-on-error: true
+
+      - name: PR Safety Summary
+        if: always()
+        run: |
+          EXISTING="${{ steps.test-existing.outcome }}"
+          PROFILE="${{ steps.test-profile.outcome }}"
+          RESERVED="${{ steps.reserved-names-check.outcome }}"
+          BADGE="${{ steps.badge-label-check.outcome }}"
+          CYCLE="${{ steps.cycle-commands-check.outcome }}"
+
+          ALL_PASS="true"
+          for STEP in "$EXISTING" "$PROFILE" "$RESERVED" "$BADGE" "$CYCLE"; do
+            [ "$STEP" != "success" ] && ALL_PASS="false"
+          done
+
+          echo ""
+          echo "=========================================="
+          if [ "$ALL_PASS" = "true" ]; then
+            echo "✅  PR SAFE TO COMMIT"
+            echo "    Profile management regression: all checks passed."
+            echo ""
+            echo "    Verified:"
+            echo "    • normalizeProfileMap always produces __always_on and __favorites"
+            echo "    • normalizeProfileMap deduplicates extension IDs"
+            echo "    • normalizeProfileMap handles null/falsy input gracefully"
+            echo "    • profileMapToItems sorts reserved profiles before user profiles"
+            echo "    • formatProfileBadgeLabel compact: __always_on → AO, __favorites → FA"
+            echo "    • formatProfileBadgeLabel compact: multi-word names use initials"
+            echo "    • formatProfileBadgeLabel compact: single-word names use first N chars"
+            echo "    • formatProfileBadgeLabel full: returns complete profile name"
+            echo "    • Reserved profile name constants are present in storage.js"
+            echo "    • engine.js handles reserved profile names in badge label formatting"
+            echo "    • All manifest keyboard commands are handled in background.js"
+          else
+            echo "❌  PR NOT SAFE TO COMMIT"
+            echo "    Profile management regression checks failed."
+            echo ""
+            echo "    Step outcomes:"
+            echo "    • Badge label (existing): $EXISTING"
+            echo "    • Profile regression:     $PROFILE"
+            echo "    • Reserved name consts:   $RESERVED"
+            echo "    • Engine badge handling:  $BADGE"
+            echo "    • Cycle commands wired:   $CYCLE"
+            echo ""
+            if [ "$EXISTING" != "success" ]; then
+              echo "=== Existing test output ==="
+              cat profile-existing.txt || true
+              echo ""
+            fi
+            if [ "$PROFILE" != "success" ]; then
+              echo "=== Regression test output ==="
+              cat profile-regression.txt || true
+              echo ""
+            fi
+            echo "=== Suggested fixes ==="
+            echo ""
+            echo "  normalizeProfileMap missing reserved profiles:"
+            echo "    → Check the 'profileNames' array in js/storage.js"
+            echo "    → It must contain ['__always_on', '__favorites']"
+            echo "    → The forEach at the bottom of normalizeProfileMap ensures each is present"
+            echo ""
+            echo "  profileMapToItems wrong sort order:"
+            echo "    → The sort key in sortProfileName() prepends a space for names starting with '__'"
+            echo "    → A space character sorts before all uppercase letters — ensure this logic is intact"
+            echo ""
+            echo "  Badge label wrong for reserved profile:"
+            echo "    → In engine.js formatProfileBadgeLabel(), the special cases for __always_on"
+            echo "      and __favorites must be handled before the generic compact logic"
+            echo "    → __always_on → 'AO', __favorites → 'FA'"
+            echo ""
+            echo "  Badge label wrong for multi-word name:"
+            echo "    → Split on whitespace, take the first character of each word, join and uppercase"
+            echo "    → Example: 'Bookmark Organization' → ['B', 'O'] → 'BO'"
+            echo ""
+            echo "  Badge label wrong for single-word name:"
+            echo "    → Take the first popupProfileBadgeSingleWordChars characters of the name"
+            echo "    → Example: 'Testing' with limit 4 → 'Test'"
+            echo ""
+            echo "  Manifest command not handled in background.js:"
+            echo "    → Add a case for the command in the chrome.commands.onCommand listener"
+            echo "    → Command names in the handler must exactly match manifest.json keys"
+            echo "    → Current commands: toggle-all-extensions, cycle-next-profile, cycle-previous-profile"
+          fi
+          echo "=========================================="
+          [ "$ALL_PASS" = "true" ]

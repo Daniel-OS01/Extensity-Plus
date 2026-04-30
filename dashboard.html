@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8" />
+<title>Extensity-Plus Dashboard</title>
+<link rel="stylesheet" type="text/css" href="styles/options.css" />
+<link rel="stylesheet" type="text/css" href="styles/dashboard.css" />
+<link rel="stylesheet" type="text/css" href="styles/font-awesome.min.css" />
+<script type="text/javascript" src="js/libs/underscore-min.js"></script>
+<script type="text/javascript" src="js/libs/knockout-3.5.1.js"></script>
+<script type="text/javascript" src="js/libs/knockout-secure-binding.min.js"></script>
+<script type="text/javascript" src="js/storage.js"></script>
+<script type="text/javascript" src="js/engine.js"></script>
+<script type="text/javascript" src="js/import-export.js"></script>
+<script type="text/javascript" src="js/dashboard.js"></script>
+</head>
+<body>
+<section id="dashboard-page">
+  <section id="header">
+    <div class="tabs">
+      <h1><img src="images/icon48.png" /> Extensity-Plus Dashboard</h1>
+      <div id="menu">
+        <a href="options.html" title="Open Options settings">Options</a>
+        <a href="profiles.html" title="Open Profiles manager">Profiles</a>
+        <a href="dashboard.html" class="selected" title="Open Dashboard tools">Dashboard</a>
+      </div>
+    </div>
+  </section>
+
+  <div class="clear"></div>
+
+  <section id="content">
+    <p class="status error" data-sbind="visible: error, text: error"></p>
+    <p class="status" data-sbind="visible: message, text: message"></p>
+
+    <div class="permission-banner" data-sbind="visible: needsWebStorePermission">
+      <i class="fa fa-exclamation-triangle"></i>
+      <span>Grant Chrome Web Store access to enable extension metadata and store links.</span>
+      <button type="button" title="Grant Chrome Web Store access" data-sbind="click: requestWebStorePermission">Grant access</button>
+    </div>
+
+    <div class="dashboard-tabs">
+      <button type="button" title="View extension activity history" data-sbind="click: showTabHistory, css:{selected: historyTab}">History</button>
+      <button type="button" title="Manage extension groups and colors" data-sbind="click: showTabGroups, css:{selected: groupsTab}">Groups</button>
+      <button type="button" title="Manage automatic URL-based rules" data-sbind="click: showTabRules, css:{selected: rulesTab}">URL Rules</button>
+      <button type="button" title="Edit extension aliases" data-sbind="click: showTabAliases, css:{selected: aliasesTab}">Aliases</button>
+      <button type="button" title="Import and export extension data" data-sbind="click: showTabData, css:{selected: dataTab}">Import / Export</button>
+      <button type="button" title="Check browser sync status for settings and profiles" data-sbind="click: showTabSyncStatus, css:{selected: syncStatusTab}">Sync Status</button>
+      <button type="button" title="About Extensity-Plus" data-sbind="click: showTabAbout, css:{selected: aboutTab}">About</button>
+    </div>
+
+    <section class="dashboard-section" data-sbind="visible: historyTab">
+      <h2>History</h2>
+      <div class="card-row compact-controls history-filters">
+        <label for="historySourceFilter">Source</label>
+        <select id="historySourceFilter" data-sbind="value: historySourceFilter">
+          <option value="all">all</option>
+          <option value="manual">manual</option>
+          <option value="profile">profile</option>
+          <option value="rule">rule</option>
+          <option value="bulk">bulk</option>
+          <option value="undo">undo</option>
+          <option value="import">import</option>
+        </select>
+        <label for="historyResultFilter">Result</label>
+        <select id="historyResultFilter" data-sbind="value: historyResultFilter">
+          <option value="all">all</option>
+          <option value="state_changed_on">state_changed_on</option>
+          <option value="state_changed_off">state_changed_off</option>
+          <option value="changed">changed</option>
+          <option value="no_match">no_match</option>
+          <option value="no_op">no_op</option>
+          <option value="scheduled">scheduled</option>
+          <option value="alarm_fired">alarm_fired</option>
+          <option value="closing_tab">closing_tab</option>
+        </select>
+      </div>
+      <ul class="history-list" data-sbind="foreach: filteredHistoryRows">
+        <li>
+          <span title="History event badge" data-sbind="attr:{class: badgeClass}, text: event"></span>
+          <span class="event-name" data-sbind="text: extensionName"></span>
+          <span class="event-meta" data-sbind="text: triggeredBy"></span>
+          <span class="event-meta debug-line" data-sbind="visible: details, text: details"></span>
+          <button type="button" class="history-action" data-sbind="visible: ruleId, click: $parent.openRelatedRule">Open related rule</button>
+          <span class="event-meta" data-sbind="text: formattedDate"></span>
+        </li>
+      </ul>
+    </section>
+
+    <section class="dashboard-section" data-sbind="visible: groupsTab">
+      <h2>Groups</h2>
+      <button type="button" title="Create a new extension group" data-sbind="click: addGroup">Add group</button>
+      <div class="group-editor" data-sbind="foreach: groups">
+        <div class="card">
+          <div class="card-row">
+            <input type="text" placeholder="Group name" data-sbind="value: name" />
+            <input type="color" data-sbind="value: color" />
+            <button type="button" title="Remove this group" data-sbind="click: $parent.removeGroup">Remove</button>
+          </div>
+          <div class="extension-grid" data-sbind="foreach: $parent.extensions">
+            <label>
+              <input type="checkbox" data-sbind="checked: $parent.extensionIds, value: id" />
+              <span data-sbind="text: name"></span>
+            </label>
+          </div>
+        </div>
+      </div>
+      <div class="footer-actions"><button type="button" title="Save all group changes" data-sbind="click: saveGroups">Save groups</button></div>
+    </section>
+
+    <section class="dashboard-section" data-sbind="visible: rulesTab">
+      <h2>URL Rules</h2>
+      <div class="card rule-tester-card">
+        <div class="card-row">
+          <input type="text" placeholder="Test URL, e.g. https://app.example.com/admin" data-sbind="value: ruleTesterUrl, valueUpdate:'afterkeydown'" />
+          <button type="button" data-sbind="click: testRules">Test rules</button>
+          <button type="button" data-sbind="click: clearRuleSelection, visible: selectedRuleId">Clear selected rule</button>
+        </div>
+        <p class="event-meta" data-sbind="visible: ruleTestSummary, text: ruleTestSummary"></p>
+        <div class="rule-test-results" data-sbind="if: ruleTestResult">
+          <div class="rule-test-columns">
+            <div class="rule-test-panel" data-sbind="with: ruleTestResult">
+              <h3>Matched rules</h3>
+              <ul class="rule-match-list" data-sbind="foreach: matchedRules">
+                <li data-sbind="css:{selected: isSelected}">
+                  <span data-sbind="attr:{class: badgeClass}, text: matchMethod"></span>
+                  <strong data-sbind="text: name"></strong>
+                  <span class="event-meta" data-sbind="text: urlPattern"></span>
+                </li>
+              </ul>
+            </div>
+            <div class="rule-test-panel" data-sbind="with: ruleTestResult">
+              <h3>Final extension changes</h3>
+              <ul class="rule-change-list" data-sbind="foreach: finalChanges">
+                <li>
+                  <span data-sbind="attr:{class: badgeClass}, text: actionLabel"></span>
+                  <strong data-sbind="text: extensionName"></strong>
+                  <span class="event-meta" data-sbind="text: stateLabel"></span>
+                  <span class="event-meta" data-sbind="visible: ruleName, text: ruleName"></span>
+                  <span class="event-meta debug-line" data-sbind="visible: overrideLine, text: overrideLine"></span>
+                </li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+      <button type="button" title="Create a new URL rule" data-sbind="click: addRule">Add rule</button>
+      <div class="rule-editor" data-sbind="foreach: rules">
+        <div class="card" data-sbind="css:{selected: isSelected}">
+          <div class="card-row">
+            <input type="text" placeholder="Rule name" data-sbind="value: name" />
+            <select data-sbind="value: matchMethod"><option value="wildcard">Wildcard</option><option value="regex">Regex</option></select>
+            <label><input type="checkbox" data-sbind="checked: active" /> Active</label>
+            <button type="button" title="Remove this URL rule" data-sbind="click: $parent.removeRule">Remove</button>
+          </div>
+          <div class="card-row"><input type="text" placeholder="e.g. *://github.com/*" data-sbind="value: urlPattern" /></div>
+          <div class="rule-columns">
+            <div>
+              <h3>Enable on match</h3>
+              <div class="card-row compact-controls">
+                <span class="rule-selection-summary" data-sbind="text: enableSummary"></span>
+                <input type="text" placeholder="Search extensions" data-sbind="value: enableFilter, valueUpdate:'afterkeydown'" />
+                <button type="button" title="Toggle enable list" data-sbind="click: toggleEnableList, text: enableToggleLabel"></button>
+              </div>
+              <div class="extension-grid tight-grid" data-sbind="visible: showEnable, foreach: filteredEnableExtensions">
+                <label>
+                  <input type="checkbox" data-sbind="checked: $parentContext.$data.enableIds, value: id" />
+                  <span data-sbind="text: name"></span>
+                </label>
+              </div>
+            </div>
+            <div>
+              <h3>Disable on match</h3>
+              <div class="card-row compact-controls">
+                <span class="rule-selection-summary" data-sbind="text: disableSummary"></span>
+                <input type="text" placeholder="Search extensions" data-sbind="value: disableFilter, valueUpdate:'afterkeydown'" />
+                <button type="button" title="Toggle disable list" data-sbind="click: toggleDisableList, text: disableToggleLabel"></button>
+              </div>
+              <div class="extension-grid tight-grid" data-sbind="visible: showDisable, foreach: filteredDisableExtensions">
+                <label>
+                  <input type="checkbox" data-sbind="checked: $parentContext.$data.disableIds, value: id" />
+                  <span data-sbind="text: name"></span>
+                </label>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="footer-actions"><button type="button" title="Save all URL rule changes" data-sbind="click: saveRules">Save URL rules</button></div>
+    </section>
+
+    <section class="dashboard-section" data-sbind="visible: aliasesTab">
+      <h2>Aliases</h2>
+      <div class="alias-list" data-sbind="foreach: aliasRows">
+        <div class="card-row">
+          <span class="alias-name" data-sbind="text: name"></span>
+          <input type="text" placeholder="Alias" data-sbind="value: alias" />
+        </div>
+      </div>
+      <div class="footer-actions"><button type="button" title="Save alias updates" data-sbind="click: saveAliases">Save aliases</button></div>
+    </section>
+
+    <section class="dashboard-section" data-sbind="visible: dataTab">
+      <h2>Import / Export</h2>
+      <div class="footer-actions">
+        <button type="button" title="Export all Extensity-Plus data as JSON" data-sbind="click: exportJson">Export JSON</button>
+        <button type="button" title="Export profiles only as JSON" data-sbind="click: exportProfilesJson">Export Profiles JSON</button>
+        <button type="button" title="Export settings only as JSON" data-sbind="click: exportSettingsJson">Export Settings JSON</button>
+        <button type="button" title="Export profiles and settings as JSON" data-sbind="click: exportProfilesSettingsJson">Export Profiles + Settings JSON</button>
+        <button type="button" title="Export extension data as CSV" data-sbind="click: exportCsv">Export CSV</button>
+        <button type="button" title="Sync your backup to Google Drive now" data-sbind="click: syncDrive">Sync Drive</button>
+      </div>
+      <p class="event-meta">Cloud Sync is a future feature and is not implemented in this build yet.</p>
+      <div class="field">
+        <label for="dashboard-import">Import JSON backup</label>
+        <input type="file" id="dashboard-import" accept=".json,application/json" data-sbind="event:{change: importJson}" />
+      </div>
+    </section>
+
+    <section class="dashboard-section" data-sbind="visible: syncStatusTab">
+      <h2>Sync Status</h2>
+      <div class="sync-status-card">
+        <p class="event-meta">Verifies whether Extensity-Plus settings and profiles are available in browser-managed sync storage.</p>
+        <div class="sync-status-line">
+          <span class="sync-status-badge" data-sbind="css: syncStatusBadgeClass, text: syncStatusLabel"></span>
+          <span class="event-meta" data-sbind="visible: syncStatusCheckedAt, text: syncStatusCheckedAt"></span>
+        </div>
+        <p class="sync-status-note" data-sbind="visible: syncStatusReason, text: syncStatusReason"></p>
+        <button type="button" title="Check if settings and profiles are synced via browser sync storage" data-sbind="click: checkSyncStatus, disable: busy">Check sync status</button>
+      </div>
+    </section>
+
+    <section class="dashboard-section" data-sbind="visible: aboutTab">
+      <h2>About Extensity-Plus</h2>
+      <p><strong>Version:</strong> <span data-sbind="text: appVersion"></span></p>
+      <p>Extensity-Plus lets you quickly enable, disable, and manage Chrome extensions from the popup, profiles, and URL-based rules.</p>
+      <p><strong>Repository:</strong> <a href="https://github.com/Daniel-OS01/Extensity-Plus" target="_blank" rel="noopener noreferrer">Daniel-OS01/Extensity-Plus</a></p>
+      <p><strong>Main inspiration:</strong> <a href="https://github.com/sergiokas/Extensity" target="_blank" rel="noopener noreferrer">sergiokas/Extensity</a></p>
+      <p><strong>Credits:</strong> Maintained by Daniel-OS01 and built on the original Extensity work by Sergio Kas, with additional inspiration from the wider Extensity open-source lineage.</p>
+      <p class="event-meta">Chrome Web Store publishing will be added later. This build currently ships as a direct repository/unpacked extension workflow.</p>
+      <h3>Quick Guide</h3>
+      <ul>
+        <li><strong>Popup</strong> &mdash; Toggle extensions. Click the extension name in Table/Compact mode to enable/disable.</li>
+        <li><strong>Profiles</strong> &mdash; Save extension sets. Apply from popup or keyboard shortcuts.</li>
+        <li><strong>Always On</strong> &mdash; Extensions in this profile stay enabled when you toggle all off.</li>
+        <li><strong>Favorites</strong> &mdash; These extensions always appear at the top of the popup.</li>
+        <li><strong>URL Rules</strong> &mdash; Auto enable/disable extensions when visiting matching URLs.</li>
+        <li><strong>Groups</strong> &mdash; Color-code extensions for visual organization.</li>
+        <li><strong>Aliases</strong> &mdash; Give extensions shorter search names.</li>
+      </ul>
+    </section>
+  </section>
+</section>
+</body>
+</html>

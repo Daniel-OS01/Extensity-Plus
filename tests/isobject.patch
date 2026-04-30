@@ -1,0 +1,32 @@
+<<<<<<< SEARCH
+test("storage clone utility makes a deep copy of objects", () => {
+  const root = loadModule("js/storage.js");
+=======
+test("isObject identifies objects and rejects other types", () => {
+  const root = loadModule("js/storage.js");
+  const isObject = root.ExtensityStorage.isObject;
+
+  assert.equal(isObject({}), true);
+  assert.equal(isObject({ a: 1 }), true);
+  assert.equal(isObject(Object.create(null)), true);
+  assert.equal(isObject(new Object()), true);
+
+  assert.equal(isObject(null), false);
+  assert.equal(isObject(undefined), false);
+  assert.equal(isObject([]), false);
+  assert.equal(isObject([1, 2, 3]), false);
+  assert.equal(isObject(""), false);
+  assert.equal(isObject("string"), false);
+  assert.equal(isObject(0), false);
+  assert.equal(isObject(1), false);
+  assert.equal(isObject(true), false);
+  assert.equal(isObject(false), false);
+  assert.equal(isObject(function() {}), false);
+  assert.equal(isObject(() => {}), false);
+  assert.equal(isObject(new Date()), false);
+  assert.equal(isObject(/regex/), false);
+});
+
+test("storage clone utility makes a deep copy of objects", () => {
+  const root = loadModule("js/storage.js");
+>>>>>>> REPLACE

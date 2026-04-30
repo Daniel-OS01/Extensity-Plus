@@ -1,0 +1,55 @@
+{
+  "name": "Extensity-Plus",
+  "version": "3.0.5",
+  "manifest_version": 3,
+  "description": "Quickly enable/disable Google Chrome extensions",
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": true
+  },
+  "icons": {
+    "16": "images/icon16.png",
+    "32": "images/icon32.png",
+    "48": "images/icon48.png",
+    "128": "images/icon128.png"
+  },
+  "action": {
+    "default_icon": "images/iconbar.png",
+    "default_title": "Extensity-Plus",
+    "default_popup": "index.html"
+  },
+  "background": {
+    "service_worker": "js/background.js"
+  },
+  "permissions": [
+    "alarms",
+    "contextMenus",
+    "debugger",
+    "management",
+    "notifications",
+    "storage",
+    "tabs",
+    "webNavigation"
+  ],
+  "optional_host_permissions": [
+    "https://chromewebstore.google.com/*"
+  ],
+  "optional_permissions": [
+    "identity"
+  ],
+  "commands": {
+    "toggle-all-extensions": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+E",
+        "mac": "Command+Shift+E"
+      },
+      "description": "Toggle all extensions on or off"
+    },
+    "cycle-next-profile": {
+      "description": "Switch to the next saved profile"
+    },
+    "cycle-previous-profile": {
+      "description": "Switch to the previous saved profile"
+    }
+  }
+}

@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8" />
+<title>Extensity-Plus Profiles</title>
+<link rel="stylesheet" type="text/css" href="styles/options.css" />
+<link rel="stylesheet" type="text/css" href="styles/font-awesome.min.css" />
+<script type="text/javascript" src="js/libs/underscore-min.js"></script>
+<script type="text/javascript" src="js/libs/knockout-3.5.1.js"></script>
+<script type="text/javascript" src="js/libs/knockout-secure-binding.min.js"></script>
+<script type="text/javascript" src="js/storage.js"></script>
+<script type="text/javascript" src="js/engine.js"></script>
+<script type="text/javascript" src="js/profiles.js"></script>
+</head>
+<body>
+<section id="profiles-page" data-sbind="attr:{dir: resolvedProfileDirection}">
+  <section id="header" data-sbind="attr:{dir: resolvedProfileDirection}">
+    <div class="tabs">
+      <h1>
+        <img src="images/icon48.png" />
+        Extensity-Plus
+        <span class="version-chip" data-sbind="visible: version, text: version"></span>
+        Profiles
+        <span class="profile-header-badge" data-sbind="visible: currentProfileIsNamed, attr:{style: 'border-left-color:' + currentProfileColor()}">
+          <i class="fa" data-sbind="attr:{class: 'fa ' + currentProfileIcon()}"></i>
+          <span data-sbind="text: current_name, attr:{style: 'color:' + currentProfileColor()}"></span>
+        </span>
+      </h1>
+      <div id="menu">
+        <a href="options.html" title="Open Options settings">Options</a>
+        <a href="profiles.html" class="selected" title="Open Profiles manager">Profiles</a>
+        <a href="dashboard.html" title="Open Dashboard tools">Dashboard</a>
+      </div>
+    </div>
+  </section>
+
+  <div class="clear"></div>
+
+  <section id="content" data-sbind="css: layoutClass">
+    <p class="status error" data-sbind="visible: error, text: error"></p>
+    <div class="permission-banner" data-sbind="visible: needsWebStorePermission">
+      <i class="fa fa-exclamation-triangle"></i>
+      <span>Grant Chrome Web Store access to enable extension metadata and store links.</span>
+      <button type="button" title="Grant Chrome Web Store access" data-sbind="click: requestWebStorePermission">Grant access</button>
+    </div>
+    <div class="page-toolbar" data-sbind="attr:{dir: resolvedProfileDirection}">
+      <div class="view-mode-switch">
+        <button type="button" title="Switch to landscape layout" data-sbind="click: setLayoutLandscape, css:{active: layoutIsLandscape}">Landscape</button>
+        <button type="button" title="Switch to portrait layout" data-sbind="click: setLayoutPortrait, css:{active: layoutIsPortrait}">Portrait</button>
+      </div>
+    </div>
+    <fieldset id="profiles" data-sbind="attr:{dir: resolvedProfileDirection}">
+      <div class="extensions" data-sbind="if: editable">
+        <div class="editor-header">
+          <input class="profile-title" type="text" data-sbind="value: current_profile().name, disable: current_profile().reserved(), attr:{dir: currentProfileNameDir}" />
+          <div class="toggle">
+            <a href="#" title="Include all extensions in this profile" data-sbind="click: toggleAll">All</a> |
+            <a href="#" title="Remove all extensions from this profile" data-sbind="click: toggleNone">None</a>
+          </div>
+        </div>
+        <div class="profile-meta-editor" data-sbind="visible: !current_profile().reserved()">
+          <input type="color" class="profile-color-input" title="Profile color" data-sbind="value: current_profile().color" />
+          <div class="profile-icon-picker">
+            <i class="fa profile-icon-preview" data-sbind="attr:{class: 'fa ' + current_profile().userIcon()}"></i>
+            <select class="profile-icon-select" title="Profile icon" data-sbind="value: current_profile().userIcon">
+              <!-- ko foreach: iconOptions -->
+              <option data-sbind="value: value, text: label"></option>
+              <!-- /ko -->
+            </select>
+          </div>
+        </div>
+
+        <div class="sort-modes">
+          <button type="button" title="Sort extensions alphabetically" data-sbind="click: setSortAlpha, css:{active: sortIsAlpha}">A-Z</button>
+          <button type="button" title="Sort by usage frequency" data-sbind="click: setSortPopular, css:{active: sortIsPopular}">Popular</button>
+          <button type="button" title="Sort by most recently installed" data-sbind="click: setSortRecent, css:{active: sortIsRecent}">Recent</button>
+          <button type="button" title="Sort by number of profiles containing each extension" data-sbind="click: setSortProfileCount, css:{active: sortIsProfileCount}">Profiles</button>
+        </div>
+
+        <ul data-sbind="foreach: sortedExtensions">
+          <li class="extension-row" data-sbind="css:{expanded: $parent.expandedExtensionId() == id()}">
+            <button type="button" class="extension-row-header" data-sbind="click: $parent.toggleExtensionDetails">
+              <i class="fa fa-chevron-right extension-chevron" data-sbind="css:{expanded: $parent.expandedExtensionId() == id()}"></i>
+              <img data-sbind="attr:{src: icon}" width="16" height="16" />
+              <span class="extension-copy">
+                <span class="extension-title-line">
+                  <span class="extension-name" data-sbind="text: short_name"></span>
+                  <span class="extension-version" data-sbind="visible: version, text: version"></span>
+                  <i class="fa fa-flask" title="Development" data-sbind="visible: is_development"></i>
+                </span>
+                <span class="extension-profile-badges" data-sbind="foreach: profileBadges">
+                  <span class="profile-ext-badge" data-sbind="attr:{style: 'border-left-color:' + color, title: name}">
+                    <i class="fa" data-sbind="attr:{class: 'fa ' + iconClass}"></i>
+                  </span>
+                </span>
+                <span class="extension-meta" data-sbind="visible: $parent.shouldShowProfilesExtensionMetadata, text: profileSummary"></span>
+              </span>
+            </button>
+            <div class="extension-row-panel" data-sbind="visible: $parent.expandedExtensionId() == id()">
+              <div class="profile-membership-editor">
+                <span>Profiles</span>
+                <div class="profile-membership-list">
+                  <!-- ko foreach: $root.profileMembershipRows -->
+                  <button type="button" class="compact-action-button" data-sbind="click: toggleFn, clickBubble: false, css:{active: active}">
+                    <i class="fa" data-sbind="attr:{class: 'fa ' + icon}"></i> <span data-sbind="text: label"></span>
+                  </button>
+                  <!-- /ko -->
+                </div>
+              </div>
+              <div class="extension-action-buttons">
+                <button type="button" class="compact-action-button" title="Open this extension's web permissions page" data-sbind="click: $parent.openPermissionsPage, clickBubble: false">Web Permissions Page</button>
+                <button type="button" class="compact-action-button" title="Open this extension's management page" data-sbind="click: $parent.openManagePage, clickBubble: false">Manage Extension Page</button>
+                <button type="button" class="compact-action-button danger" title="Uninstall this extension" data-sbind="visible: canRemove, click: $parent.removeExtension, clickBubble: false">Remove Extension</button>
+                <button type="button" class="compact-action-button" title="Open extension options page" data-sbind="visible: optionsUrl(), click: $parent.launchOptions, clickBubble: false">Options Page</button>
+                <button type="button" class="compact-action-button" title="Copy extension link to clipboard" data-sbind="click: $parent.copyExtensionLink, clickBubble: false, enable: copyLinkAvailable">Copy Link</button>
+                <button type="button" class="compact-action-button" title="Open extension listing in Chrome Web Store" data-sbind="click: $parent.openChromeWebStore, clickBubble: false, enable: storeLinkAvailable()">Open in Chrome Web Store</button>
+              </div>
+            </div>
+          </li>
+        </ul>
+      </div>
+
+      <div class="sidebar">
+        <form class="profile-create" data-sbind="submit: add">
+          <input type="text" id="name" placeholder="New profile name" data-sbind="value: add_name, attr:{dir: profileNameDir}" />
+          <button class="add" type="submit" title="Create a new profile" aria-label="Create a new profile"><i class="fa fa-plus-circle" aria-hidden="true"></i></button>
+        </form>
+
+        <ul class="items">
+          <li title="Edit the Always On profile" data-sbind="click: selectAlwaysOn, css:{active: '__always_on' == current_name()}"><i class="fa fa-lightbulb-o"></i> Always On</li>
+          <li title="Edit the Base profile" data-sbind="click: selectBase, css:{active: '__base' == current_name()}"><i class="fa fa-home"></i> Base</li>
+          <li title="Edit the Favorites profile" data-sbind="click: selectFavorites, css:{active: '__favorites' == current_name()}"><i class="fa fa-star"></i> Favorites</li>
+        </ul>
+
+        <ul class="items" data-sbind="foreach: profiles.items, attr:{dir: profileNameDir}">
+          <li data-sbind="visible: listVisible, click: activate, css:{active: isActive}">
+            <input type="checkbox" data-sbind="checked: selected, clickBubble: false" />
+            <span class="profile-color-dot" data-sbind="attr:{style: 'background:' + color()}"></span>
+            <i class="fa" data-sbind="attr:{class: 'fa ' + icon()}"></i>
+            <a class="profile-name-text" data-sbind="text: short_name"></a>
+            <span class="profile-count" title="Extensions in this profile" data-sbind="text: itemCount"></span>
+            <i class="fa fa-trash-o remove-profile" title="Delete this profile" data-sbind="click: requestRemove, clickBubble: false"></i>
+          </li>
+        </ul>
+
+        <div class="bulk-actions">
+          <button type="button" title="Delete all selected profiles" data-sbind="click: bulkDelete, enable: selectedCount">Delete selected</button>
+          <p class="quota-error" data-sbind="visible: profiles.localProfiles">Profiles are stored locally because sync storage ran out of space.</p>
+        </div>
+
+        <div class="footer-actions">
+          <button id="save" type="button" title="Save profile changes" data-sbind="click: save">Save</button>
+          <a href="#" id="close" title="Close profiles without saving more changes" data-sbind="click: close">Close</a>
+          <span id="save-result" class="hidden">Saved!</span>
+        </div>
+      </div>
+    </fieldset>
+  </section>
+</section>
+</body>
+</html>

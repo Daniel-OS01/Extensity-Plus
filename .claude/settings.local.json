@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm test:*)",
+      "Bash(npm run:*)",
+      "Bash(node:*)",
+      "Bash(git --no-pager diff)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(git:*)",
+      "Bash(grep -n \"$data\\\\|$parent\\\\.\\\\w\\\\+\\($\\\\|function\\(\" /mnt/c/Users/Daniel/Extensity-Plus/dashboard.html)",
+      "Bash(grep -n \"Expected\\\\|KSB\\\\|$data\\\\|function\\(\" /mnt/c/Users/Daniel/Extensity-Plus/dashboard.html)",
+      "Bash(grep -n if:.*$ /mnt/c/Users/Daniel/Extensity-Plus/profiles.js /mnt/c/Users/Daniel/Extensity-Plus/js/*.js)",
+      "Bash(python3 -c \"import json,sys; m=json.load\\(sys.stdin\\); print\\(m.get\\(''''version'''',''''''''\\), m.get\\(''''name'''',''''''''\\), m.get\\(''''description'''',''''''''\\)[:80]\\)\")"
+    ]
+  },
+  "outputStyle": "default",
+  "prefersReducedMotion": true
+}

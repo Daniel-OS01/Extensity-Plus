@@ -1,3 +1,6 @@
 ## 2024-04-20 - Icon-Only Button Accessibility Pattern Verification
 **Learning:** Adding `aria-label` to the interactive `<button>` wrappers and explicit `aria-hidden="true"` to the inner decorative FontAwesome `<i>` tags is a clean, non-disruptive accessibility enhancement for this codebase. It perfectly avoids layout shifts or CSS selector breakage (like accidentally triggering hover/active states that rely on direct parent-child relationships) that might occur if we changed the DOM structure itself.
 **Action:** Always prefer this two-step attribute injection pattern for icon-only components in `index.html` to maintain CSS and logic parity while maximizing screen reader compatibility.
+## 2024-04-20 - Icon-Only Button Wrapping with Existing Styles
+**Learning:** When wrapping inline icon-only elements (`<i>`) with `<button>` tags for accessibility, reusing existing wrapper styles like `.action-icon-button` integrates perfectly without adding custom CSS, avoiding layout shifts while making elements screen-reader compatible.
+**Action:** Always scan the DOM for established wrapper classes (like `.action-icon-button`) before wrapping inline icons to ensure visual parity without new stylesheets.

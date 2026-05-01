@@ -139,7 +139,7 @@
             <i class="fa" data-sbind="attr:{class: 'fa ' + icon()}"></i>
             <a class="profile-name-text" data-sbind="text: short_name"></a>
             <span class="profile-count" title="Extensions in this profile" data-sbind="text: itemCount"></span>
-            <i class="fa fa-trash-o remove-profile" title="Delete this profile" data-sbind="click: requestRemove, clickBubble: false"></i>
+            <button type="button" class="compact-action-button remove-profile" aria-label="Delete this profile" title="Delete this profile" data-sbind="click: requestRemove, clickBubble: false"><i class="fa fa-trash-o" aria-hidden="true"></i></button>
           </li>
         </ul>
 

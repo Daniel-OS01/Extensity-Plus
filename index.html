@@ -61,7 +61,7 @@
 </section>
 
 <section id="search" class="main" data-sbind="if: opts.searchBox">
-  <p><i class="fa fa-search"></i> <input type="text" data-sbind="value: search.q, valueUpdate: 'keyup'" tabindex="1" autofocus /></p>
+  <p><i class="fa fa-search" aria-hidden="true"></i> <input type="text" data-sbind="value: search.q, valueUpdate: 'keyup'" tabindex="1" autofocus /></p>
 </section>
 
 <section id="content" class="main" style="display:none;" data-sbind="visible: !loading()">
@@ -70,10 +70,10 @@
     <ul class="items" data-sbind="foreach: listedProfiles">
       <li class="app keyboard-row" tabindex="0" data-sbind="css: {active: isActive()}">
         <div class="profile-row" data-sbind="click: selectProfile, attr:{title: profileTooltip}">
-          <i class="fa fa-check" data-sbind="visible: showPillCheck"></i>
-          <i class="fa fa-lightbulb-o" data-sbind="visible: showAlwaysOnIcon"></i>
-          <i class="fa fa-home" data-sbind="visible: showBaseIcon"></i>
-          <i class="fa fa-star" data-sbind="visible: showFavoritesIcon"></i>
+          <i class="fa fa-check" aria-hidden="true" data-sbind="visible: showPillCheck"></i>
+          <i class="fa fa-lightbulb-o" aria-hidden="true" data-sbind="visible: showAlwaysOnIcon"></i>
+          <i class="fa fa-home" aria-hidden="true" data-sbind="visible: showBaseIcon"></i>
+          <i class="fa fa-star" aria-hidden="true" data-sbind="visible: showFavoritesIcon"></i>
           <i class="fa profile-icon-display" data-sbind="visible: showCustomIcon, attr:{class: 'fa ' + icon()}"></i>
           <span data-sbind="visible: showPillText, text: popupLabel"></span>
           <span class="profile-count" title="Extensions in this profile" data-sbind="visible: showPillCount, text: itemCount"></span>
@@ -109,7 +109,7 @@
   </section>
 
   <section data-sbind="visible: emptyItems">
-    <p class="empty"><i class="fa fa-exclamation-triangle"></i><br />No Extensions or Apps found.</p>
+    <p class="empty"><i class="fa fa-exclamation-triangle" aria-hidden="true"></i><br />No Extensions or Apps found.</p>
   </section>
 </section>
 
@@ -136,8 +136,8 @@
       <!-- ko foreach: profileBadges -->
       <span class="badge profile-badge" data-sbind="text: name, css: colorClass, attr:{style: badgeStyle, title: title}"></span>
       <!-- /ko -->
-      <i class="fa fa-flask" title="Development" data-sbind="visible: is_development()"></i>
-      <i class="fa fa-gear" title="Options" data-sbind="visible: showOptionsButton, click: launchOptionsAction, clickBubble: false"></i>
+      <i class="fa fa-flask" aria-hidden="true" title="Development" data-sbind="visible: is_development()"></i>
+      <button type="button" class="action-icon-button" aria-label="Options" title="Options" data-sbind="visible: showOptionsButton, click: launchOptionsAction, clickBubble: false"><i class="fa fa-gear" aria-hidden="true"></i></button>
     </div>
   </li>
   <!-- /ko -->
@@ -150,7 +150,7 @@
           <span class="name" data-sbind="text: short_name, click: toggleCompactAction, clickBubble: false"></span>
           <span class="version-chip" data-sbind="visible: showVersionChip, text: version"></span>
           <span class="extension-subtitle" data-sbind="visible: showCategorySubtitle, text: category"></span>
-          <i class="fa fa-flask" title="Development" data-sbind="visible: is_development()"></i>
+          <i class="fa fa-flask" aria-hidden="true" title="Development" data-sbind="visible: is_development()"></i>
         </div>
       </div>
       <div class="item-actions table-row-badges">
@@ -196,7 +196,7 @@
         <div class="compact-row-title">
           <span class="name" data-sbind="text: short_name, click: toggleCompactAction, clickBubble: false"></span>
           <span class="version-chip" data-sbind="visible: showVersionChip, text: version"></span>
-          <i class="fa fa-flask" title="Development" data-sbind="visible: is_development()"></i>
+          <i class="fa fa-flask" aria-hidden="true" title="Development" data-sbind="visible: is_development()"></i>
         </div>
       </div>
       <div class="compact-row-side">
@@ -245,8 +245,8 @@
       </div>
     </div>
     <div class="item-actions">
-      <i class="fa fa-flask" title="Development" data-sbind="visible: is_development()"></i>
-      <i class="fa fa-gear" title="Options" data-sbind="visible: showOptionsButton, click: launchOptionsAction, clickBubble: false"></i>
+      <i class="fa fa-flask" aria-hidden="true" title="Development" data-sbind="visible: is_development()"></i>
+      <button type="button" class="action-icon-button" aria-label="Options" title="Options" data-sbind="visible: showOptionsButton, click: launchOptionsAction, clickBubble: false"><i class="fa fa-gear" aria-hidden="true"></i></button>
     </div>
   </li>
   <!-- /ko -->

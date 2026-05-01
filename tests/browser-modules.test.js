@@ -2305,7 +2305,7 @@ test("popup profile pills expose real profile titles and a Base icon", () => {
   );
   assert.match(
     html,
-    /<i class="fa fa-home" data-sbind="visible: showBaseIcon"><\/i>/
+    /<i class="fa fa-home" aria-hidden="true" data-sbind="visible: showBaseIcon"><\/i>/
   );
   assert.match(
     html,

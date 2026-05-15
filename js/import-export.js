@@ -1,10 +1,15 @@
 (function(root) {
   var storage = root.ExtensityStorage;
   var supportedVersion = "2.0.0";
+  var supportedScopes = ["full", "profiles", "settings", "profiles_settings"];
 
   function csvEscape(value) {
     var text = value == null ? "" : String(value);
     return '"' + text.replace(/"/g, '""') + '"';
+  }
+
+  function isObject(value) {
+    return value && Object.prototype.toString.call(value) === "[object Object]";
   }
 
   function buildExtensionStateMap(extensions) {
@@ -18,9 +23,10 @@
   }
 
   function buildBackupEnvelope(state) {
-    return {
+    var envelope = {
       version: supportedVersion,
       exportedAt: Date.now(),
+      exportScope: "full",
       settings: storage.clone(state.options),
       profiles: storage.clone(state.profiles.map),
       aliases: storage.clone(state.localState.aliases),
@@ -37,6 +43,7 @@
         usageCounters: storage.clone(state.localState.usageCounters)
       }
     };
+    return envelope;
   }
 
   function buildScopedExport(state, exportScope) {
@@ -49,6 +56,8 @@
     if (scope === "full") {
       return buildBackupEnvelope(state);
     }
+
+    payload.exportScope = scope;
 
     if (scope === "profiles") {
       payload.profiles = storage.clone(state.profiles.map);
@@ -69,15 +78,32 @@
     throw new Error("Unknown export scope: " + scope);
   }
 
-  function validateBackupEnvelope(envelope) {
-    if (!envelope || Object.prototype.toString.call(envelope) !== "[object Object]") {
-      throw new Error("Backup payload must be a JSON object.");
+  function detectImportScope(envelope) {
+    if (supportedScopes.indexOf(envelope.exportScope) >= 0) {
+      return envelope.exportScope;
     }
 
-    if (envelope.version !== supportedVersion) {
-      throw new Error("Unsupported backup version: " + envelope.version);
+    var hasProfiles = isObject(envelope.profiles);
+    var hasSettings = isObject(envelope.settings);
+    var hasLocalState = isObject(envelope.localState);
+
+    if (hasProfiles && hasSettings && hasLocalState) {
+      return "full";
+    }
+    if (hasProfiles && hasSettings) {
+      return "profiles_settings";
+    }
+    if (hasProfiles) {
+      return "profiles";
+    }
+    if (hasSettings) {
+      return "settings";
     }
 
+    throw new Error("Unrecognized backup JSON. Expected profiles and/or settings, or a full backup with localState.");
+  }
+
+  function normalizeFullEnvelope(envelope) {
     if (!envelope.settings || !envelope.profiles || !envelope.localState) {
       throw new Error("Backup payload is missing required keys.");
     }
@@ -91,6 +117,55 @@
       settings: envelope.settings,
       urlRules: Array.isArray(envelope.urlRules) ? envelope.urlRules : [],
       version: envelope.version
+    };
+  }
+
+  function validateImportPayload(envelope) {
+    if (!envelope || Object.prototype.toString.call(envelope) !== "[object Object]") {
+      throw new Error("Backup payload must be a JSON object.");
+    }
+
+    if (envelope.version !== supportedVersion) {
+      throw new Error("Unsupported backup version: " + envelope.version);
+    }
+
+    var scope = detectImportScope(envelope);
+
+    if (scope === "full") {
+      return Object.assign({ scope: "full" }, normalizeFullEnvelope(envelope));
+    }
+
+    var result = {
+      scope: scope,
+      version: envelope.version
+    };
+
+    if (scope === "profiles" || scope === "profiles_settings") {
+      result.profiles = storage.normalizeProfileMap(envelope.profiles);
+    }
+
+    if (scope === "settings" || scope === "profiles_settings") {
+      result.settings = envelope.settings;
+    }
+
+    return result;
+  }
+
+  function validateBackupEnvelope(envelope) {
+    var validated = validateImportPayload(envelope);
+    if (validated.scope !== "full") {
+      throw new Error("Backup payload is missing required keys.");
+    }
+
+    return {
+      aliases: validated.aliases,
+      groupOrder: validated.groupOrder,
+      groups: validated.groups,
+      localState: validated.localState,
+      profiles: validated.profiles,
+      settings: validated.settings,
+      urlRules: validated.urlRules,
+      version: validated.version
     };
   }
 
@@ -126,7 +201,9 @@
     buildBackupEnvelope: buildBackupEnvelope,
     buildScopedExport: buildScopedExport,
     buildExtensionsCsv: buildExtensionsCsv,
+    detectImportScope: detectImportScope,
     validateBackupEnvelope: validateBackupEnvelope,
+    validateImportPayload: validateImportPayload,
     _csvEscape: csvEscape
   };
 })(typeof window !== "undefined" ? window : self);

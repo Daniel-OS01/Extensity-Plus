@@ -221,7 +221,7 @@ document.addEventListener("DOMContentLoaded", function() {
         return ExtensityApi.importBackup(envelope);
       }).then(function(payload) {
         self.applyState(payload.state);
-        self.message("Backup imported.");
+        self.message(ExtensityUtils.importSuccessMessage(payload.importScope));
         fadeOutMessage("save-result");
       }).catch(function(error) {
         self.error(error.message);

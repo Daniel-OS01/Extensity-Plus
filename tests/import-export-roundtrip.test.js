@@ -78,6 +78,7 @@ test("buildBackupEnvelope produces a v2.0.0 envelope with required top-level key
   const root = loadImportExport();
   const envelope = root.ExtensityImportExport.buildBackupEnvelope(makeInput());
   assert.equal(envelope.version, "2.0.0");
+  assert.equal(envelope.exportScope, "full");
   assert.ok(envelope.settings, "envelope.settings must be present");
   assert.ok(envelope.localState, "envelope.localState must be present");
   assert.ok(envelope.profiles, "envelope.profiles must be present");
@@ -123,15 +124,18 @@ test("buildScopedExport supports profiles-only, settings-only, and profiles+sett
   });
 
   const profilesOnly = root.ExtensityImportExport.buildScopedExport(input, "profiles");
-  assert.deepEqual(normalize(Object.keys(profilesOnly).sort()), ["exportedAt", "profiles", "version"]);
+  assert.deepEqual(normalize(Object.keys(profilesOnly).sort()), ["exportScope", "exportedAt", "profiles", "version"]);
+  assert.equal(profilesOnly.exportScope, "profiles");
   assert.deepEqual(normalize(profilesOnly.profiles), { Work: ["ext-1"], __always_on: [], __favorites: [] });
 
   const settingsOnly = root.ExtensityImportExport.buildScopedExport(input, "settings");
-  assert.deepEqual(normalize(Object.keys(settingsOnly).sort()), ["exportedAt", "settings", "version"]);
+  assert.deepEqual(normalize(Object.keys(settingsOnly).sort()), ["exportScope", "exportedAt", "settings", "version"]);
+  assert.equal(settingsOnly.exportScope, "settings");
   assert.deepEqual(normalize(settingsOnly.settings), { activeProfile: "Work", sortMode: "alpha" });
 
   const profilesAndSettings = root.ExtensityImportExport.buildScopedExport(input, "profiles_settings");
-  assert.deepEqual(normalize(Object.keys(profilesAndSettings).sort()), ["exportedAt", "profiles", "settings", "version"]);
+  assert.deepEqual(normalize(Object.keys(profilesAndSettings).sort()), ["exportScope", "exportedAt", "profiles", "settings", "version"]);
+  assert.equal(profilesAndSettings.exportScope, "profiles_settings");
   assert.deepEqual(normalize(profilesAndSettings.settings), { activeProfile: "Work", sortMode: "alpha" });
   assert.deepEqual(normalize(profilesAndSettings.profiles), { Work: ["ext-1"], __always_on: [], __favorites: [] });
 });
@@ -165,9 +169,81 @@ test("validateBackupEnvelope rejects version 1.0.0", () => {
 test("validateBackupEnvelope rejects missing required keys", () => {
   const root = loadImportExport();
   assert.throws(
-    () => root.ExtensityImportExport.validateBackupEnvelope({ version: "2.0.0" }),
+    () => root.ExtensityImportExport.validateBackupEnvelope({
+      version: "2.0.0",
+      profiles: { __always_on: [], __favorites: [] },
+      settings: {}
+    }),
     /required/i
   );
+});
+
+test("validateImportPayload rejects unrecognized backup JSON", () => {
+  const root = loadImportExport();
+  assert.throws(
+    () => root.ExtensityImportExport.validateImportPayload({ version: "2.0.0" }),
+    /Unrecognized backup JSON/
+  );
+});
+
+test("detectImportScope prefers exportScope field when present", () => {
+  const root = loadImportExport();
+  assert.equal(
+    root.ExtensityImportExport.detectImportScope({
+      version: "2.0.0",
+      exportScope: "settings",
+      profiles: { Work: ["ext-1"] }
+    }),
+    "settings"
+  );
+});
+
+test("validateImportPayload accepts profiles-only export", () => {
+  const root = loadImportExport();
+  const validated = root.ExtensityImportExport.validateImportPayload({
+    version: "2.0.0",
+    profiles: { Work: ["ext-1", "ext-1"], __always_on: [], __favorites: [] }
+  });
+  assert.equal(validated.scope, "profiles");
+  assert.deepEqual(validated.profiles.Work, ["ext-1"]);
+});
+
+test("validateImportPayload accepts settings-only export", () => {
+  const root = loadImportExport();
+  const validated = root.ExtensityImportExport.validateImportPayload({
+    version: "2.0.0",
+    settings: { activeProfile: "Work", sortMode: "alpha" }
+  });
+  assert.equal(validated.scope, "settings");
+  assert.deepEqual(validated.settings, { activeProfile: "Work", sortMode: "alpha" });
+});
+
+test("validateImportPayload accepts profiles and settings export without localState", () => {
+  const root = loadImportExport();
+  const validated = root.ExtensityImportExport.validateImportPayload({
+    version: "2.0.0",
+    profiles: { Work: ["ext-1"], __always_on: [], __favorites: [] },
+    settings: { activeProfile: "Work", sortMode: "alpha" }
+  });
+  assert.equal(validated.scope, "profiles_settings");
+});
+
+test("round-trip: buildScopedExport output passes validateImportPayload for each scope", () => {
+  const root = loadImportExport();
+  const input = makeInput({
+    options: { activeProfile: "Work", sortMode: "alpha" },
+    profiles: { map: { Work: ["ext-1"], __always_on: [], __favorites: [] } }
+  });
+
+  ["profiles", "settings", "profiles_settings"].forEach((scope) => {
+    const exported = root.ExtensityImportExport.buildScopedExport(input, scope);
+    const validated = root.ExtensityImportExport.validateImportPayload(exported);
+    assert.equal(validated.scope, scope);
+  });
+
+  const fullExported = root.ExtensityImportExport.buildScopedExport(input, "full");
+  const fullValidated = root.ExtensityImportExport.validateImportPayload(fullExported);
+  assert.equal(fullValidated.scope, "full");
 });
 
 test("validateBackupEnvelope deduplicates extension IDs in profiles", () => {

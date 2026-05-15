@@ -625,6 +625,19 @@
     document.body.classList.toggle("light-mode", options.colorScheme === "light");
   }
 
+  function importSuccessMessage(importScope) {
+    if (importScope === "profiles") {
+      return "Profiles imported.";
+    }
+    if (importScope === "settings") {
+      return "Settings imported.";
+    }
+    if (importScope === "profiles_settings") {
+      return "Profiles and settings imported.";
+    }
+    return "Backup imported.";
+  }
+
   var ExtensityApi = {
     assignExtensionProfile: function(extensionId, profileNameOrNull) {
       return chromeMessage({
@@ -832,6 +845,7 @@
     chromeCall: chromeCall,
     clampInteger: clampInteger,
     copyText: copyText,
+    importSuccessMessage: importSuccessMessage,
     openTab: openTab,
     pruneText: pruneText
   };

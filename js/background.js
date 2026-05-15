@@ -1522,7 +1522,26 @@ importScripts(
   }
 
   async function importBackup(payload) {
-    var envelope = importExport.validateBackupEnvelope(payload.envelope);
+    var parsed = importExport.validateImportPayload(payload.envelope);
+    var importScope = parsed.scope;
+
+    if (parsed.scope === "profiles") {
+      await storage.saveProfiles(parsed.profiles);
+      return { state: await buildState(), importScope: importScope };
+    }
+
+    if (parsed.scope === "settings") {
+      await storage.saveSyncOptions(parsed.settings);
+      return { state: await buildState(), importScope: importScope };
+    }
+
+    if (parsed.scope === "profiles_settings") {
+      await storage.saveProfiles(parsed.profiles);
+      await storage.saveSyncOptions(parsed.settings);
+      return { state: await buildState(), importScope: importScope };
+    }
+
+    var envelope = parsed;
     var currentLocalState = await storage.loadLocalState();
 
     await Promise.all(currentLocalState.reminderQueue.map(function(item) {
@@ -1552,7 +1571,7 @@ importScripts(
       };
     });
 
-    return applyExtensionChanges(
+    var state = await applyExtensionChanges(
       changes,
       { source: "import" },
       {
@@ -1562,6 +1581,7 @@ importScripts(
         syncPatch: { activeProfile: envelope.localState.activeProfile || envelope.settings.activeProfile || null }
       }
     );
+    return { state: state, importScope: importScope };
   }
 
   async function exportBackup(payload) {
@@ -1840,7 +1860,7 @@ importScripts(
       case "GET_STATE":
         return { state: await buildState() };
       case "IMPORT_BACKUP":
-        return { state: await importBackup(message) };
+        return await importBackup(message);
       case "OPEN_DASHBOARD":
         return await openDashboard(message);
       case "PIN_EXTENSION_TO_TOOLBAR":

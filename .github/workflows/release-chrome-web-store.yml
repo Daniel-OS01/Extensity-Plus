@@ -16,6 +16,7 @@ jobs:
   release:
     name: Build, verify, and upload CWS draft
     runs-on: ubuntu-latest
+    environment: main
 
     steps:
       - name: Check out repository

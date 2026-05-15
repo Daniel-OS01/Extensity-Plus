@@ -3,8 +3,13 @@ const path = require("node:path");
 
 const PLACEHOLDER_CLIENT_ID = "REPLACE_WITH_OAUTH_CLIENT_ID.apps.googleusercontent.com";
 const repoRoot = path.resolve(__dirname, "..");
-const manifestPath = path.join(repoRoot, "manifest.json");
+const LOCAL_EXTENSION_IDS_PATH = path.join(repoRoot, "config", "drive-extension-ids.local");
+const EXPECTED_EXTENSION_IDS = [
+  "kjpdgpbbmmnickeingbbhkldeeeklnhj",
+  "gbojjphhdboeaafjdilfibonoflhgcde"
+];
 const localClientIdPath = path.join(repoRoot, "config", "drive-oauth-client-id.local");
+const defaultManifestPath = path.join(repoRoot, "manifest.json");
 
 function fail(message) {
   throw new Error(message);
@@ -15,6 +20,8 @@ function parseArgs(argv) {
     clientId: "",
     fromJson: "",
     fromLocal: false,
+    manifestPath: defaultManifestPath,
+    validateIds: false,
     reset: false
   };
   for (let i = 0; i < argv.length; i += 1) {
@@ -37,6 +44,15 @@ function parseArgs(argv) {
       result.fromLocal = true;
       continue;
     }
+    if (arg === "--manifest-path") {
+      result.manifestPath = path.resolve(process.cwd(), String(argv[i + 1] || ""));
+      i += 1;
+      continue;
+    }
+    if (arg === "--validate-ids") {
+      result.validateIds = true;
+      continue;
+    }
     if (arg === "--help" || arg === "-h") {
       console.log(
         [
@@ -44,6 +60,8 @@ function parseArgs(argv) {
           "  npm run drive:set-client-id -- --client-id <google-client-id>",
           "  npm run drive:set-client-id -- --from-json <path-to-oauth-json>",
           "  npm run drive:apply-local",
+          "  npm run drive:set-client-id -- --manifest-path <path> --from-local",
+          "  npm run drive:set-client-id -- --validate-ids",
           "  npm run drive:set-client-id -- --reset",
           "",
           "Environment:",
@@ -51,9 +69,11 @@ function parseArgs(argv) {
           "",
           "Notes:",
           "- Drive sync requires a Chrome extension OAuth client ID.",
-          "- Desktop OAuth JSON usually has an `installed` block and must not be used here.",
+          "- Desktop OAuth JSON exports include client_secret and must not be used here.",
+          "- Chrome extension OAuth JSON exports can be accepted when client_secret is absent.",
           "- Local file (gitignored): config/drive-oauth-client-id.local",
-          "- This script only updates manifest oauth2.client_id."
+          "- Registered extension IDs file (gitignored): config/drive-extension-ids.local",
+          "- This script only updates manifest oauth2.client_id unless --validate-ids is used."
         ].join("\n")
       );
       process.exit(0);
@@ -61,6 +81,68 @@ function parseArgs(argv) {
     fail("Unknown argument: " + arg);
   }
   return result;
+}
+
+function readFirstMeaningfulLine(filePath, missingMessage) {
+  if (!fs.existsSync(filePath)) {
+    fail(missingMessage);
+  }
+
+  const raw = fs.readFileSync(filePath, "utf8");
+  const line = raw
+    .split(/\r?\n/)
+    .map(function(entry) {
+      return entry.trim();
+    })
+    .find(function(entry) {
+      return entry.length > 0 && entry.charAt(0) !== "#";
+    });
+
+  if (!line) {
+    fail("File is empty: " + filePath);
+  }
+
+  return line;
+}
+
+function extractGoogleClientId(parsed) {
+  if (!parsed || typeof parsed !== "object") {
+    return "";
+  }
+
+  if (parsed.oauth2 && typeof parsed.oauth2.client_id === "string") {
+    return parsed.oauth2.client_id.trim();
+  }
+
+  if (parsed.installed && typeof parsed.installed.client_id === "string") {
+    return parsed.installed.client_id.trim();
+  }
+
+  if (parsed.web && typeof parsed.web.client_id === "string") {
+    return parsed.web.client_id.trim();
+  }
+
+  if (typeof parsed.client_id === "string") {
+    return parsed.client_id.trim();
+  }
+
+  return "";
+}
+
+function hasClientSecret(parsed) {
+  if (!parsed || typeof parsed !== "object") {
+    return false;
+  }
+  if (typeof parsed.client_secret === "string" && parsed.client_secret.trim()) {
+    return true;
+  }
+  if (parsed.installed && typeof parsed.installed.client_secret === "string" && parsed.installed.client_secret.trim()) {
+    return true;
+  }
+  if (parsed.web && typeof parsed.web.client_secret === "string" && parsed.web.client_secret.trim()) {
+    return true;
+  }
+  return false;
 }
 
 function extractClientIdFromJsonFile(filePath) {
@@ -76,53 +158,74 @@ function extractClientIdFromJsonFile(filePath) {
     fail("OAuth JSON is not valid JSON.");
   }
 
-  if (parsed && parsed.installed) {
+  if (hasClientSecret(parsed)) {
     fail(
       [
-        "Desktop OAuth credentials detected (`installed` block).",
+        "Desktop OAuth credentials detected (`client_secret` present).",
         "Drive sync in the extension requires a Chrome extension OAuth client.",
         "Create a Chrome extension client in Google Cloud and use that client_id."
       ].join(" ")
     );
   }
 
-  const clientId = parsed
-    && parsed.oauth2
-    && typeof parsed.oauth2.client_id === "string"
-    ? parsed.oauth2.client_id.trim()
-    : "";
+  const clientId = extractGoogleClientId(parsed);
 
   if (!clientId) {
-    fail("Could not find oauth2.client_id in the provided JSON file.");
+    fail("Could not find a Google OAuth client_id in the provided JSON file.");
   }
 
   return clientId;
 }
 
 function readClientIdFromLocalFile() {
-  if (!fs.existsSync(localClientIdPath)) {
+  return readFirstMeaningfulLine(
+    localClientIdPath,
+    [
+      "Local client ID file not found:",
+      localClientIdPath,
+      "Copy config/drive-oauth-client-id.local.example to config/drive-oauth-client-id.local",
+      "and paste your Chrome extension OAuth client ID (one line, no quotes)."
+    ].join("\n")
+  );
+}
+
+function readRegisteredExtensionIds() {
+  if (!fs.existsSync(LOCAL_EXTENSION_IDS_PATH)) {
     fail(
       [
-        "Local client ID file not found:",
-        localClientIdPath,
-        "Copy config/drive-oauth-client-id.local.example to config/drive-oauth-client-id.local",
-        "and paste your Chrome extension OAuth client ID (one line, no quotes)."
+        "Registered extension IDs file not found:",
+        LOCAL_EXTENSION_IDS_PATH,
+        "Copy config/drive-extension-ids.local.example to config/drive-extension-ids.local",
+        "and list the local and store extension IDs, one per line."
       ].join("\n")
     );
   }
-  const raw = fs.readFileSync(localClientIdPath, "utf8");
-  const line = raw
+
+  return fs.readFileSync(LOCAL_EXTENSION_IDS_PATH, "utf8")
     .split(/\r?\n/)
     .map(function(entry) {
       return entry.trim();
     })
-    .find(function(entry) {
+    .filter(function(entry) {
       return entry.length > 0 && entry.charAt(0) !== "#";
     });
-  if (!line) {
-    fail("Local client ID file is empty: " + localClientIdPath);
+}
+
+function validateRegisteredExtensionIds() {
+  const ids = readRegisteredExtensionIds();
+  const missing = EXPECTED_EXTENSION_IDS.filter(function(expectedId) {
+    return ids.indexOf(expectedId) === -1;
+  });
+  if (missing.length) {
+    fail(
+      [
+        "Registered extension IDs file is missing required IDs:",
+        missing.join(", "),
+        "Update config/drive-extension-ids.local with both the local and store IDs."
+      ].join(" ")
+    );
   }
-  return line;
+  return ids;
 }
 
 function validateClientId(clientId) {
@@ -137,19 +240,28 @@ function validateClientId(clientId) {
   }
 }
 
-function updateManifestClientId(clientId) {
-  const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+function updateManifestClientId(clientId, targetManifestPath) {
+  const manifestFilePath = targetManifestPath || defaultManifestPath;
+  const manifest = JSON.parse(fs.readFileSync(manifestFilePath, "utf8"));
   if (!manifest.oauth2 || typeof manifest.oauth2 !== "object") {
     manifest.oauth2 = {};
   }
   manifest.oauth2.client_id = clientId;
-  fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + "\n", "utf8");
+  fs.writeFileSync(manifestFilePath, JSON.stringify(manifest, null, 2) + "\n", "utf8");
 }
 
 function main() {
   const args = parseArgs(process.argv.slice(2));
+  if (args.validateIds) {
+    validateRegisteredExtensionIds();
+    console.log("drive extension IDs validated.");
+    if (!args.clientId && !args.fromJson && !args.fromLocal && !String(process.env.EXTENSITY_DRIVE_CLIENT_ID || "").trim()) {
+      return;
+    }
+  }
+
   if (args.reset) {
-    updateManifestClientId(PLACEHOLDER_CLIENT_ID);
+    updateManifestClientId(PLACEHOLDER_CLIENT_ID, args.manifestPath);
     console.log("manifest oauth2.client_id reset to placeholder.");
     return;
   }
@@ -166,8 +278,21 @@ function main() {
   }
 
   validateClientId(clientId);
-  updateManifestClientId(clientId);
+  updateManifestClientId(clientId, args.manifestPath);
   console.log("manifest oauth2.client_id updated.");
 }
 
-main();
+if (require.main === module) {
+  main();
+}
+
+module.exports = {
+  EXPECTED_EXTENSION_IDS: EXPECTED_EXTENSION_IDS,
+  extractClientIdFromJsonFile: extractClientIdFromJsonFile,
+  parseArgs: parseArgs,
+  readClientIdFromLocalFile: readClientIdFromLocalFile,
+  readRegisteredExtensionIds: readRegisteredExtensionIds,
+  updateManifestClientId: updateManifestClientId,
+  validateClientId: validateClientId,
+  validateRegisteredExtensionIds: validateRegisteredExtensionIds
+};

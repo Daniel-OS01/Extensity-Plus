@@ -6,7 +6,11 @@ const manifestPath = path.join(repoRoot, "manifest.json");
 const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
 const strictDrive = process.env.EXTENSITY_STRICT_DRIVE === "1";
 const driveOauthJsonPath = process.env.EXTENSITY_DRIVE_OAUTH_JSON || "";
+const envDriveClientId = String(process.env.EXTENSITY_DRIVE_CLIENT_ID || "").trim();
+const envDriveWebClientId = String(process.env.EXTENSITY_DRIVE_WEB_CLIENT_ID || "").trim();
 const PLACEHOLDER_CLIENT_ID = "REPLACE_WITH_OAUTH_CLIENT_ID.apps.googleusercontent.com";
+const PLACEHOLDER_WEB_CLIENT_ID = "REPLACE_WITH_DRIVE_WEB_CLIENT_ID.apps.googleusercontent.com";
+const driveWebConfigPath = path.join(repoRoot, "js", "drive-oauth-config.js");
 
 function assert(condition, message) {
   if (!condition) {
@@ -21,6 +25,14 @@ function hasAllEntries(actual, expected) {
 function assertFileExists(relativePath) {
   const absolutePath = path.join(repoRoot, relativePath);
   assert(fs.existsSync(absolutePath), `Missing required file: ${relativePath}`);
+}
+
+function readDriveWebClientId() {
+  assert(fs.existsSync(driveWebConfigPath), "Missing Drive Web OAuth config: js/drive-oauth-config.js");
+  const source = fs.readFileSync(driveWebConfigPath, "utf8");
+  const match = source.match(/driveWebClientId:\s*"([^"]*)"/);
+  assert(match, "Drive Web OAuth config must define driveWebClientId.");
+  return match[1];
 }
 
 assert(manifest.manifest_version === 3, "Manifest must stay on MV3.");
@@ -64,9 +76,10 @@ const requiredCommands = [
 assert(manifest.commands && hasAllEntries(Object.keys(manifest.commands), requiredCommands), "Manifest commands must include toggle-all and profile cycling.");
 
 assert(manifest.oauth2 && typeof manifest.oauth2.client_id === "string", "Manifest oauth2.client_id must be configured for Drive sync.");
-if (manifest.oauth2.client_id !== PLACEHOLDER_CLIENT_ID) {
+const effectiveDriveClientId = envDriveClientId || manifest.oauth2.client_id;
+if (effectiveDriveClientId !== PLACEHOLDER_CLIENT_ID) {
   assert(
-    /^[0-9]+-[a-z0-9._-]+\.apps\.googleusercontent\.com$/i.test(manifest.oauth2.client_id),
+    /^[0-9]+-[a-z0-9._-]+\.apps\.googleusercontent\.com$/i.test(effectiveDriveClientId),
     "Manifest oauth2.client_id must be a valid Google OAuth client ID format."
   );
 }
@@ -83,8 +96,22 @@ assert(
 
 if (strictDrive) {
   assert(
-    manifest.oauth2.client_id !== PLACEHOLDER_CLIENT_ID,
+    effectiveDriveClientId !== PLACEHOLDER_CLIENT_ID,
     "Strict mode: manifest oauth2.client_id still uses placeholder."
+  );
+}
+
+const driveWebClientId = envDriveWebClientId || readDriveWebClientId();
+if (driveWebClientId !== PLACEHOLDER_WEB_CLIENT_ID) {
+  assert(
+    /^[0-9]+-[a-z0-9._-]+\.apps\.googleusercontent\.com$/i.test(driveWebClientId),
+    "Drive Web OAuth client ID must be a valid Google OAuth client ID format."
+  );
+}
+if (strictDrive) {
+  assert(
+    driveWebClientId !== PLACEHOLDER_WEB_CLIENT_ID,
+    "Strict mode: Drive Web OAuth client ID still uses placeholder."
   );
 }
 
@@ -116,6 +143,7 @@ if (driveOauthJsonPath) {
   "js/background.js",
   "js/storage.js",
   "js/import-export.js",
+  "js/drive-oauth-config.js",
   "js/drive-sync.js",
   "js/url-rules.js",
   "styles/index.css",

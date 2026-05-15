@@ -12,7 +12,9 @@
 <script type="text/javascript" src="js/storage.js"></script>
 <script type="text/javascript" src="js/engine.js"></script>
 <script type="text/javascript" src="js/import-export.js"></script>
+<script type="text/javascript" src="js/drive-oauth-config.js"></script>
 <script type="text/javascript" src="js/drive-sync.js"></script>
+<script type="text/javascript" src="js/logger.js"></script>
 <script type="text/javascript" src="js/dashboard.js"></script>
 </head>
 <body>
@@ -47,6 +49,7 @@
       <button type="button" title="Edit extension aliases" data-sbind="click: showTabAliases, css:{selected: aliasesTab}">Aliases</button>
       <button type="button" title="Import and export extension data" data-sbind="click: showTabData, css:{selected: dataTab}">Import / Export</button>
       <button type="button" title="Check browser sync status for settings and profiles" data-sbind="click: showTabSyncStatus, css:{selected: syncStatusTab}">Sync Status</button>
+      <button type="button" title="View session log entries" data-sbind="click: showTabLog, css:{selected: logTab}">Log</button>
       <button type="button" title="About Extensity-Plus" data-sbind="click: showTabAbout, css:{selected: aboutTab}">About</button>
     </div>
 
@@ -244,6 +247,58 @@
         <p class="sync-status-note event-meta" data-sbind="visible: syncStatusDetails, text: syncStatusDetails"></p>
         <button type="button" title="Check if settings and profiles are present in chrome.storage.sync for this profile" data-sbind="click: checkSyncStatus, disable: busy">Check sync status</button>
       </div>
+      <div class="sync-status-card drive-sync-card">
+        <p class="event-meta">Google Drive sync stores the backup file in the hidden <code>appDataFolder</code>. There is no normal browsable folder URL, so this panel shows status and metadata instead.</p>
+        <div class="sync-status-line">
+          <span class="sync-status-badge" data-sbind="text: driveStatusHeadline"></span>
+          <span class="event-meta" data-sbind="visible: driveStatusCheckedAt, text: driveStatusCheckedAt"></span>
+        </div>
+        <p class="sync-status-note" data-sbind="visible: driveStatusDetails, text: driveStatusDetails"></p>
+        <div class="drive-status-grid" data-sbind="foreach: driveStatusRows">
+          <div class="drive-status-row">
+            <span class="drive-status-label" data-sbind="text: label"></span>
+            <span class="drive-status-value" data-sbind="text: value"></span>
+          </div>
+        </div>
+        <div class="action-row">
+          <button type="button" title="Refresh the Drive sync status from Google Drive" data-sbind="click: refreshDriveSyncStatus, disable: busy">Refresh Drive status</button>
+          <button type="button" title="Open Google Drive in a new tab" data-sbind="click: openGoogleDrive, disable: busy">Open Google Drive</button>
+          <button type="button" title="Test Drive connection and simulate sync (read-only)" data-sbind="click: testDriveConnection, disable: busy">Test connection</button>
+        </div>
+        <div class="drive-test-report" data-sbind="if: driveConnectionReport">
+          <div data-sbind="foreach: driveTestSteps">
+            <div class="drive-test-row">
+              <span class="drive-test-badge" data-sbind="css: {ok: statusOk, warn: statusWarn, fail: statusFail}, text: statusBadge"></span>
+              <span class="drive-status-label" data-sbind="text: name"></span>
+              <span class="event-meta" data-sbind="text: detail"></span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="dashboard-section" data-sbind="visible: logTab">
+      <h2>Log</h2>
+      <div class="card-row compact-controls">
+        <label for="logLevel">Level</label>
+        <select id="logLevel" data-sbind="value: logLevel">
+          <option value="none">None</option>
+          <option value="error">Error</option>
+          <option value="warn">Warn</option>
+          <option value="info">Info</option>
+        </select>
+        <button type="button" title="Clear all log entries" data-sbind="click: clearLog">Clear</button>
+        <button type="button" title="Copy log to clipboard" data-sbind="click: copyLog">Copy</button>
+      </div>
+      <ul class="history-list log-list" data-sbind="foreach: logEntries">
+        <li>
+          <span data-sbind="attr:{class: levelBadgeClass}, text: level"></span>
+          <span class="event-meta" data-sbind="text: timestamp"></span>
+          <span class="event-name" data-sbind="text: message"></span>
+          <span class="event-meta debug-line" data-sbind="visible: dataLine, text: dataLine"></span>
+        </li>
+      </ul>
+      <p class="event-meta" data-sbind="visible: logEmpty">No log entries this session.</p>
     </section>
 
     <section class="dashboard-section" data-sbind="visible: aboutTab">
@@ -253,7 +308,7 @@
       <p><strong>Repository:</strong> <a href="https://github.com/Daniel-OS01/Extensity-Plus" target="_blank" rel="noopener noreferrer">Daniel-OS01/Extensity-Plus</a></p>
       <p><strong>Main inspiration:</strong> <a href="https://github.com/sergiokas/Extensity" target="_blank" rel="noopener noreferrer">sergiokas/Extensity</a></p>
       <p><strong>Credits:</strong> Maintained by Daniel-OS01 and built on the original Extensity work by Sergio Kas, with additional inspiration from the wider Extensity open-source lineage.</p>
-      <p class="event-meta">Chrome Web Store publishing will be added later. This build currently ships as a direct repository/unpacked extension workflow.</p>
+      <p class="event-meta">Chrome Web Store extension ID: <code>gbojjphhdboeaafjdilfibonoflhgcde</code>. Local unpacked ID: <code>kjpdgpbbmmnickeingbbhkldeeeklnhj</code>.</p>
       <h3>Quick Guide</h3>
       <ul>
         <li><strong>Popup</strong> &mdash; Toggle extensions. Click the extension name in Table/Compact mode to enable/disable.</li>

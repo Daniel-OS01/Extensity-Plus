@@ -3,7 +3,9 @@
 #
 # Create credentials: Google Cloud Console → APIs & Services → Credentials
 # → Create credentials → OAuth client ID → Application type: Chrome extension
-# Register the extension ID from chrome://extensions (Developer mode).
+# Register both extension IDs on the same OAuth client:
+# - Local unpacked build: kjpdgpbbmmnickeingbbhkldeeeklnhj
+# - Chrome Web Store build: gbojjphhdboeaafjdilfibonoflhgcde
 # Published store ID: gbojjphhdboeaafjdilfibonoflhgcde
 #
 # Do NOT paste Desktop OAuth client IDs from client_secret_*.json (installed apps).

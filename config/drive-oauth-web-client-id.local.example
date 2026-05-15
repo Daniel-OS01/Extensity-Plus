@@ -1,0 +1,14 @@
+# Web application OAuth client ID for Brave Google Drive sync fallback (gglcloud project).
+# Copy this file to drive-oauth-web-client-id.local (gitignored) and replace the line below.
+#
+# Google Cloud Console → APIs & Services → Credentials
+# → Create credentials → OAuth client ID → Application type: Web application
+# Or use the existing Web application client in this project:
+#   775277874801-b0imosndrdirkc8n27nho7af3s16q1lv.apps.googleusercontent.com
+#
+# Add these Authorized redirect URIs to that Web client:
+# - https://kjpdgpbbmmnickeingbbhkldeeeklnhj.chromiumapp.org/drive
+# - https://gbojjphhdboeaafjdilfibonoflhgcde.chromiumapp.org/drive
+#
+# Do NOT paste Desktop OAuth client IDs from client_secret_*.json (installed apps).
+YOUR_WEB_APPLICATION_CLIENT_ID.apps.googleusercontent.com

@@ -4,9 +4,12 @@ const path = require("node:path");
 
 const repoRoot = path.resolve(__dirname, "..");
 const distZipPath = path.join(repoRoot, "dist", "dist.zip");
-const manifestPath = path.join(repoRoot, "manifest.json");
+const distManifestPath = path.join(repoRoot, "dist", "manifest.json");
+const distDriveWebConfigPath = path.join(repoRoot, "dist", "js", "drive-oauth-config.js");
 const packageJsonPath = path.join(repoRoot, "package.json");
 const artifactsRoot = path.join(repoRoot, "artifacts", "chrome-web-store");
+const PLACEHOLDER_CLIENT_ID = "REPLACE_WITH_OAUTH_CLIENT_ID.apps.googleusercontent.com";
+const PLACEHOLDER_WEB_CLIENT_ID = "REPLACE_WITH_DRIVE_WEB_CLIENT_ID.apps.googleusercontent.com";
 const generatedAt = new Date().toISOString();
 
 function assert(condition, message) {
@@ -23,8 +26,21 @@ function sha256(filePath) {
 
 assert(fs.existsSync(distZipPath), "Expected dist/dist.zip to exist. Run `make dist` before bundling.");
 
-const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+assert(fs.existsSync(distManifestPath), "Expected dist/manifest.json to exist. Run `make dist` before bundling.");
+assert(fs.existsSync(distDriveWebConfigPath), "Expected dist/js/drive-oauth-config.js to exist. Run `make dist` before bundling.");
+
+const manifest = JSON.parse(fs.readFileSync(distManifestPath, "utf8"));
 const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
+const driveWebConfig = fs.readFileSync(distDriveWebConfigPath, "utf8");
+const driveWebClientIdMatch = driveWebConfig.match(/driveWebClientId:\s*"([^"]*)"/);
+assert(
+  manifest.oauth2 && manifest.oauth2.client_id && manifest.oauth2.client_id !== PLACEHOLDER_CLIENT_ID,
+  "Manifest oauth2.client_id is still placeholder. Set a Chrome extension OAuth client ID before creating the Chrome Web Store bundle."
+);
+assert(
+  driveWebClientIdMatch && driveWebClientIdMatch[1] !== PLACEHOLDER_WEB_CLIENT_ID,
+  "Drive Web OAuth client ID is still placeholder. Set a Web application OAuth client ID before creating the Chrome Web Store bundle."
+);
 const version = manifest.version;
 const packageName = packageJson.name || "extensity-plus";
 const extensionZipName = `${packageName}-v${version}.zip`;
@@ -37,7 +53,7 @@ const notesPath = path.join(artifactsRoot, "submission-notes.md");
 fs.rmSync(artifactsRoot, { force: true, recursive: true });
 fs.mkdirSync(artifactsRoot, { recursive: true });
 fs.copyFileSync(distZipPath, extensionZipPath);
-fs.copyFileSync(manifestPath, manifestCopyPath);
+fs.copyFileSync(distManifestPath, manifestCopyPath);
 
 const zipChecksum = sha256(extensionZipPath);
 const metadata = {

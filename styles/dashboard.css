@@ -287,6 +287,10 @@ body.dark-mode {
   padding: 16px;
 }
 
+#dashboard-page .drive-sync-card {
+  max-width: 760px;
+}
+
 #dashboard-page .sync-status-line {
   align-items: center;
   display: flex;
@@ -324,9 +328,45 @@ body.dark-mode {
   margin: 0;
 }
 
+#dashboard-page .drive-status-grid {
+  display: grid;
+  gap: 8px;
+}
+
+#dashboard-page .drive-status-row {
+  align-items: baseline;
+  border-bottom: 1px solid var(--border);
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(150px, 220px) 1fr;
+  padding-bottom: 8px;
+}
+
+#dashboard-page .drive-status-row:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+#dashboard-page .drive-status-label {
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: bold;
+  text-transform: uppercase;
+}
+
+#dashboard-page .drive-status-value {
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
 @media (max-width: 900px) {
   #dashboard-page .rule-columns {
     grid-template-columns: 1fr;
+  }
+
+  #dashboard-page .drive-status-row {
+    grid-template-columns: 1fr;
+    gap: 4px;
   }
 
   #dashboard-page .rule-test-columns {

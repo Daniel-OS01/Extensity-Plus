@@ -11,7 +11,9 @@
 <script type="text/javascript" src="js/storage.js"></script>
 <script type="text/javascript" src="js/engine.js"></script>
 <script type="text/javascript" src="js/import-export.js"></script>
+<script type="text/javascript" src="js/drive-oauth-config.js"></script>
 <script type="text/javascript" src="js/drive-sync.js"></script>
+<script type="text/javascript" src="js/logger.js"></script>
 <script type="text/javascript" src="js/options.js"></script>
 </head>
 <body>
@@ -164,6 +166,9 @@
       <fieldset class="settings-card">
         <legend>Google Drive Sync</legend>
         <div class="field"><span class="muted" data-sbind="text: driveConfiguredLabel"></span></div>
+        <div class="field"><span class="muted" data-sbind="text: driveEnvironmentLabel"></span></div>
+        <div class="field"><span class="muted" data-sbind="text: driveExtensionIdLabel"></span></div>
+        <div class="field"><span class="muted" data-sbind="text: driveAuthProviderLabel"></span></div>
         <div class="field"><input type="checkbox" id="driveSync" data-sbind="checked: options.driveSync" /><label for="driveSync">Enable automatic Google Drive sync</label></div>
         <div class="field"><label for="driveAutoSyncIntervalMinutes">Auto-sync interval (minutes, min 15)</label><input type="number" min="15" max="1440" id="driveAutoSyncIntervalMinutes" data-sbind="value: options.driveAutoSyncIntervalMinutes" /></div>
         <div class="field"><span class="muted">Select which data to include in Drive sync:</span></div>
@@ -178,6 +183,12 @@
           <button type="button" title="Sync with Google Drive now" data-sbind="click: driveSyncNow, disable: busy">Sync now</button>
           <button type="button" title="Upload local data to Google Drive" data-sbind="click: drivePush, disable: busy">Push to Drive</button>
           <button type="button" title="Download data from Google Drive" data-sbind="click: drivePull, disable: busy">Pull from Drive</button>
+          <button type="button" title="Test Drive connection (read-only check)" data-sbind="click: testDriveConnection, disable: busy">Test connection</button>
+        </div>
+        <div class="field" data-sbind="if: driveConnectionReport">
+          <div data-sbind="foreach: driveTestSteps">
+            <div><span data-sbind="text: statusBadge"></span> <span data-sbind="text: name"></span> <span class="muted" data-sbind="text: detail"></span></div>
+          </div>
         </div>
         <div class="field drive-conflict-panel" data-sbind="visible: driveConflictVisible">
           <p class="status error" data-sbind="text: driveConflictSummary"></p>

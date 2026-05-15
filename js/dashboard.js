@@ -272,6 +272,147 @@ document.addEventListener("DOMContentLoaded", function() {
     return "sync-status-badge sync-status-disconnected";
   }
 
+  function formatDateTime(timestamp) {
+    if (!timestamp) {
+      return "Never";
+    }
+    return new Date(timestamp).toLocaleString();
+  }
+
+  function formatDriveInstallType(status) {
+    if (!status || !status.installType) {
+      return "Unknown";
+    }
+    if (status.installType === "development") {
+      return "Local / development";
+    }
+    if (status.installType === "normal") {
+      return "Store / normal";
+    }
+    return "Unknown";
+  }
+
+  function formatDriveAuthState(status) {
+    if (!status) {
+      return "Unknown";
+    }
+    if (status.driveAuthStatus === "authorized") {
+      return "Authorized";
+    }
+    if (status.driveAuthStatus === "needs_interactive_sign_in") {
+      return "Needs sign-in";
+    }
+    if (status.driveAuthStatus === "error") {
+      return "Error";
+    }
+    return "Unknown";
+  }
+
+  function formatDriveAuthProvider(status) {
+    if (!status || !status.authProvider) {
+      return "Unknown";
+    }
+    if (status.authProvider === "web_fallback") {
+      return "Brave web fallback";
+    }
+    return "Chrome extension token";
+  }
+
+  function formatDriveWebFallback(status) {
+    if (!status) {
+      return "Unknown";
+    }
+    if (!status.webFallbackConfigured) {
+      return "Not configured";
+    }
+    if (status.webAuthPreferred) {
+      return "Configured and preferred in Brave";
+    }
+    return "Configured";
+  }
+
+  function formatDriveAutoSync(status) {
+    if (!status) {
+      return "Unknown";
+    }
+    if (!status.driveSync) {
+      return "Disabled";
+    }
+    return "Enabled every " + (status.intervalMinutes || 60) + " minutes";
+  }
+
+  function formatDriveLastSync(status) {
+    if (!status || !status.lastDriveSync) {
+      return "Never";
+    }
+    return formatDateTime(status.lastDriveSync);
+  }
+
+  function formatDriveLastError(status) {
+    if (!status || !status.lastDriveSyncError) {
+      return "None";
+    }
+    if (typeof status.lastDriveSyncError === "string") {
+      return status.lastDriveSyncError;
+    }
+    if (status.lastDriveSyncError.message) {
+      return status.lastDriveSyncError.message;
+    }
+    return "Drive sync error";
+  }
+
+  function buildDriveStatusRows(status) {
+    var normalized = status || {};
+    return [
+      { label: "Configured", value: normalized.configured ? "Yes" : "No" },
+      { label: "Auth state", value: formatDriveAuthState(normalized) },
+      { label: "Auth path", value: formatDriveAuthProvider(normalized) },
+      { label: "Extension ID", value: normalized.extensionId || "Unavailable" },
+      { label: "Install type", value: formatDriveInstallType(normalized) },
+      { label: "Web fallback", value: formatDriveWebFallback(normalized) },
+      { label: "Auto-sync", value: formatDriveAutoSync(normalized) },
+      { label: "Last sync", value: formatDriveLastSync(normalized) },
+      { label: "App-data file ID", value: normalized.fileId || "Not assigned yet" },
+      { label: "Last error", value: formatDriveLastError(normalized) },
+      {
+        label: "Drive storage",
+        value: "The sync file lives in the hidden appDataFolder, so there is no browsable folder URL."
+      }
+    ];
+  }
+
+  function buildDriveStatusHeadline(status) {
+    if (!status) {
+      return "Google Drive sync status unavailable.";
+    }
+    if (!status.configured) {
+      return "Drive sync is not configured for this build.";
+    }
+    if (status.driveAuthStatus === "needs_interactive_sign_in") {
+      return "Drive sync needs sign-in. Run Sync Drive once to authorize background auto-sync.";
+    }
+    if (status.driveAuthStatus === "error") {
+      return "Drive sync reported an error. Check the last error below.";
+    }
+    if (!status.driveSync) {
+      return "Drive sync is configured but disabled.";
+    }
+    return "Drive sync is ready.";
+  }
+
+  function buildDriveStatusDetails(status) {
+    if (!status) {
+      return "Google Drive status is unavailable.";
+    }
+    if (status.webAuthPreferred) {
+      return "Brave is using the Web OAuth fallback path.";
+    }
+    if (status.webFallbackConfigured) {
+      return "Web OAuth fallback is configured for Brave if the Chrome extension flow fails.";
+    }
+    return "Chrome extension OAuth is active. Brave fallback is not configured.";
+  }
+
   function DashboardViewModel() {
     var self = this;
     self.loading = ko.observable(true);
@@ -285,13 +426,18 @@ document.addEventListener("DOMContentLoaded", function() {
     self.aliasesTab = ko.pureComputed(function() { return self.activeTab() === "aliases"; });
     self.dataTab = ko.pureComputed(function() { return self.activeTab() === "data"; });
     self.syncStatusTab = ko.pureComputed(function() { return self.activeTab() === "sync_status"; });
+    self.logTab = ko.pureComputed(function() { return self.activeTab() === "log"; });
     self.aboutTab = ko.pureComputed(function() { return self.activeTab() === "about"; });
     self.showTabHistory = function() { self.activeTab("history"); };
     self.showTabGroups = function() { self.activeTab("groups"); };
     self.showTabRules = function() { self.activeTab("rules"); };
     self.showTabAliases = function() { self.activeTab("aliases"); };
     self.showTabData = function() { self.activeTab("data"); };
-    self.showTabSyncStatus = function() { self.activeTab("sync_status"); };
+    self.showTabSyncStatus = function() {
+      self.activeTab("sync_status");
+      self.refreshDriveSyncStatus();
+    };
+    self.showTabLog = function() { self.activeTab("log"); };
     self.showTabAbout = function() { self.activeTab("about"); };
     self.appVersion = ko.observable("");
     self.needsWebStorePermission = ko.observable(false);
@@ -336,6 +482,23 @@ document.addEventListener("DOMContentLoaded", function() {
         return "";
       }
       return "Last checked: " + new Date(self.syncStatusTimestamp()).toLocaleString();
+    });
+    self.driveStatus = ko.observable(null);
+    self.driveStatusTimestamp = ko.observable(null);
+    self.driveStatusHeadline = ko.pureComputed(function() {
+      return buildDriveStatusHeadline(self.driveStatus());
+    });
+    self.driveStatusDetails = ko.pureComputed(function() {
+      return buildDriveStatusDetails(self.driveStatus());
+    });
+    self.driveStatusCheckedAt = ko.pureComputed(function() {
+      if (!self.driveStatusTimestamp()) {
+        return "";
+      }
+      return "Last checked: " + new Date(self.driveStatusTimestamp()).toLocaleString();
+    });
+    self.driveStatusRows = ko.pureComputed(function() {
+      return buildDriveStatusRows(self.driveStatus());
     });
 
     self.filteredHistoryRows = ko.pureComputed(function() {
@@ -546,7 +709,28 @@ document.addEventListener("DOMContentLoaded", function() {
 
     self.refresh = function() {
       self.loading(true);
-      return self.performAction(ExtensityApi.getState());
+      return self.performAction(ExtensityApi.getState()).then(function(payload) {
+        return self.refreshDriveSyncStatus().then(function() {
+          return payload;
+        });
+      });
+    };
+
+    self.refreshDriveSyncStatus = function() {
+      if (typeof ExtensityApi === "undefined" || typeof ExtensityApi.getDriveSyncStatus !== "function") {
+        self.driveStatus(null);
+        self.driveStatusTimestamp(Date.now());
+        return Promise.resolve(null);
+      }
+      return ExtensityApi.getDriveSyncStatus().then(function(payload) {
+        self.driveStatusTimestamp(Date.now());
+        self.driveStatus(payload && payload.status ? payload.status : null);
+        return payload;
+      }).catch(function() {
+        self.driveStatusTimestamp(Date.now());
+        self.driveStatus(null);
+        return null;
+      });
     };
 
     self.isTab = function(tab) {
@@ -737,13 +921,16 @@ document.addEventListener("DOMContentLoaded", function() {
       var result = payload && payload.result ? payload.result : {};
       if (result.status === "conflict") {
         self.message(result.message || "Drive sync needs your input.");
+        self.refreshDriveSyncStatus();
         return;
       }
       if (result.status === "cancelled") {
         self.message("Drive sync cancelled.");
+        self.refreshDriveSyncStatus();
         return;
       }
       self.message("Drive sync completed (" + (result.status || "ok") + ").");
+      self.refreshDriveSyncStatus();
     }
 
     self.driveSyncNow = function() {
@@ -770,6 +957,12 @@ document.addEventListener("DOMContentLoaded", function() {
       self.performAction(ExtensityApi.resolveDriveConflict("cancel")).then(handleDriveSyncResult);
     };
 
+    self.openGoogleDrive = function() {
+      if (typeof window !== "undefined" && typeof window.open === "function") {
+        window.open("https://drive.google.com/drive/u/0", "_blank", "noopener,noreferrer");
+      }
+    };
+
     self.checkSyncStatus = function() {
       self.busy(true);
       self.error("");
@@ -783,10 +976,102 @@ document.addEventListener("DOMContentLoaded", function() {
         self.busy(false);
       });
     };
+
+    var _logger = typeof window !== "undefined" && window.ExtensityLogger ? window.ExtensityLogger : null;
+
+    function buildLogRow(entry) {
+      var levelClass = { error: "event-badge event-state_changed_off", warn: "event-badge event-scheduled", info: "event-badge event-state_changed_on" };
+      return {
+        level: entry.level,
+        levelBadgeClass: levelClass[entry.level] || "event-badge",
+        timestamp: (entry.timestamp || "").replace("T", " ").slice(0, 19),
+        message: entry.message,
+        dataLine: entry.data ? JSON.stringify(entry.data) : null
+      };
+    }
+
+    self.logEntries = ko.observableArray([]);
+    self.logLevel = ko.observable(_logger ? _logger.getLevel() : "warn");
+    self.logEmpty = ko.pureComputed(function() { return self.logEntries().length === 0; });
+
+    if (_logger) {
+      _logger.loadLevel(function(level) { self.logLevel(level); });
+      _logger.subscribe(function(entry) {
+        self.logEntries.unshift(buildLogRow(entry));
+      });
+    }
+
+    self.logLevel.subscribe(function(val) {
+      if (_logger) {
+        _logger.setLevel(val);
+      }
+    });
+
+    self.clearLog = function() {
+      if (_logger) {
+        _logger.clearEntries();
+      }
+      self.logEntries([]);
+    };
+
+    self.copyLog = function() {
+      var text = self.logEntries().map(function(row) {
+        return [row.timestamp, row.level.toUpperCase(), row.message, row.dataLine].filter(Boolean).join(" | ");
+      }).join("\n");
+      if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+        navigator.clipboard.writeText(text);
+      }
+    };
+
+    self.driveConnectionReport = ko.observable(null);
+
+    self.driveTestSteps = ko.pureComputed(function() {
+      var report = self.driveConnectionReport();
+      if (!report || !Array.isArray(report.steps)) {
+        return [];
+      }
+      return report.steps.map(function(s) {
+        return {
+          name: s.name,
+          detail: s.detail || "",
+          statusBadge: s.status,
+          statusOk: s.status === "ok",
+          statusWarn: s.status === "warn" || s.status === "info" || s.status === "skip",
+          statusFail: s.status === "fail"
+        };
+      });
+    });
+
+    self.testDriveConnection = function() {
+      self.busy(true);
+      self.error("");
+      self.driveConnectionReport(null);
+      ExtensityApi.testDriveConnection().then(function(result) {
+        var report = result && result.report ? result.report : null;
+        self.driveConnectionReport(report);
+        if (_logger && report) {
+          if (report.success) {
+            _logger.info("Drive connection test passed.");
+          } else {
+            _logger.warn("Drive connection test failed.");
+          }
+        }
+      }).catch(function(err) {
+        self.error((err && err.message) || "Drive connection test failed.");
+        if (_logger) {
+          _logger.error("Drive connection test error.", { message: err && err.message });
+        }
+      }).finally(function() {
+        self.busy(false);
+      });
+    };
   }
 
   if (typeof window !== "undefined") {
     window.ExtensityDashboardInternals = {
+      buildDriveStatusDetails: buildDriveStatusDetails,
+      buildDriveStatusHeadline: buildDriveStatusHeadline,
+      buildDriveStatusRows: buildDriveStatusRows,
       parseRuleDraft: parseRuleDraft,
       resolveDraftEnableIds: resolveDraftEnableIds
     };
@@ -800,6 +1085,7 @@ document.addEventListener("DOMContentLoaded", function() {
     if (typeof ExtensityBrowserSync !== "undefined" && ExtensityBrowserSync.attachSyncRemoteUpdateListener) {
       ExtensityBrowserSync.attachSyncRemoteUpdateListener(function() {
         vm.refresh();
+        vm.refreshDriveSyncStatus();
       });
     }
     vm.refresh();

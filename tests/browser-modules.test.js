@@ -50,6 +50,12 @@ function createChromeBackgroundStub(overrides = {}) {
       removeAll() {}
     },
     management: {
+      getSelf(callback) {
+        callback({
+          id: "runtime-extension",
+          installType: "development"
+        });
+      },
       onInstalled: { addListener() {} }
     },
     notifications: {
@@ -524,6 +530,56 @@ test("extension settings URL builders encode extension IDs consistently", () => 
     root.ExtensityUtils.buildPermissionsPageUrl(extensionId),
     "chrome://settings/content/siteDetails?site=chrome-extension://abc%2Fdef%3Fghi%3D1"
   );
+});
+
+test("dashboard drive status helpers surface Brave fallback and hidden app data storage", () => {
+  const windowRoot = {};
+  loadBrowserScript(path.join(repoRoot, "js/dashboard.js"), {
+    _: {
+      defer() {}
+    },
+    document: {
+      addEventListener(event, callback) {
+        callback();
+      }
+    },
+    window: windowRoot
+  });
+
+  const helpers = windowRoot.ExtensityDashboardInternals;
+  const rows = helpers.buildDriveStatusRows({
+    authProvider: "web_fallback",
+    configured: true,
+    driveAuthStatus: "authorized",
+    driveSync: true,
+    extensionId: "extension-id",
+    fileId: "file-id",
+    installType: "development",
+    intervalMinutes: 90,
+    lastDriveSync: 1715790000000,
+    lastDriveSyncError: { message: "Temporary failure" },
+    webAuthPreferred: true,
+    webFallbackConfigured: true
+  });
+
+  assert.equal(helpers.buildDriveStatusHeadline({
+    configured: true,
+    driveAuthStatus: "authorized",
+    driveSync: true
+  }), "Drive sync is ready.");
+  assert.equal(rows.find((row) => row.label === "Auth path").value, "Brave web fallback");
+  assert.equal(rows.find((row) => row.label === "Web fallback").value, "Configured and preferred in Brave");
+  assert.equal(rows.find((row) => row.label === "App-data file ID").value, "file-id");
+  assert.match(rows.find((row) => row.label === "Drive storage").value, /hidden appDataFolder/);
+});
+
+test("dashboard source refreshes Drive status and exposes the dashboard action", () => {
+  const source = fs.readFileSync(path.join(repoRoot, "js/dashboard.js"), "utf8");
+  const html = fs.readFileSync(path.join(repoRoot, "dashboard.html"), "utf8");
+
+  assert.match(source, /self\.refreshDriveSyncStatus\(\);/);
+  assert.match(html, /Refresh Drive status/);
+  assert.match(html, /Open Google Drive/);
 });
 
 test("extension toggle icon reflects the current enabled state", () => {
@@ -2582,6 +2638,22 @@ test("options page exposes active profile and debug status without unsafe sync i
   assert.match(
     html,
     /<span class="muted">Last Drive sync:<\/span> <span data-sbind="text: lastDriveSyncLabel"><\/span>/
+  );
+  assert.match(
+    html,
+    /<span class="muted" data-sbind="text: driveConfiguredLabel"><\/span>/
+  );
+  assert.match(
+    html,
+    /<span class="muted" data-sbind="text: driveEnvironmentLabel"><\/span>/
+  );
+  assert.match(
+    html,
+    /<span class="muted" data-sbind="text: driveExtensionIdLabel"><\/span>/
+  );
+  assert.match(
+    html,
+    /<span class="muted" data-sbind="text: driveAuthProviderLabel"><\/span>/
   );
   assert.doesNotMatch(
     html,

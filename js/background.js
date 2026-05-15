@@ -5,6 +5,8 @@ importScripts(
   "url-rules.js",
   "history-logger.js",
   "reminders.js",
+  "logger.js",
+  "drive-oauth-config.js",
   "drive-sync.js"
 );
 
@@ -1379,7 +1381,16 @@ importScripts(
   async function loadDriveContext() {
     var context = await loadContext();
     var syncMeta = await storage.loadSyncMeta();
+    var extensionEnvironment = driveSync && typeof driveSync.getExtensionEnvironment === "function"
+      ? await driveSync.getExtensionEnvironment()
+      : {
+          extensionId: chrome.runtime && chrome.runtime.id ? chrome.runtime.id : "",
+          installType: "unknown"
+        };
     context.driveSyncMeta = context.localState.driveSyncMeta;
+    context.extensionEnvironment = extensionEnvironment;
+    context.extensionId = extensionEnvironment.extensionId || "";
+    context.installType = extensionEnvironment.installType || "unknown";
     context.options = Object.assign({}, context.options, {
       syncWriterId: syncMeta.syncWriterId || ""
     });
@@ -2053,6 +2064,8 @@ importScripts(
         };
       case "GET_DRIVE_SYNC_STATUS":
         return await getDriveSyncStatusNow();
+      case "TEST_DRIVE_CONNECTION":
+        return { report: await driveSync.testDriveConnection({ loadContext: loadDriveContext }) };
       case "RESOLVE_DRIVE_CONFLICT":
         return await syncDriveNow({
           direction: "sync",

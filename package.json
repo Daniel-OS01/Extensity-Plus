@@ -1,6 +1,6 @@
 {
   "name": "extensity-plus",
-  "version": "4.1.0",
+  "version": "4.2.0",
   "private": true,
   "scripts": {
     "build": "make dist",
@@ -8,8 +8,11 @@
     "cws:bootstrap": "node scripts/cws-bootstrap-refresh-token.js",
     "check:manifest": "node scripts/validate-manifest.js",
     "check:manifest:strict-drive": "EXTENSITY_STRICT_DRIVE=1 node scripts/validate-manifest.js",
+    "drive:validate": "EXTENSITY_STRICT_DRIVE=1 node scripts/validate-manifest.js && node scripts/set-drive-oauth-client-id.js --validate-ids",
     "drive:set-client-id": "node scripts/set-drive-oauth-client-id.js",
+    "drive:set-web-client-id": "node scripts/set-drive-web-oauth-client-id.js",
     "drive:apply-local": "node scripts/set-drive-oauth-client-id.js --from-local",
+    "drive:apply-web-local": "node scripts/set-drive-web-oauth-client-id.js --from-local",
     "generate:icons": "node scripts/generate-icons.js",
     "release:bump": "node scripts/bump-version.js",
     "test": "node --test tests/*.test.js"

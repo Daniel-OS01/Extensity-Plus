@@ -17,13 +17,16 @@ It keeps the original Extensity idea simple, but expands it into a more complete
 
 ## Latest Release
 
-Current version: `v4.0.1` (published 2026-04-25)
+Current version: `v4.2.0` (published 2026-05-15)
 
-### What's Changed in v4.0.1
+### What's Changed in v4.2.0
 
-- Fixed popup-to-background active-tab URL handoff so URL rules resolve against the actual page tab instead of popup-window focus context.
+- Added **Drive connection test** button (Options → Google Drive Sync, Dashboard → Sync Status): performs a read-only connection check, token acquisition, Drive file listing, and dry-run conflict detection with a step-by-step debug report.
+- Added **Dashboard Log tab** with four log levels (none / error / warn / info). The selected level persists across sessions. Log entries can be cleared or copied to clipboard.
+- Chrome Web Store extension ID verified: `gbojjphhdboeaafjdilfibonoflhgcde`.
+- Fixed Google Drive OAuth 400 error for Brave fallback: Web OAuth client now requires `chromiumapp.org` redirect URIs (see `docs/google-drive-sync.md`).
 
-Full changelog: https://github.com/Daniel-OS01/Extensity-Plus/compare/v4.0.0...v4.0.1
+Full changelog: https://github.com/Daniel-OS01/Extensity-Plus/compare/v4.1.0...v4.2.0
 
 ## What It Looks Like
 
@@ -88,6 +91,8 @@ The Dashboard brings together history, groups, aliases, import/export, and URL r
 - Review extension event history.
 - Export inventory as CSV.
 - Import and export full backup data.
+- **Log tab** — real-time session log with four levels (none / error / warn / info), copy to clipboard.
+- **Drive connection test** — read-only diagnostic showing token acquisition, Drive API connectivity, sync file metadata, and dry-run conflict state.
 
 ### Data and automation
 
@@ -151,6 +156,7 @@ Supporting modules:
 - `js/url-rules.js`
 - `js/history-logger.js`
 - `js/reminders.js`
+- `js/logger.js`
 - `js/drive-sync.js`
 
 ## Build and Development

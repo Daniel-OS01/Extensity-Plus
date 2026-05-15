@@ -288,6 +288,9 @@ document.addEventListener("DOMContentLoaded", function() {
   function attachDriveSyncMethods(self) {
     self.driveCategoryChecked = buildDriveCategoryChecked(self);
     self.driveConfiguredLabel = ko.observable("");
+    self.driveEnvironmentLabel = ko.observable("");
+    self.driveExtensionIdLabel = ko.observable("");
+    self.driveAuthProviderLabel = ko.observable("");
     self.driveConflictVisible = ko.pureComputed(function() {
       return !!self.options.drivePendingConflict();
     });
@@ -315,23 +318,83 @@ document.addEventListener("DOMContentLoaded", function() {
       return !!self.lastDriveSyncErrorLabel();
     });
 
-    function refreshDriveConfiguredLabel() {
-      if (typeof chrome === "undefined" || !chrome.runtime || typeof chrome.runtime.getManifest !== "function") {
-        self.driveConfiguredLabel("Google Drive sync is available when running as the extension.");
-        return;
+    function describeDriveSyncStatus(status) {
+      if (!status) {
+        return "Google Drive sync status is unavailable.";
       }
-      var manifest = chrome.runtime.getManifest();
-      var configured = typeof ExtensityDriveSync !== "undefined" && ExtensityDriveSync.isOAuthConfigured(manifest);
-      var authStatus = typeof self.options.driveAuthStatus === "function"
-        ? self.options.driveAuthStatus()
-        : "unknown";
-      self.driveConfiguredLabel(
-        !configured
-          ? "Drive sync requires a Chrome extension OAuth client ID in manifest.json (see docs/google-drive-sync.md)."
-          : (authStatus === "needs_interactive_sign_in"
-            ? "Google Drive sync needs sign-in. Click Sync now once to authorize background auto-sync."
-            : "Google Drive sync is configured.")
-      );
+      if (!status.configured) {
+        return "Drive sync is not configured for this build.";
+      }
+      if (status.driveAuthStatus === "needs_interactive_sign_in") {
+        return "Drive sync needs sign-in. Click Sync now once to authorize background auto-sync.";
+      }
+      if (status.driveAuthStatus === "error") {
+        return "Drive sync reported an error. Check the last error below.";
+      }
+      if (!status.driveSync) {
+        return "Drive sync is configured but disabled.";
+      }
+      return "Drive sync is ready.";
+    }
+
+    function describeDriveEnvironment(status) {
+      var installType = status && status.installType ? status.installType : "unknown";
+      if (installType === "development") {
+        return "Environment: Local / development build";
+      }
+      if (installType === "normal") {
+        return "Environment: Store / normal install";
+      }
+      return "Environment: Unknown";
+    }
+
+    function describeDriveExtensionId(status) {
+      var extensionId = status && status.extensionId ? status.extensionId : "";
+      return extensionId ? "Extension ID: " + extensionId : "Extension ID unavailable";
+    }
+
+    function describeDriveAuthProvider(status) {
+      if (!status) {
+        return "Auth: Unknown";
+      }
+      if (status.webAuthPreferred) {
+        return "Auth: Brave web fallback preferred";
+      }
+      if (status.webFallbackConfigured) {
+        return "Auth: Chrome extension OAuth with Brave web fallback configured";
+      }
+      return "Auth: Chrome extension OAuth";
+    }
+
+    function refreshDriveConfiguredLabel() {
+      if (typeof ExtensityApi === "undefined" || typeof ExtensityApi.getDriveSyncStatus !== "function") {
+        self.driveConfiguredLabel("Google Drive sync status unavailable.");
+        self.driveEnvironmentLabel("Environment: Unknown");
+        self.driveExtensionIdLabel("Extension ID unavailable");
+        self.driveAuthProviderLabel("Auth: Unknown");
+        return Promise.resolve();
+      }
+
+      return ExtensityApi.getDriveSyncStatus().then(function(payload) {
+        var status = payload && payload.status ? payload.status : null;
+        self.driveConfiguredLabel(describeDriveSyncStatus(status));
+        self.driveEnvironmentLabel(describeDriveEnvironment(status));
+        self.driveExtensionIdLabel(describeDriveExtensionId(status));
+        self.driveAuthProviderLabel(describeDriveAuthProvider(status));
+      }).catch(function() {
+        self.driveConfiguredLabel("Google Drive sync status unavailable.");
+        self.driveEnvironmentLabel("Environment: Unknown");
+        self.driveExtensionIdLabel("Extension ID unavailable");
+        self.driveAuthProviderLabel("Auth: Unknown");
+      });
+    }
+
+    if (typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.onMessage && typeof chrome.runtime.onMessage.addListener === "function") {
+      chrome.runtime.onMessage.addListener(function(message) {
+        if (message && message.type === "SYNC_REMOTE_UPDATE") {
+          refreshDriveConfiguredLabel();
+        }
+      });
     }
 
     function handleDriveSyncResult(payload) {
@@ -368,6 +431,35 @@ document.addEventListener("DOMContentLoaded", function() {
       return runDriveSyncRequest(ExtensityApi.syncDrive({ direction: "pull" }));
     };
 
+    self.driveConnectionReport = ko.observable(null);
+
+    self.driveTestSteps = ko.pureComputed(function() {
+      var report = self.driveConnectionReport();
+      if (!report || !Array.isArray(report.steps)) {
+        return [];
+      }
+      return report.steps.map(function(s) {
+        return {
+          name: s.name,
+          detail: s.detail || "",
+          statusBadge: s.status
+        };
+      });
+    });
+
+    self.testDriveConnection = function() {
+      self.busy(true);
+      self.error("");
+      self.driveConnectionReport(null);
+      ExtensityApi.testDriveConnection().then(function(result) {
+        self.driveConnectionReport(result && result.report ? result.report : null);
+      }).catch(function(err) {
+        self.error((err && err.message) || "Drive connection test failed.");
+      }).finally(function() {
+        self.busy(false);
+      });
+    };
+
     self.driveResolveKeepLocal = function() {
       return runDriveSyncRequest(ExtensityApi.resolveDriveConflict("keep_local"));
     };
@@ -380,6 +472,7 @@ document.addEventListener("DOMContentLoaded", function() {
       return runDriveSyncRequest(ExtensityApi.resolveDriveConflict("cancel"));
     };
 
+    self.refreshDriveSyncStatus = refreshDriveConfiguredLabel;
     refreshDriveConfiguredLabel();
   }
 
@@ -498,6 +591,9 @@ document.addEventListener("DOMContentLoaded", function() {
       applyCssVars(normalizedOptions);
       if (window.ExtensityTooltips && window.ExtensityTooltips.applyAutoTooltips) {
         window.ExtensityTooltips.applyAutoTooltips(document.body);
+      }
+      if (typeof self.refreshDriveSyncStatus === "function") {
+        self.refreshDriveSyncStatus();
       }
       self.loading(false);
       self.error("");

@@ -975,6 +975,9 @@
     getDriveSyncStatus: function() {
       return chromeMessage({ type: "GET_DRIVE_SYNC_STATUS" });
     },
+    testDriveConnection: function() {
+      return chromeMessage({ type: "TEST_DRIVE_CONNECTION" });
+    },
     resolveDriveConflict: function(resolution) {
       return chromeMessage({
         resolution: resolution,

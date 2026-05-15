@@ -3,6 +3,11 @@
   var ENVELOPE_VERSION = "1.0.0";
   var DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.appdata";
   var PLACEHOLDER_CLIENT_ID = "REPLACE_WITH_OAUTH_CLIENT_ID.apps.googleusercontent.com";
+  var PLACEHOLDER_WEB_CLIENT_ID = "REPLACE_WITH_DRIVE_WEB_CLIENT_ID.apps.googleusercontent.com";
+  var DRIVE_WEB_AUTH_CACHE_KEY = "driveWebAuthToken";
+  var DRIVE_WEB_AUTH_PATH = "drive";
+  var DRIVE_WEB_AUTH_EXPIRY_SKEW_MS = 60000;
+  var GOOGLE_OAUTH_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
   var CATEGORY_IDS = ["options", "profiles", "aliases", "groups", "urlRules", "history"];
   var DEFAULT_CATEGORY_FLAGS = {
     aliases: true,
@@ -27,6 +32,8 @@
     "lastDriveSync",
     "lastDriveSyncError"
   ];
+  var DRIVE_MAX_RETRIES = 3;
+  var DRIVE_RETRY_BASE_DELAY_MS = 1000;
 
   function isObject(value) {
     return !!value && Object.prototype.toString.call(value) === "[object Object]";
@@ -38,6 +45,51 @@
 
   function nowMs() {
     return Date.now();
+  }
+
+  function sleep(ms) {
+    return new Promise(function(resolve) {
+      setTimeout(resolve, ms);
+    });
+  }
+
+  function normalizeInstallType(value) {
+    return value === "development" || value === "normal" ? value : "unknown";
+  }
+
+  function getDriveConfig() {
+    return root.ExtensityDriveConfig || {};
+  }
+
+  function isDriveWebAuthPreferred() {
+    var config = getDriveConfig();
+    return !!config.drivePreferWebAuth || false;
+  }
+
+  async function getExtensionEnvironment() {
+    var extensionId = chrome.runtime && chrome.runtime.id ? chrome.runtime.id : "";
+    if (!chrome.management || typeof chrome.management.getSelf !== "function") {
+      return {
+        extensionId: extensionId,
+        installType: "unknown"
+      };
+    }
+
+    return new Promise(function(resolve) {
+      chrome.management.getSelf(function(info) {
+        if (chrome.runtime.lastError || !info) {
+          resolve({
+            extensionId: extensionId,
+            installType: "unknown"
+          });
+          return;
+        }
+        resolve({
+          extensionId: info.id || extensionId,
+          installType: normalizeInstallType(info.installType)
+        });
+      });
+    });
   }
 
   function normalizeCategoryFlags(flags) {
@@ -257,6 +309,28 @@
     return /^[0-9]+-[a-z0-9._-]+\.apps\.googleusercontent\.com$/i.test(String(value || ""));
   }
 
+  function getDriveWebClientId() {
+    var config = getDriveConfig();
+    return String(config.driveWebClientId || "").trim();
+  }
+
+  function isDriveWebOAuthConfigured() {
+    var clientId = getDriveWebClientId();
+    return !!clientId && clientId !== PLACEHOLDER_WEB_CLIENT_ID && isGoogleClientIdFormat(clientId);
+  }
+
+  async function detectBraveBrowser() {
+    var nav = typeof navigator !== "undefined" ? navigator : root.navigator;
+    if (!nav || !nav.brave || typeof nav.brave.isBrave !== "function") {
+      return false;
+    }
+    try {
+      return !!await nav.brave.isBrave();
+    } catch (error) {
+      return false;
+    }
+  }
+
   function normalizeDriveError(error, fallbackCode) {
     var source = error || {};
     var code = source.code || fallbackCode || "unknown";
@@ -274,6 +348,54 @@
     return error;
   }
 
+  function storageLocalGet(key) {
+    return new Promise(function(resolve) {
+      if (!chrome.storage || !chrome.storage.local || typeof chrome.storage.local.get !== "function") {
+        resolve({});
+        return;
+      }
+      chrome.storage.local.get(key, function(result) {
+        resolve(result || {});
+      });
+    });
+  }
+
+  function storageLocalSet(values) {
+    return new Promise(function(resolve) {
+      if (!chrome.storage || !chrome.storage.local || typeof chrome.storage.local.set !== "function") {
+        resolve();
+        return;
+      }
+      chrome.storage.local.set(values, function() {
+        resolve();
+      });
+    });
+  }
+
+  function storageLocalRemove(key) {
+    return new Promise(function(resolve) {
+      if (!chrome.storage || !chrome.storage.local || typeof chrome.storage.local.remove !== "function") {
+        resolve();
+        return;
+      }
+      chrome.storage.local.remove(key, function() {
+        resolve();
+      });
+    });
+  }
+
+  function isCustomUriSchemeOAuthError(error) {
+    var message = String((error && (error.message || error.userMessage)) || "").toLowerCase();
+    return error && error.code === "custom_uri_scheme" || message.indexOf("custom uri scheme") !== -1;
+  }
+
+  async function shouldPreferWebAuth() {
+    if (isDriveWebAuthPreferred()) {
+      return true;
+    }
+    return detectBraveBrowser();
+  }
+
   function chromeIdentityGetToken(interactive) {
     return new Promise(function(resolve, reject) {
       if (!chrome.identity || typeof chrome.identity.getAuthToken !== "function") {
@@ -284,6 +406,14 @@
         if (chrome.runtime.lastError) {
           var rawMessage = String(chrome.runtime.lastError.message || "");
           var lower = rawMessage.toLowerCase();
+          if (lower.indexOf("custom uri scheme") !== -1) {
+            reject(createDriveError(
+              "custom_uri_scheme",
+              "Google sign-in needs the Brave-compatible web OAuth fallback.",
+              rawMessage
+            ));
+            return;
+          }
           if (
             lower.indexOf("invalid_client") !== -1
             || lower.indexOf("bad client id") !== -1
@@ -329,6 +459,170 @@
     });
   }
 
+  async function getFreshDriveWebToken(interactive) {
+    if (!isDriveWebOAuthConfigured()) {
+      throw createDriveError(
+        "auth",
+        "Brave fallback not configured. Add a Web OAuth client ID for Drive sync."
+      );
+    }
+    if (!interactive) {
+      throw createDriveError(
+        "auth",
+        "Background sync needs interactive sign-in. Run Sync now once to authorize."
+      );
+    }
+    if (!chrome.identity || typeof chrome.identity.getRedirectURL !== "function") {
+      throw createDriveError("auth", "Brave-compatible Google sign-in is not available in this browser.");
+    }
+
+    var state = "drive_" + nowMs() + "_" + Math.random().toString(36).slice(2);
+    var authUrl = buildDriveWebAuthUrl(state);
+    var redirectUrl = await launchDriveWebAuthFlow(authUrl, interactive);
+    var parsed = parseDriveWebAuthRedirect(redirectUrl, state);
+    await writeCachedDriveWebToken(parsed.accessToken, parsed.expiresIn);
+    return {
+      authProvider: "web_fallback",
+      token: parsed.accessToken
+    };
+  }
+
+  async function readCachedDriveWebToken() {
+    var result = await storageLocalGet(DRIVE_WEB_AUTH_CACHE_KEY);
+    var cached = result && result[DRIVE_WEB_AUTH_CACHE_KEY];
+    if (!cached || !cached.accessToken || typeof cached.expiresAt !== "number") {
+      return null;
+    }
+    if (cached.expiresAt <= nowMs() + DRIVE_WEB_AUTH_EXPIRY_SKEW_MS) {
+      await storageLocalRemove(DRIVE_WEB_AUTH_CACHE_KEY);
+      return null;
+    }
+    return cached;
+  }
+
+  async function writeCachedDriveWebToken(accessToken, expiresInSeconds) {
+    var ttlMs = Math.max(60, Number(expiresInSeconds) || 3600) * 1000;
+    await storageLocalSet((function() {
+      var payload = {};
+      payload[DRIVE_WEB_AUTH_CACHE_KEY] = {
+        accessToken: accessToken,
+        expiresAt: nowMs() + ttlMs
+      };
+      return payload;
+    })());
+  }
+
+  function buildDriveWebAuthUrl(state) {
+    var redirectUri = chrome.identity.getRedirectURL(DRIVE_WEB_AUTH_PATH);
+    var params = new URLSearchParams({
+      client_id: getDriveWebClientId(),
+      include_granted_scopes: "true",
+      redirect_uri: redirectUri,
+      response_type: "token",
+      scope: DRIVE_SCOPE,
+      state: state
+    });
+    return GOOGLE_OAUTH_AUTH_URL + "?" + params.toString();
+  }
+
+  function parseDriveWebAuthRedirect(redirectUrl, expectedState) {
+    var parsed = new URL(redirectUrl);
+    var hashParams = new URLSearchParams(String(parsed.hash || "").replace(/^#/, ""));
+    var queryParams = parsed.searchParams;
+    var state = hashParams.get("state") || queryParams.get("state") || "";
+    if (state !== expectedState) {
+      throw createDriveError("auth", "Google sign-in returned an invalid OAuth state.");
+    }
+    var error = hashParams.get("error") || queryParams.get("error") || "";
+    if (error) {
+      throw createDriveError("auth", "Google sign-in failed. Check account access and try again.", error);
+    }
+    var accessToken = hashParams.get("access_token") || queryParams.get("access_token") || "";
+    if (!accessToken) {
+      throw createDriveError("auth", "Google sign-in did not return an access token.");
+    }
+    return {
+      accessToken: accessToken,
+      expiresIn: Number(hashParams.get("expires_in") || queryParams.get("expires_in") || 3600)
+    };
+  }
+
+  function launchDriveWebAuthFlow(authUrl, interactive) {
+    return new Promise(function(resolve, reject) {
+      if (!chrome.identity || typeof chrome.identity.launchWebAuthFlow !== "function") {
+        reject(createDriveError("auth", "Brave-compatible Google sign-in is not available in this browser."));
+        return;
+      }
+      chrome.identity.launchWebAuthFlow({
+        interactive: !!interactive,
+        url: authUrl
+      }, function(redirectUrl) {
+        if (chrome.runtime.lastError) {
+          reject(createDriveError(
+            "auth",
+            interactive
+              ? "Google sign-in failed. Check account access and try again."
+              : "Background sync needs interactive sign-in. Run Sync now once to authorize.",
+            chrome.runtime.lastError.message
+          ));
+          return;
+        }
+        if (!redirectUrl) {
+          reject(createDriveError("auth", "Google sign-in did not complete."));
+          return;
+        }
+        resolve(redirectUrl);
+      });
+    });
+  }
+
+  async function acquireDriveWebToken(interactive) {
+    var cached = await readCachedDriveWebToken();
+    if (cached) {
+      return {
+        authProvider: "web_fallback",
+        token: cached.accessToken
+      };
+    }
+    return getFreshDriveWebToken(interactive);
+  }
+
+  async function acquireDriveToken(interactive) {
+    var preferWebAuth = await shouldPreferWebAuth();
+    if (preferWebAuth) {
+      return acquireDriveWebToken(interactive);
+    }
+    try {
+      return {
+        authProvider: "chrome_identity",
+        token: await chromeIdentityGetToken(interactive)
+      };
+    } catch (error) {
+      if (!isCustomUriSchemeOAuthError(error)) {
+        throw error;
+      }
+      return acquireDriveWebToken(interactive);
+    }
+  }
+
+  function normalizeTokenResult(value) {
+    if (value && typeof value === "object") {
+      return {
+        authProvider: value.authProvider || "chrome_identity",
+        token: value.token || value.accessToken || ""
+      };
+    }
+    return {
+      authProvider: "chrome_identity",
+      token: value || ""
+    };
+  }
+
+  async function clearDriveAuthToken(token) {
+    await chromeIdentityRemoveCachedToken(token);
+    await storageLocalRemove(DRIVE_WEB_AUTH_CACHE_KEY);
+  }
+
   async function driveApiRequest(token, path, options) {
     var config = options || {};
     var headers = Object.assign({
@@ -346,18 +640,21 @@
         "Google authorization expired. Run Sync now to sign in again.",
         "Google Drive authorization expired."
       );
+      authError.httpStatus = 401;
       throw authError;
     }
 
     if (!response.ok) {
       var errorText = await response.text();
+      var httpStatus = response.status;
       var apiError = createDriveError(
-        response.status === 404 ? "not_found" : "drive_api",
-        response.status >= 500
+        httpStatus === 404 ? "not_found" : "drive_api",
+        httpStatus >= 500
           ? "Google Drive service is temporarily unavailable."
           : "Google Drive request failed. Check OAuth client setup and try again.",
-        "Drive API error (" + response.status + "): " + errorText
+        "Drive API error (" + httpStatus + "): " + errorText
       );
+      apiError.httpStatus = httpStatus;
       throw apiError;
     }
 
@@ -377,19 +674,60 @@
     return response.json();
   }
 
-  async function findDriveFile(token) {
+  function isRetryableDriveError(error) {
+    var httpStatus = error && typeof error.httpStatus === "number" ? error.httpStatus : 0;
+    return httpStatus >= 500 || error instanceof TypeError || (error && error.name === "TypeError");
+  }
+
+  async function retryDriveApiRequest(token, path, options) {
+    var config = options || {};
+    var currentToken = token;
+    var attempt = 0;
+
+    while (attempt < DRIVE_MAX_RETRIES) {
+      try {
+        return await driveApiRequest(currentToken, path, config);
+      } catch (error) {
+        var isAuthError = error && error.code === "auth";
+        var canRetry = attempt < DRIVE_MAX_RETRIES - 1;
+
+        if (isAuthError && canRetry) {
+          await clearDriveAuthToken(currentToken);
+          var nextTokenResult = typeof config.getFreshToken === "function"
+            ? normalizeTokenResult(await config.getFreshToken())
+            : normalizeTokenResult(await chromeIdentityGetToken(!!config.interactive));
+          currentToken = nextTokenResult.token;
+          if (typeof config.onTokenRefresh === "function") {
+            config.onTokenRefresh(currentToken, nextTokenResult.authProvider);
+          }
+          attempt += 1;
+          continue;
+        }
+
+        if (isRetryableDriveError(error) && canRetry) {
+          await sleep(DRIVE_RETRY_BASE_DELAY_MS * Math.pow(2, attempt));
+          attempt += 1;
+          continue;
+        }
+
+        throw error;
+      }
+    }
+
+    throw createDriveError("sync_failed", "Google Drive request failed.");
+  }
+
+  async function findDriveFile(requestDriveApi) {
     var query = "name='" + DRIVE_FILE_NAME.replace(/'/g, "\\'") + "' and trashed=false";
-    var result = await driveApiRequest(
-      token,
+    var result = await requestDriveApi(
       "/drive/v3/files?spaces=appDataFolder&fields=files(id,name,modifiedTime)&q=" + encodeURIComponent(query)
     );
     var files = result && Array.isArray(result.files) ? result.files : [];
     return files.length ? files[0] : null;
   }
 
-  async function downloadDriveFile(token, fileId) {
-    var raw = await driveApiRequest(
-      token,
+  async function downloadDriveFile(requestDriveApi, fileId) {
+    var raw = await requestDriveApi(
       "/drive/v3/files/" + encodeURIComponent(fileId) + "?alt=media",
       { responseType: "text" }
     );
@@ -403,7 +741,7 @@
     }
   }
 
-  async function createDriveFile(token, content) {
+  async function createDriveFile(requestDriveApi, content) {
     var metadata = {
       mimeType: "application/json",
       name: DRIVE_FILE_NAME,
@@ -419,7 +757,7 @@
       content + "\r\n" +
       "--" + boundary + "--";
 
-    var created = await driveApiRequest(token, "/upload/drive/v3/files?uploadType=multipart&fields=id", {
+    var created = await requestDriveApi("/upload/drive/v3/files?uploadType=multipart&fields=id", {
       body: body,
       headers: {
         "Content-Type": "multipart/related; boundary=" + boundary
@@ -429,9 +767,8 @@
     return created && created.id ? created.id : null;
   }
 
-  async function updateDriveFile(token, fileId, content) {
-    await driveApiRequest(
-      token,
+  async function updateDriveFile(requestDriveApi, fileId, content) {
+    await requestDriveApi(
       "/upload/drive/v3/files/" + encodeURIComponent(fileId) + "?uploadType=media",
       {
         body: content,
@@ -443,13 +780,13 @@
     );
   }
 
-  async function readRemoteEnvelope(token, fileId) {
+  async function readRemoteEnvelope(requestDriveApi, fileId) {
     if (!fileId) {
       return { envelope: null, file: null };
     }
     try {
       return {
-        envelope: await downloadDriveFile(token, fileId),
+        envelope: await downloadDriveFile(requestDriveApi, fileId),
         file: { id: fileId }
       };
     } catch (error) {
@@ -460,13 +797,13 @@
     }
   }
 
-  async function writeRemoteEnvelope(token, fileId, envelope) {
+  async function writeRemoteEnvelope(requestDriveApi, fileId, envelope) {
     var serialized = JSON.stringify(envelope);
     if (fileId) {
-      await updateDriveFile(token, fileId, serialized);
+      await updateDriveFile(requestDriveApi, fileId, serialized);
       return fileId;
     }
-    return createDriveFile(token, serialized);
+    return createDriveFile(requestDriveApi, serialized);
   }
 
   function summarizeConflicts(conflicts) {
@@ -480,6 +817,131 @@
       status: status,
       at: nowMs()
     }, details || {});
+  }
+
+  async function testDriveConnection(options) {
+    var config = options || {};
+    var report = {
+      success: false,
+      timestamp: new Date().toISOString(),
+      steps: []
+    };
+    var token = null;
+    var authProvider = null;
+    var fileId = null;
+    var remoteEnvelope = null;
+
+    function step(name, status, detail) {
+      report.steps.push({ name: name, status: status, detail: detail || null });
+    }
+
+    var manifest = chrome.runtime.getManifest();
+    if (!isOAuthConfigured(manifest)) {
+      step("oauth_config", "fail", "No valid OAuth client ID in manifest.json. Drive sync is not configured.");
+      return report;
+    }
+    step("oauth_config", "ok", "OAuth client ID: " + (manifest.oauth2 && manifest.oauth2.client_id || ""));
+
+    var env;
+    try {
+      env = await getExtensionEnvironment();
+      step("environment", "ok", "Extension ID: " + env.extensionId + " (" + env.installType + ")");
+    } catch (envError) {
+      step("environment", "warn", "Could not read extension environment: " + (envError.message || "unknown"));
+      env = { extensionId: "", installType: "unknown" };
+    }
+
+    if (isDriveWebOAuthConfigured()) {
+      step("web_fallback", "ok", "Web OAuth fallback is configured (Brave-compatible).");
+    } else {
+      step("web_fallback", "info", "Web OAuth fallback not configured. Chrome-only sync active.");
+    }
+
+    try {
+      var tokenResult = await acquireDriveToken(false);
+      token = tokenResult.token;
+      authProvider = tokenResult.authProvider;
+      step("auth", "ok", "Token acquired via " + authProvider + ".");
+    } catch (authError) {
+      step("auth", "fail", authError.userMessage || authError.message || "Authentication failed.");
+      return report;
+    }
+
+    try {
+      var listResult = await driveApiRequest(token, "/drive/v3/files?spaces=appDataFolder&fields=files(id,name,size,modifiedTime)&pageSize=10");
+      var files = listResult && Array.isArray(listResult.files) ? listResult.files : [];
+      step("drive_list", "ok", "Drive appDataFolder reachable. " + files.length + " file(s) found.");
+
+      var syncEntry = files.find(function(f) { return f.name === DRIVE_FILE_NAME; });
+      if (syncEntry) {
+        fileId = syncEntry.id;
+        var sizeKb = syncEntry.size
+          ? (Math.round(Number(syncEntry.size) / 102.4) / 10) + " KB"
+          : "unknown size";
+        step("sync_file", "ok", "Sync file found. ID: " + fileId + ". Size: " + sizeKb + ". Modified: " + (syncEntry.modifiedTime || "unknown") + ".");
+      } else {
+        step("sync_file", "info", "Sync file not found. First sync will create it.");
+      }
+    } catch (listError) {
+      step("drive_list", "fail", listError.userMessage || listError.message || "Failed to list Drive files.");
+      return report;
+    }
+
+    if (fileId) {
+      try {
+        remoteEnvelope = await downloadDriveFile(function(path, opts) {
+          return driveApiRequest(token, path, opts);
+        }, fileId);
+        if (remoteEnvelope) {
+          var cats = remoteEnvelope.categories ? Object.keys(remoteEnvelope.categories) : [];
+          step("dry_run_read", "ok", "Remote envelope parsed. Categories: " + (cats.join(", ") || "none") + ". Version: " + (remoteEnvelope.version || "unknown") + ".");
+        } else {
+          step("dry_run_read", "warn", "Remote sync file exists but could not be parsed.");
+        }
+      } catch (readError) {
+        step("dry_run_read", "warn", "Could not read remote sync file: " + (readError.userMessage || readError.message || "read failed") + ".");
+      }
+    } else {
+      step("dry_run_read", "skip", "Skipped — no remote sync file exists yet.");
+    }
+
+    if (typeof config.loadContext === "function") {
+      try {
+        var context = await config.loadContext();
+        var categoryFlags = normalizeCategoryFlags(context.options && context.options.driveSyncCategories);
+        var localMeta = normalizeDriveMeta(context.localState && context.localState.driveSyncMeta);
+        if (remoteEnvelope) {
+          var conflicts = detectConflicts(localMeta, remoteEnvelope, categoryFlags);
+          if (conflicts.length === 0) {
+            step("dry_run_conflicts", "ok", "No conflicts detected. Local and remote are in sync.");
+          } else {
+            var labels = conflicts.map(function(c) { return c.label; }).join(", ");
+            step("dry_run_conflicts", "warn", "Conflicts in: " + labels + ". A real sync would prompt for resolution.");
+          }
+        } else {
+          step("dry_run_conflicts", "info", "No remote data to compare. First sync will push local data.");
+        }
+      } catch (dryRunError) {
+        step("dry_run_conflicts", "warn", "Dry-run comparison failed: " + (dryRunError.message || "unknown error") + ".");
+      }
+    }
+
+    report.success = !report.steps.some(function(s) { return s.status === "fail"; });
+
+    if (root.ExtensityLogger) {
+      var anyFail = !report.success;
+      var anyWarn = report.steps.some(function(s) { return s.status === "warn"; });
+      var summary = "Drive connection test complete. Steps: " + report.steps.length + ". Auth: " + (authProvider || "none") + ".";
+      if (anyFail) {
+        root.ExtensityLogger.error(summary);
+      } else if (anyWarn) {
+        root.ExtensityLogger.warn(summary);
+      } else {
+        root.ExtensityLogger.info(summary);
+      }
+    }
+
+    return report;
   }
 
   async function syncDrive(options) {
@@ -513,22 +975,39 @@
     var direction = config.direction || "sync";
     var resolution = config.resolution || null;
     var interactive = config.interactive !== false && (config.interactive === true || direction !== "auto");
+    var webAuthPreferred = await shouldPreferWebAuth();
 
     var token;
+    var authProvider = "chrome_identity";
     try {
-      token = await chromeIdentityGetToken(interactive);
+      var tokenResult = await acquireDriveToken(interactive);
+      token = tokenResult.token;
+      authProvider = tokenResult.authProvider;
     } catch (error) {
       throw error;
     }
 
+    function requestDriveApi(path, requestOptions) {
+      return retryDriveApiRequest(token, path, Object.assign({}, requestOptions || {}, {
+        interactive: interactive,
+        getFreshToken: function() {
+          return acquireDriveToken(interactive);
+        },
+        onTokenRefresh: function(nextToken) {
+          token = nextToken;
+          authProvider = arguments.length > 1 ? arguments[1] : authProvider;
+        }
+      }));
+    }
+
     try {
       var driveMeta = normalizeDriveMeta(context.localState.driveSyncMeta);
-      var fileRecord = driveMeta.fileId ? { id: driveMeta.fileId } : await findDriveFile(token);
+      var fileRecord = driveMeta.fileId ? { id: driveMeta.fileId } : await findDriveFile(requestDriveApi);
       if (fileRecord && fileRecord.id && !driveMeta.fileId) {
         driveMeta.fileId = fileRecord.id;
       }
 
-      var remoteRead = await readRemoteEnvelope(token, driveMeta.fileId);
+      var remoteRead = await readRemoteEnvelope(requestDriveApi, driveMeta.fileId);
       var remoteEnvelope = remoteRead.envelope;
       if (remoteRead.file && remoteRead.file.id) {
         driveMeta.fileId = remoteRead.file.id;
@@ -537,7 +1016,7 @@
       var localEnvelope = buildEnvelope(context, categoryFlags, syncOptions.syncWriterId || "");
 
       if (direction === "push") {
-        var pushedFileId = await writeRemoteEnvelope(token, driveMeta.fileId, localEnvelope);
+        var pushedFileId = await writeRemoteEnvelope(requestDriveApi, driveMeta.fileId, localEnvelope);
         driveMeta.fileId = pushedFileId || driveMeta.fileId;
         driveMeta = mergeEnvelopeAfterSync(driveMeta, localEnvelope, categoryFlags);
         await saveDriveMeta(driveMeta);
@@ -565,7 +1044,7 @@
       }
 
       if (!remoteEnvelope) {
-        var createdId = await writeRemoteEnvelope(token, null, localEnvelope);
+        var createdId = await writeRemoteEnvelope(requestDriveApi, null, localEnvelope);
         driveMeta.fileId = createdId || driveMeta.fileId;
         driveMeta = mergeEnvelopeAfterSync(driveMeta, localEnvelope, categoryFlags);
         await saveDriveMeta(driveMeta);
@@ -598,7 +1077,7 @@
       }
 
       if (conflicts.length && resolution === "keep_local") {
-        await writeRemoteEnvelope(token, driveMeta.fileId, localEnvelope);
+        await writeRemoteEnvelope(requestDriveApi, driveMeta.fileId, localEnvelope);
         driveMeta = mergeEnvelopeAfterSync(driveMeta, localEnvelope, categoryFlags);
         await saveDriveMeta(driveMeta);
         await saveSyncOptions({
@@ -623,7 +1102,6 @@
       }
 
       var remotePatchesAuto = buildPatchesFromEnvelope(remoteEnvelope, categoryFlags);
-      var localPatchesAuto = buildPatchesFromLocal(context, categoryFlags);
       var pullNeeded = false;
       var pushNeeded = false;
       enabledCategoryList(categoryFlags).forEach(function(categoryId) {
@@ -663,7 +1141,7 @@
       }
 
       if (pushNeeded) {
-        await writeRemoteEnvelope(token, driveMeta.fileId, localEnvelope);
+        await writeRemoteEnvelope(requestDriveApi, driveMeta.fileId, localEnvelope);
         driveMeta = mergeEnvelopeAfterSync(driveMeta, localEnvelope, categoryFlags);
         await saveDriveMeta(driveMeta);
         await saveSyncOptions({
@@ -684,7 +1162,7 @@
       return buildSyncResult("noop", { fileId: driveMeta.fileId });
     } catch (error) {
       if (error && error.code === "auth" && token) {
-        await chromeIdentityRemoveCachedToken(token);
+        await clearDriveAuthToken(token, authProvider);
       }
       throw normalizeDriveError(error, "sync_failed");
     }
@@ -694,15 +1172,24 @@
     var manifest = chrome.runtime.getManifest();
     var loadContext = options && options.loadContext;
     var context = typeof loadContext === "function" ? await loadContext() : { localState: {}, options: {} };
+    var environment = context.extensionEnvironment || await getExtensionEnvironment();
+    var driveMeta = normalizeDriveMeta(context.driveSyncMeta || context.localState && context.localState.driveSyncMeta);
+    var webAuthPreferred = await shouldPreferWebAuth();
     return {
       categories: normalizeCategoryFlags(context.options.driveSyncCategories),
+      authProvider: webAuthPreferred ? "web_fallback" : "chrome_identity",
       configured: isOAuthConfigured(manifest),
       driveAuthStatus: context.options.driveAuthStatus || "unknown",
       driveSync: !!context.options.driveSync,
+      extensionId: context.extensionId || environment.extensionId || "",
       intervalMinutes: context.options.driveAutoSyncIntervalMinutes || 60,
+      installType: normalizeInstallType(context.installType || environment.installType || "unknown"),
       lastDriveSync: context.options.lastDriveSync || null,
       lastDriveSyncError: context.options.lastDriveSyncError || null,
-      pendingConflict: context.options.drivePendingConflict || context.localState.drivePendingConflict || null
+      fileId: driveMeta.fileId || null,
+      pendingConflict: context.options.drivePendingConflict || context.localState.drivePendingConflict || null,
+      webAuthPreferred: webAuthPreferred,
+      webFallbackConfigured: isDriveWebOAuthConfigured()
     };
   }
 
@@ -717,13 +1204,19 @@
     buildPatchesFromEnvelope: buildPatchesFromEnvelope,
     bumpCategoryTimestamp: bumpCategoryTimestamp,
     detectConflicts: detectConflicts,
+    detectBraveBrowser: detectBraveBrowser,
     enabledCategoryList: enabledCategoryList,
+    acquireDriveToken: acquireDriveToken,
+    getExtensionEnvironment: getExtensionEnvironment,
     getDriveSyncStatus: getDriveSyncStatus,
+    isDriveWebOAuthConfigured: isDriveWebOAuthConfigured,
     isOAuthConfigured: isOAuthConfigured,
     isGoogleClientIdFormat: isGoogleClientIdFormat,
     normalizeDriveError: normalizeDriveError,
     normalizeCategoryFlags: normalizeCategoryFlags,
     normalizeDriveMeta: normalizeDriveMeta,
-    syncDrive: syncDrive
+    retryDriveApiRequest: retryDriveApiRequest,
+    syncDrive: syncDrive,
+    testDriveConnection: testDriveConnection
   };
 })(typeof window !== "undefined" ? window : self);

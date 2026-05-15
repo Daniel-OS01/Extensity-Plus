@@ -1,3 +1,6 @@
 ## 2024-04-20 - Icon-Only Button Accessibility Pattern Verification
 **Learning:** Adding `aria-label` to the interactive `<button>` wrappers and explicit `aria-hidden="true"` to the inner decorative FontAwesome `<i>` tags is a clean, non-disruptive accessibility enhancement for this codebase. It perfectly avoids layout shifts or CSS selector breakage (like accidentally triggering hover/active states that rely on direct parent-child relationships) that might occur if we changed the DOM structure itself.
 **Action:** Always prefer this two-step attribute injection pattern for icon-only components in `index.html` to maintain CSS and logic parity while maximizing screen reader compatibility.
+## 2024-05-18 - Replacing non-button interactive elements with buttons
+**Learning:** Found several places where `<a>` and `<i>` tags were used as interactive elements with `data-sbind="click: ..."`. Wrapping them or turning them into `<button>` tags with `aria-label` and resetting button styles (`style="background:none; border:none; padding:0; cursor:pointer; color:inherit;"`) fixes accessibility (keyboard navigation and screen readers) without changing layout or visuals.
+**Action:** Always replace icon-only interactive `<a>` or `<i>` tags with semantic `<button>` elements. Ensure ARIA labels are added, and use inline style resets to prevent layout breaks in existing CSS.

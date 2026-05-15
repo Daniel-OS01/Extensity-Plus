@@ -500,6 +500,23 @@ document.addEventListener("DOMContentLoaded", function() {
     self.driveStatusRows = ko.pureComputed(function() {
       return buildDriveStatusRows(self.driveStatus());
     });
+    self.driveWebClientIdInput = ko.observable("");
+    self.driveOAuthClientLabel = ko.pureComputed(function() {
+      var s = self.driveStatus();
+      return (s && s.configured) ? "Configured (manifest)" : "Not configured";
+    });
+    self.driveOAuthExtensionId = ko.pureComputed(function() {
+      var s = self.driveStatus();
+      return (s && s.extensionId) ? s.extensionId : "Unknown";
+    });
+    self.driveOAuthInstallType = ko.pureComputed(function() {
+      var s = self.driveStatus();
+      return (s && s.installType) ? s.installType : "Unknown";
+    });
+    self.driveOAuthAuthPath = ko.pureComputed(function() {
+      var s = self.driveStatus();
+      return (s && s.webAuthPreferred) ? "Brave web fallback" : "Chrome extension token";
+    });
 
     self.filteredHistoryRows = ko.pureComputed(function() {
       var sourceFilter = self.historySourceFilter();
@@ -724,7 +741,11 @@ document.addEventListener("DOMContentLoaded", function() {
       }
       return ExtensityApi.getDriveSyncStatus().then(function(payload) {
         self.driveStatusTimestamp(Date.now());
-        self.driveStatus(payload && payload.status ? payload.status : null);
+        var status = payload && payload.status ? payload.status : null;
+        self.driveStatus(status);
+        if (status && status.webClientId && !self.driveWebClientIdInput()) {
+          self.driveWebClientIdInput(status.webClientId);
+        }
         return payload;
       }).catch(function() {
         self.driveStatusTimestamp(Date.now());
@@ -980,7 +1001,7 @@ document.addEventListener("DOMContentLoaded", function() {
     var _logger = typeof window !== "undefined" && window.ExtensityLogger ? window.ExtensityLogger : null;
 
     function buildLogRow(entry) {
-      var levelClass = { error: "event-badge event-state_changed_off", warn: "event-badge event-scheduled", info: "event-badge event-state_changed_on" };
+      var levelClass = { error: "event-badge event-state_changed_off", warn: "event-badge event-scheduled", info: "event-badge event-state_changed_on", debug: "event-badge event-meta" };
       return {
         level: entry.level,
         levelBadgeClass: levelClass[entry.level] || "event-badge",
@@ -1061,6 +1082,20 @@ document.addEventListener("DOMContentLoaded", function() {
         if (_logger) {
           _logger.error("Drive connection test error.", { message: err && err.message });
         }
+      }).finally(function() {
+        self.busy(false);
+      });
+    };
+
+    self.saveDriveWebClientId = function() {
+      var clientId = (self.driveWebClientIdInput() || "").trim();
+      self.busy(true);
+      self.error("");
+      ExtensityApi.setDriveWebClientId(clientId).then(function() {
+        self.message("Web OAuth client ID saved. Drive sync will use the new value on next attempt.");
+        return self.refreshDriveSyncStatus();
+      }).catch(function(err) {
+        self.error((err && err.message) || "Failed to save web client ID.");
       }).finally(function() {
         self.busy(false);
       });

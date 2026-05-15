@@ -2064,6 +2064,12 @@ importScripts(
         };
       case "GET_DRIVE_SYNC_STATUS":
         return await getDriveSyncStatusNow();
+      case "SET_DRIVE_WEB_CLIENT_ID":
+        await new Promise(function(resolve) {
+          chrome.storage.local.set({ driveWebClientIdOverride: message.clientId || "" }, resolve);
+        });
+        driveSync.setWebClientId(message.clientId || "");
+        return { ok: true };
       case "TEST_DRIVE_CONNECTION":
         return { report: await driveSync.testDriveConnection({ loadContext: loadDriveContext }) };
       case "RESOLVE_DRIVE_CONFLICT":
@@ -2396,6 +2402,15 @@ importScripts(
   if (typeof storage.loadSyncOptions === "function") {
     storage.loadSyncOptions().then(applyCacheOptions).catch(function(error) {
       console.error("cache_options_load_failed", error);
+    });
+  }
+
+  if (chrome.storage && chrome.storage.local) {
+    chrome.storage.local.get("driveWebClientIdOverride", function(result) {
+      var override = result && result.driveWebClientIdOverride;
+      if (override && typeof override === "string" && override.trim()) {
+        driveSync.setWebClientId(override.trim());
+      }
     });
   }
 

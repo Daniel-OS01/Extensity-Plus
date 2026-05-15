@@ -2625,7 +2625,7 @@ test("options page exposes active profile and debug status without unsafe sync i
 
   assert.match(
     html,
-    /<legend>Advanced &amp; Debug<\/legend>/
+    /<legend>Performance &amp; Advanced<\/legend>/
   );
   assert.match(
     html,

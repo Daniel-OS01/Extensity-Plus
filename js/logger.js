@@ -1,6 +1,6 @@
 (function(root) {
-  var LEVEL_RANK = { none: 0, error: 1, warn: 2, info: 3 };
-  var LEVELS = ["none", "error", "warn", "info"];
+  var LEVEL_RANK = { none: 0, error: 1, warn: 2, info: 3, debug: 4 };
+  var LEVELS = ["none", "error", "warn", "info", "debug"];
   var MAX_ENTRIES = 200;
   var STORAGE_KEY = "logLevel";
   var DEFAULT_LEVEL = "warn";
@@ -62,6 +62,10 @@
     appendEntry("error", message, data);
   }
 
+  function debug(message, data) {
+    appendEntry("debug", message, data);
+  }
+
   function getEntries() {
     return _entries.slice();
   }
@@ -102,6 +106,7 @@
   root.ExtensityLogger = {
     LEVELS: LEVELS,
     clearEntries: clearEntries,
+    debug: debug,
     error: error,
     getEntries: getEntries,
     getLevel: getLevel,

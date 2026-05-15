@@ -975,6 +975,9 @@
     getDriveSyncStatus: function() {
       return chromeMessage({ type: "GET_DRIVE_SYNC_STATUS" });
     },
+    setDriveWebClientId: function(clientId) {
+      return chromeMessage({ type: "SET_DRIVE_WEB_CLIENT_ID", clientId: clientId });
+    },
     testDriveConnection: function() {
       return chromeMessage({ type: "TEST_DRIVE_CONNECTION" });
     },

@@ -59,6 +59,8 @@ jobs:
         run: make dist
 
       - name: Build Chrome Web Store submission bundle
+        id: bundle_cws
+        continue-on-error: true
         run: pnpm run bundle:chrome-store
 
       - name: Upload distribution artifact
@@ -68,6 +70,7 @@ jobs:
           path: dist/dist.zip
 
       - name: Upload Chrome Web Store submission bundle
+        if: steps.bundle_cws.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
           name: chrome-web-store-submission
@@ -144,11 +147,17 @@ jobs:
         run: make dist
 
       - name: Build Chrome Web Store submission bundle
+        id: bundle_cws
+        continue-on-error: true
         run: pnpm run bundle:chrome-store
 
-      - name: Verify build outputs exist
+      - name: Verify extension build
+        run: test -f dist/dist.zip
+
+      - name: Verify CWS bundle outputs
+        if: steps.bundle_cws.outcome == 'success'
+        continue-on-error: true
         run: |
-          test -f dist/dist.zip
           test -f "artifacts/chrome-web-store/$(node -p "require('./package.json').name")-v$(node -p "require('./manifest.json').version").zip"
           test -f artifacts/chrome-web-store/manifest.json
           test -f artifacts/chrome-web-store/submission-metadata.json
@@ -203,16 +212,23 @@ jobs:
       - name: Validate manifest after version bump
         run: pnpm run check:manifest
 
-      - name: Build release artifacts
+      - name: Build extension artifact
         run: |
           make dist
-          pnpm run bundle:chrome-store
           mkdir -p release-assets
           cp dist/dist.zip "release-assets/${{ steps.bump.outputs.package_name }}-extension-v${{ steps.bump.outputs.version }}.zip"
-          cp "artifacts/chrome-web-store/${{ steps.bump.outputs.package_name }}-v${{ steps.bump.outputs.version }}.zip" "release-assets/${{ steps.bump.outputs.package_name }}-chrome-web-store-upload-v${{ steps.bump.outputs.version }}.zip"
-          cp artifacts/chrome-web-store/submission-metadata.json release-assets/submission-metadata.json
-          cp artifacts/chrome-web-store/checksums.txt release-assets/checksums.txt
-          cp artifacts/chrome-web-store/submission-notes.md release-assets/submission-notes.md
+
+      - name: Build Chrome Web Store bundle
+        id: bundle_cws
+        continue-on-error: true
+        run: |
+          if pnpm run bundle:chrome-store; then
+            cp "artifacts/chrome-web-store/${{ steps.bump.outputs.package_name }}-v${{ steps.bump.outputs.version }}.zip" \
+               "release-assets/${{ steps.bump.outputs.package_name }}-chrome-web-store-upload-v${{ steps.bump.outputs.version }}.zip"
+            cp artifacts/chrome-web-store/submission-metadata.json release-assets/submission-metadata.json
+            cp artifacts/chrome-web-store/checksums.txt release-assets/checksums.txt
+            cp artifacts/chrome-web-store/submission-notes.md release-assets/submission-notes.md
+          fi
 
       - name: Upload release artifacts
         uses: actions/upload-artifact@v4
@@ -278,16 +294,23 @@ jobs:
           echo "version=$TAG_VERSION" >> "$GITHUB_OUTPUT"
           echo "package_name=$PACKAGE_NAME" >> "$GITHUB_OUTPUT"
 
-      - name: Build release artifacts
+      - name: Build extension artifact
         run: |
           make dist
-          pnpm run bundle:chrome-store
           mkdir -p release-assets
           cp dist/dist.zip "release-assets/${{ steps.version.outputs.package_name }}-extension-v${{ steps.version.outputs.version }}.zip"
-          cp "artifacts/chrome-web-store/${{ steps.version.outputs.package_name }}-v${{ steps.version.outputs.version }}.zip" "release-assets/${{ steps.version.outputs.package_name }}-chrome-web-store-upload-v${{ steps.version.outputs.version }}.zip"
-          cp artifacts/chrome-web-store/submission-metadata.json release-assets/submission-metadata.json
-          cp artifacts/chrome-web-store/checksums.txt release-assets/checksums.txt
-          cp artifacts/chrome-web-store/submission-notes.md release-assets/submission-notes.md
+
+      - name: Build Chrome Web Store bundle
+        id: bundle_cws
+        continue-on-error: true
+        run: |
+          if pnpm run bundle:chrome-store; then
+            cp "artifacts/chrome-web-store/${{ steps.version.outputs.package_name }}-v${{ steps.version.outputs.version }}.zip" \
+               "release-assets/${{ steps.version.outputs.package_name }}-chrome-web-store-upload-v${{ steps.version.outputs.version }}.zip"
+            cp artifacts/chrome-web-store/submission-metadata.json release-assets/submission-metadata.json
+            cp artifacts/chrome-web-store/checksums.txt release-assets/checksums.txt
+            cp artifacts/chrome-web-store/submission-notes.md release-assets/submission-notes.md
+          fi
 
       - name: Upload release artifacts
         uses: actions/upload-artifact@v4

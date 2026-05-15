@@ -541,7 +541,7 @@ test("acquireDriveToken uses web auth first when configured to prefer web auth",
   assert.equal(launchCalls, 1);
 });
 
-test("acquireDriveToken rejects web-preferred sync when web client is missing", async () => {
+test("acquireDriveToken rejects immediately when Brave detected, web client missing, and interactive", async () => {
   const runtimeState = { lastError: null };
   const runtime = {};
   Object.defineProperty(runtime, "lastError", {
@@ -565,7 +565,7 @@ test("acquireDriveToken rejects web-preferred sync when web client is missing", 
     },
     chrome: {
       identity: {
-        getAuthToken() {
+        getAuthToken(opts, callback) {
           getAuthTokenCalls += 1;
         },
         launchWebAuthFlow() {
@@ -578,9 +578,55 @@ test("acquireDriveToken rejects web-preferred sync when web client is missing", 
 
   await assert.rejects(
     root.ExtensityDriveSync.acquireDriveToken(true),
-    /Brave fallback not configured/
+    /Brave requires a Web OAuth client ID/
   );
   assert.equal(getAuthTokenCalls, 0);
+  assert.equal(launchCalls, 0);
+});
+
+test("acquireDriveToken tries chrome.identity silently when Brave detected, web client missing, and non-interactive", async () => {
+  const runtimeState = { lastError: null };
+  const runtime = {};
+  Object.defineProperty(runtime, "lastError", {
+    get() {
+      return runtimeState.lastError;
+    }
+  });
+  let getAuthTokenCalls = 0;
+  let launchCalls = 0;
+  const root = loadDriveSync({
+    driveConfig: {
+      drivePreferWebAuth: true,
+      driveWebClientId: "REPLACE_WITH_DRIVE_WEB_CLIENT_ID.apps.googleusercontent.com"
+    },
+    navigator: {
+      brave: {
+        isBrave: function() {
+          return Promise.resolve(true);
+        }
+      }
+    },
+    chrome: {
+      identity: {
+        getAuthToken(opts, callback) {
+          getAuthTokenCalls += 1;
+          runtimeState.lastError = { message: "Custom URI scheme is not supported" };
+          callback(undefined);
+          runtimeState.lastError = null;
+        },
+        launchWebAuthFlow() {
+          launchCalls += 1;
+        }
+      },
+      runtime: runtime
+    }
+  });
+
+  await assert.rejects(
+    root.ExtensityDriveSync.acquireDriveToken(false),
+    /Brave requires a Web OAuth client ID/
+  );
+  assert.equal(getAuthTokenCalls, 1);
   assert.equal(launchCalls, 0);
 });
 

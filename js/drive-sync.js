@@ -314,6 +314,11 @@
     return String(config.driveWebClientId || "").trim();
   }
 
+  function setWebClientId(clientId) {
+    var config = getDriveConfig();
+    config.driveWebClientId = String(clientId || "").trim();
+  }
+
   function isDriveWebOAuthConfigured() {
     var clientId = getDriveWebClientId();
     return !!clientId && clientId !== PLACEHOLDER_WEB_CLIENT_ID && isGoogleClientIdFormat(clientId);
@@ -590,7 +595,29 @@
   async function acquireDriveToken(interactive) {
     var preferWebAuth = await shouldPreferWebAuth();
     if (preferWebAuth) {
-      return acquireDriveWebToken(interactive);
+      if (isDriveWebOAuthConfigured()) {
+        return acquireDriveWebToken(interactive);
+      }
+      if (interactive) {
+        throw createDriveError(
+          "auth",
+          "Brave requires a Web OAuth client ID for Drive sync. Configure it in Dashboard → Sync Status → Drive OAuth Configuration."
+        );
+      }
+      try {
+        return {
+          authProvider: "chrome_identity",
+          token: await chromeIdentityGetToken(false)
+        };
+      } catch (chromeErr) {
+        if (isCustomUriSchemeOAuthError(chromeErr)) {
+          throw createDriveError(
+            "auth",
+            "Brave requires a Web OAuth client ID for Drive sync. Configure it in Dashboard → Sync Status → Drive OAuth Configuration."
+          );
+        }
+        throw chromeErr;
+      }
     }
     try {
       return {
@@ -1189,7 +1216,8 @@
       fileId: driveMeta.fileId || null,
       pendingConflict: context.options.drivePendingConflict || context.localState.drivePendingConflict || null,
       webAuthPreferred: webAuthPreferred,
-      webFallbackConfigured: isDriveWebOAuthConfigured()
+      webFallbackConfigured: isDriveWebOAuthConfigured(),
+      webClientId: getDriveWebClientId()
     };
   }
 
@@ -1216,6 +1244,7 @@
     normalizeCategoryFlags: normalizeCategoryFlags,
     normalizeDriveMeta: normalizeDriveMeta,
     retryDriveApiRequest: retryDriveApiRequest,
+    setWebClientId: setWebClientId,
     syncDrive: syncDrive,
     testDriveConnection: testDriveConnection
   };

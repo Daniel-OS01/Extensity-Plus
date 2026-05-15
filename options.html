@@ -20,7 +20,12 @@
 <section id="options-page">
   <section id="header">
     <div class="tabs">
-      <h1><img src="images/icon48.png" /> Extensity-Plus Options</h1>
+      <h1>
+        <img src="images/icon48.png" />
+        Extensity-Plus
+        <span class="version-chip" data-sbind="visible: version, text: version"></span>
+        Options
+      </h1>
       <div id="menu">
         <a href="options.html" class="selected" title="Open Options settings">Options</a>
         <a href="profiles.html" title="Open Profiles manager">Profiles</a>
@@ -38,9 +43,10 @@
       <span>Grant Chrome Web Store access to enable extension metadata and store links.</span>
       <button type="button" title="Grant Chrome Web Store access" data-sbind="click: requestWebStorePermission">Grant access</button>
     </div>
+    <!-- Group 1: Popup layout -->
     <div class="option-grid">
       <fieldset class="settings-card">
-        <legend>Layout</legend>
+        <legend>Layout &amp; Sorting</legend>
         <div class="field"><input type="checkbox" id="showHeader" data-sbind="checked: options.showHeader" /><label for="showHeader">Show popup header</label></div>
         <div class="field"><input type="checkbox" id="searchBox" data-sbind="checked: options.searchBox" /><label for="searchBox">Show search box</label></div>
         <div class="field"><input type="checkbox" id="groupApps" data-sbind="checked: options.groupApps" /><label for="groupApps">Group apps and extensions</label></div>
@@ -48,14 +54,9 @@
         <div class="field"><input type="checkbox" id="enabledFirst" data-sbind="checked: options.enabledFirst" /><label for="enabledFirst">Show enabled extensions first</label></div>
         <div class="field"><input type="checkbox" id="showOptions" data-sbind="checked: options.showOptions" /><label for="showOptions">Show per-item options button</label></div>
         <div class="field"><input type="checkbox" id="showPopupSort" data-sbind="checked: options.showPopupSort" /><label for="showPopupSort">Show sort buttons in popup</label></div>
-      </fieldset>
-
-      <fieldset class="settings-card">
-        <legend>View &amp; Sorting</legend>
         <div class="field"><label for="viewMode">Default popup view</label><select id="viewMode" data-sbind="value: options.viewMode"><option value="list">List</option><option value="grid">Grid</option></select></div>
         <div class="field"><label for="popupListStyle">Popup list style</label><select id="popupListStyle" data-sbind="value: options.popupListStyle"><option value="card">Card</option><option value="flat">Flat</option><option value="compact">Compact</option><option value="table">Table rows (screenshot)</option></select></div>
         <div class="field"><label for="sortMode">Default popup sort</label><select id="sortMode" data-sbind="value: options.sortMode"><option value="alpha">A-Z</option><option value="frequency">Popular</option><option value="recent">Recent</option></select></div>
-        <div class="field"><label for="contrastMode">Contrast mode</label><select id="contrastMode" data-sbind="value: options.contrastMode"><option value="normal">Normal</option><option value="high">High contrast</option></select></div>
         <div class="field"><input type="checkbox" id="showAlwaysOnBadge" data-sbind="checked: options.showAlwaysOnBadge" /><label for="showAlwaysOnBadge">Show Always On badge</label></div>
         <div class="field"><input type="checkbox" id="showPopupVersionChips" data-sbind="checked: options.showPopupVersionChips" /><label for="showPopupVersionChips">Show popup version chips</label></div>
       </fieldset>
@@ -63,6 +64,7 @@
       <fieldset class="settings-card">
         <legend>Appearance &amp; Theme</legend>
         <div class="field"><label for="colorScheme">Color scheme</label><select id="colorScheme" data-sbind="value: options.colorScheme"><option value="auto">Auto (system)</option><option value="light">Light</option><option value="dark">Dark</option></select></div>
+        <div class="field"><label for="contrastMode">Contrast mode</label><select id="contrastMode" data-sbind="value: options.contrastMode"><option value="normal">Normal</option><option value="high">High contrast</option></select></div>
         <div class="field"><label for="popupWidthPx">Popup width (px)</label><input type="number" min="300" max="600" id="popupWidthPx" data-sbind="value: options.popupWidthPx" /></div>
         <div class="field"><input type="checkbox" id="dynamicSizing" data-sbind="checked: options.dynamicSizing" /><label for="dynamicSizing">Dynamic sizing (adapts to screen)</label></div>
         <div class="field"><label for="accentColor">Accent color (hex, e.g. #4a90d9)</label>
@@ -87,20 +89,20 @@
             <option value="'Courier New', monospace">Courier New</option>
           </select>
         </div>
+        <div class="field"><label for="fontSizePx">Font size (px)</label><input type="number" min="8" max="20" id="fontSizePx" data-sbind="value: options.fontSizePx" /></div>
+        <div class="field"><label for="extensionIconSizePx">Extension icon size (px)</label><input type="number" min="8" max="24" id="extensionIconSizePx" data-sbind="value: options.extensionIconSizePx" /></div>
+        <div class="field"><label for="popupHeaderIconSize">Popup header icon size</label><select id="popupHeaderIconSize" data-sbind="value: options.popupHeaderIconSize"><option value="normal">Normal</option><option value="compact">Compact</option></select></div>
+        <div class="field"><label for="popupScrollbarMode">Popup scrollbar</label><select id="popupScrollbarMode" data-sbind="value: options.popupScrollbarMode"><option value="visible">Visible</option><option value="compact">Compact</option><option value="invisible">Invisible</option></select></div>
       </fieldset>
 
       <fieldset class="settings-card">
-        <legend>Popup Density &amp; Controls</legend>
-        <div class="field"><label for="fontSizePx">Font size (px)</label><input type="number" min="8" max="20" id="fontSizePx" data-sbind="value: options.fontSizePx" /></div>
+        <legend>Density &amp; Controls</legend>
         <div class="field"><label for="itemPaddingPx">Item padding (px)</label><input type="number" min="-8" max="24" id="itemPaddingPx" data-sbind="value: options.itemPaddingPx" /></div>
         <div class="field"><label for="itemPaddingXPx">Item horizontal padding (px)</label><input type="number" min="-8" max="32" id="itemPaddingXPx" data-sbind="value: options.itemPaddingXPx" /></div>
         <div class="field"><label for="itemSpacingPx">Item spacing (px)</label><input type="number" min="-8" max="24" id="itemSpacingPx" data-sbind="value: options.itemSpacingPx" /></div>
         <div class="field"><label for="itemNameGapPx">Icon/name gap (px)</label><input type="number" min="-8" max="24" id="itemNameGapPx" data-sbind="value: options.itemNameGapPx" /></div>
         <div class="field"><label for="itemVerticalSpacePx">Item vertical space (px)</label><input type="number" min="-12" max="32" id="itemVerticalSpacePx" data-sbind="value: options.itemVerticalSpacePx" /></div>
-        <div class="field"><label for="extensionIconSizePx">Extension icon size (px)</label><input type="number" min="8" max="24" id="extensionIconSizePx" data-sbind="value: options.extensionIconSizePx" /></div>
-        <div class="field"><label for="popupHeaderIconSize">Popup header icon size</label><select id="popupHeaderIconSize" data-sbind="value: options.popupHeaderIconSize"><option value="normal">Normal</option><option value="compact">Compact</option></select></div>
         <div class="field"><label for="popupMainPaddingPx">Popup content padding (.main) (px)</label><input type="number" min="0" max="24" id="popupMainPaddingPx" data-sbind="value: options.popupMainPaddingPx" /></div>
-        <div class="field"><label for="popupScrollbarMode">Popup scrollbar</label><select id="popupScrollbarMode" data-sbind="value: options.popupScrollbarMode"><option value="visible">Visible</option><option value="compact">Compact</option><option value="invisible">Invisible</option></select></div>
         <div class="field"><label for="popupTableActionPanelPosition">Table-row action panel position</label><select id="popupTableActionPanelPosition" data-sbind="value: options.popupTableActionPanelPosition"><option value="side">Side</option><option value="below_name">Below extension name</option></select></div>
         <div class="field"><label for="popupActionRowLayout">Expanded action layout</label><select id="popupActionRowLayout" data-sbind="value: options.popupActionRowLayout"><option value="horizontal">Horizontal</option><option value="vertical">Vertical</option></select></div>
         <div class="field"><input type="checkbox" id="popupProfilePillShowIcons" data-sbind="checked: options.popupProfilePillShowIcons" /><label for="popupProfilePillShowIcons">Show icons in popup profile buttons</label></div>
@@ -117,7 +119,11 @@
           </div>
         </div>
       </fieldset>
+    </div>
 
+    <!-- Group 2: Behaviour -->
+    <div class="section-group-sep"></div>
+    <div class="option-grid">
       <fieldset class="settings-card">
         <legend>Profiles &amp; Shortcuts</legend>
         <div class="field"><input type="checkbox" id="showReserved" data-sbind="checked: options.showReserved" /><label for="showReserved">Show reserved profiles in the popup</label></div>
@@ -151,18 +157,11 @@
         </div>
         <div class="field"><label for="importJson">Import JSON backup (full or partial export)</label><input type="file" id="importJson" accept=".json,application/json" data-sbind="event:{change: importJson}" /></div>
       </fieldset>
+    </div>
 
-      <fieldset class="settings-card">
-        <legend>Performance</legend>
-        <div class="field"><input type="checkbox" id="cacheManagementItems" data-sbind="checked: options.cacheManagementItems" /><label for="cacheManagementItems">Cache extension list for faster popup</label></div>
-        <div class="field"><label for="managementCacheTtlSeconds">Cache duration (seconds)</label><input type="number" min="2" max="60" id="managementCacheTtlSeconds" data-sbind="value: options.managementCacheTtlSeconds" /></div>
-      </fieldset>
-
-      <fieldset class="settings-card">
-        <legend>Toolbar Pinning</legend>
-        <div class="field"><label for="pinMethod">Pin to toolbar method</label><select id="pinMethod" data-sbind="value: options.pinMethod"><option value="auto">Automatic (use debugger, fall back to manual)</option><option value="manual">Manual (always open extension page)</option></select></div>
-      </fieldset>
-
+    <!-- Group 3: Sync & Advanced -->
+    <div class="section-group-sep"></div>
+    <div class="option-grid">
       <fieldset class="settings-card">
         <legend>Google Drive Sync</legend>
         <div class="field"><span class="muted" data-sbind="text: driveConfiguredLabel"></span></div>
@@ -224,7 +223,10 @@
       </fieldset>
 
       <fieldset class="settings-card">
-        <legend>Advanced &amp; Debug</legend>
+        <legend>Performance &amp; Advanced</legend>
+        <div class="field"><input type="checkbox" id="cacheManagementItems" data-sbind="checked: options.cacheManagementItems" /><label for="cacheManagementItems">Cache extension list for faster popup</label></div>
+        <div class="field"><label for="managementCacheTtlSeconds">Cache duration (seconds)</label><input type="number" min="2" max="60" id="managementCacheTtlSeconds" data-sbind="value: options.managementCacheTtlSeconds" /></div>
+        <div class="field"><label for="pinMethod">Pin to toolbar method</label><select id="pinMethod" data-sbind="value: options.pinMethod"><option value="auto">Automatic (use debugger, fall back to manual)</option><option value="manual">Manual (always open extension page)</option></select></div>
         <div class="field">
           <label for="activeProfile">Active profile</label>
           <select id="activeProfile" data-sbind="options: activeProfileOptions, optionsText: 'label', optionsValue: 'value', value: options.activeProfile"></select>

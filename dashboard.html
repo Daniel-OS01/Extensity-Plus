@@ -21,7 +21,12 @@
 <section id="dashboard-page">
   <section id="header">
     <div class="tabs">
-      <h1><img src="images/icon48.png" /> Extensity-Plus Dashboard</h1>
+      <h1>
+        <img src="images/icon48.png" />
+        Extensity-Plus
+        <span class="version-chip" data-sbind="visible: appVersion, text: appVersion"></span>
+        Dashboard
+      </h1>
       <div id="menu">
         <a href="options.html" title="Open Options settings">Options</a>
         <a href="profiles.html" title="Open Profiles manager">Profiles</a>
@@ -275,6 +280,35 @@
           </div>
         </div>
       </div>
+      <div class="sync-status-card">
+        <h3 style="margin:0 0 12px;font-size:14px;color:var(--accent)">Drive OAuth Configuration</h3>
+        <p class="event-meta">Configure the Web OAuth client ID to enable Google Drive sync on Brave. The extension OAuth client ID (in manifest) is read-only and set at build time.</p>
+        <div class="drive-status-grid" style="margin-bottom:12px">
+          <div class="drive-status-row">
+            <span class="drive-status-label">Extension OAuth client</span>
+            <span class="drive-status-value event-meta" data-sbind="text: driveOAuthClientLabel"></span>
+          </div>
+          <div class="drive-status-row">
+            <span class="drive-status-label">Extension ID</span>
+            <span class="drive-status-value event-meta" data-sbind="text: driveOAuthExtensionId"></span>
+          </div>
+          <div class="drive-status-row">
+            <span class="drive-status-label">Install type</span>
+            <span class="drive-status-value event-meta" data-sbind="text: driveOAuthInstallType"></span>
+          </div>
+          <div class="drive-status-row">
+            <span class="drive-status-label">Auth path</span>
+            <span class="drive-status-value event-meta" data-sbind="text: driveOAuthAuthPath"></span>
+          </div>
+        </div>
+        <div class="field">
+          <label for="driveWebClientId">Web OAuth client ID <span class="event-meta">(for Brave — leave blank to use Chrome-only sync)</span></label>
+          <div class="action-row">
+            <input type="text" id="driveWebClientId" placeholder="775277874801-xxxx.apps.googleusercontent.com" style="flex:1;min-width:0" data-sbind="value: driveWebClientIdInput" />
+            <button type="button" title="Save web OAuth client ID for Brave Drive sync" data-sbind="click: saveDriveWebClientId, disable: busy">Save</button>
+          </div>
+        </div>
+      </div>
     </section>
 
     <section class="dashboard-section" data-sbind="visible: logTab">
@@ -286,6 +320,7 @@
           <option value="error">Error</option>
           <option value="warn">Warn</option>
           <option value="info">Info</option>
+          <option value="debug">Debug</option>
         </select>
         <button type="button" title="Clear all log entries" data-sbind="click: clearLog">Clear</button>
         <button type="button" title="Copy log to clipboard" data-sbind="click: copyLog">Copy</button>

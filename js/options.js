@@ -567,6 +567,7 @@ document.addEventListener("DOMContentLoaded", function() {
     self.busy = ko.observable(false);
     self.error = ko.observable("");
     self.message = ko.observable("");
+    self.version = ko.observable("");
     self.needsWebStorePermission = ko.observable(false);
     self.options = new OptionsCollection();
     self.activeProfileOptions = createObservableArray([{ label: "None", value: null }]);
@@ -595,6 +596,7 @@ document.addEventListener("DOMContentLoaded", function() {
       if (typeof self.refreshDriveSyncStatus === "function") {
         self.refreshDriveSyncStatus();
       }
+      self.version((state && state.metadata && state.metadata.version) || "");
       self.loading(false);
       self.error("");
       self.checkWebStorePermission();

@@ -1,0 +1,10 @@
+# Chrome extension OAuth client ID for Google Drive sync (gglcloud project).
+# Copy this file to drive-oauth-client-id.local (gitignored) and replace the line below.
+#
+# Create credentials: Google Cloud Console → APIs & Services → Credentials
+# → Create credentials → OAuth client ID → Application type: Chrome extension
+# Register the extension ID from chrome://extensions (Developer mode).
+# Published store ID: gbojjphhdboeaafjdilfibonoflhgcde
+#
+# Do NOT paste Desktop OAuth client IDs from client_secret_*.json (installed apps).
+YOUR_CHROME_EXTENSION_CLIENT_ID.apps.googleusercontent.com

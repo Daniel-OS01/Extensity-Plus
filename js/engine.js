@@ -972,8 +972,26 @@
         type: "SET_EXTENSION_STATE"
       });
     },
-    syncDrive: function() {
-      return chromeMessage({ type: "SYNC_DRIVE" });
+    getDriveSyncStatus: function() {
+      return chromeMessage({ type: "GET_DRIVE_SYNC_STATUS" });
+    },
+    resolveDriveConflict: function(resolution) {
+      return chromeMessage({
+        resolution: resolution,
+        type: "RESOLVE_DRIVE_CONFLICT"
+      });
+    },
+    syncDrive: function(options) {
+      var payload = { type: "SYNC_DRIVE" };
+      if (options) {
+        if (options.direction) {
+          payload.direction = options.direction;
+        }
+        if (options.interactive === false) {
+          payload.interactive = false;
+        }
+      }
+      return chromeMessage(payload);
     },
     toggleAll: function() {
       return chromeMessage({ type: "TOGGLE_ALL" });

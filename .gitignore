@@ -13,3 +13,4 @@ yarn-error.log*
 .agents/skills/*
 .claude/skills/*
 .claude/worktrees/
+config/drive-oauth-client-id.local

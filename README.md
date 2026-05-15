@@ -236,5 +236,7 @@ Additional feature direction and UX ideas were informed by:
 ## Notes
 
 - This repo is a local evolution of the Extensity concept, not the original upstream release branch.
-- Google Drive backup support is still partial because OAuth configuration is not complete.
+- Google Drive sync is available when `manifest.json` includes a valid `oauth2.client_id` (see `docs/google-drive-sync.md`).
+- Drive sync requires a **Chrome extension** OAuth client. Desktop OAuth credentials are only for CWS automation.
+- Never store or commit OAuth `client_secret` values in extension source or docs.
 - If you plan to publish this fork to the Chrome Web Store, review permissions, listing content, privacy disclosures, and OAuth requirements before submission.

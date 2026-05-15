@@ -4,6 +4,9 @@ const path = require("node:path");
 const repoRoot = path.resolve(__dirname, "..");
 const manifestPath = path.join(repoRoot, "manifest.json");
 const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+const strictDrive = process.env.EXTENSITY_STRICT_DRIVE === "1";
+const driveOauthJsonPath = process.env.EXTENSITY_DRIVE_OAUTH_JSON || "";
+const PLACEHOLDER_CLIENT_ID = "REPLACE_WITH_OAUTH_CLIENT_ID.apps.googleusercontent.com";
 
 function assert(condition, message) {
   if (!condition) {
@@ -41,6 +44,7 @@ assert(manifest.icons && typeof manifest.icons === "object", "Manifest icons mus
 
 const requiredPermissions = [
   "alarms",
+  "identity",
   "management",
   "notifications",
   "storage",
@@ -59,6 +63,47 @@ const requiredCommands = [
 
 assert(manifest.commands && hasAllEntries(Object.keys(manifest.commands), requiredCommands), "Manifest commands must include toggle-all and profile cycling.");
 
+assert(manifest.oauth2 && typeof manifest.oauth2.client_id === "string", "Manifest oauth2.client_id must be configured for Drive sync.");
+if (manifest.oauth2.client_id !== PLACEHOLDER_CLIENT_ID) {
+  assert(
+    /^[0-9]+-[a-z0-9._-]+\.apps\.googleusercontent\.com$/i.test(manifest.oauth2.client_id),
+    "Manifest oauth2.client_id must be a valid Google OAuth client ID format."
+  );
+}
+assert(
+  Array.isArray(manifest.oauth2.scopes) &&
+    manifest.oauth2.scopes.includes("https://www.googleapis.com/auth/drive.appdata"),
+  "Manifest oauth2.scopes must include drive.appdata."
+);
+assert(
+  Array.isArray(manifest.host_permissions) &&
+    manifest.host_permissions.some((entry) => entry.indexOf("googleapis.com") !== -1),
+  "Manifest host_permissions must include https://www.googleapis.com/* for Drive API calls."
+);
+
+if (strictDrive) {
+  assert(
+    manifest.oauth2.client_id !== PLACEHOLDER_CLIENT_ID,
+    "Strict mode: manifest oauth2.client_id still uses placeholder."
+  );
+}
+
+if (driveOauthJsonPath) {
+  const resolvedJsonPath = path.resolve(process.cwd(), driveOauthJsonPath);
+  assert(fs.existsSync(resolvedJsonPath), `Drive OAuth JSON not found: ${resolvedJsonPath}`);
+  const oauthJson = JSON.parse(fs.readFileSync(resolvedJsonPath, "utf8"));
+  assert(
+    !oauthJson.installed,
+    "Drive OAuth JSON appears to be Desktop credentials (`installed` block). Use a Chrome extension OAuth client."
+  );
+  if (oauthJson.oauth2 && typeof oauthJson.oauth2.client_id === "string") {
+    assert(
+      oauthJson.oauth2.client_id === manifest.oauth2.client_id,
+      "Drive OAuth JSON client_id does not match manifest oauth2.client_id."
+    );
+  }
+}
+
 [
   "images/icon16.png",
   "images/icon32.png",
@@ -71,6 +116,7 @@ assert(manifest.commands && hasAllEntries(Object.keys(manifest.commands), requir
   "js/background.js",
   "js/storage.js",
   "js/import-export.js",
+  "js/drive-sync.js",
   "js/url-rules.js",
   "styles/index.css",
   "styles/options.css",

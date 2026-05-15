@@ -11,6 +11,7 @@
 <script type="text/javascript" src="js/storage.js"></script>
 <script type="text/javascript" src="js/engine.js"></script>
 <script type="text/javascript" src="js/import-export.js"></script>
+<script type="text/javascript" src="js/drive-sync.js"></script>
 <script type="text/javascript" src="js/options.js"></script>
 </head>
 <body>
@@ -161,8 +162,36 @@
       </fieldset>
 
       <fieldset class="settings-card">
+        <legend>Google Drive Sync</legend>
+        <div class="field"><span class="muted" data-sbind="text: driveConfiguredLabel"></span></div>
+        <div class="field"><input type="checkbox" id="driveSync" data-sbind="checked: options.driveSync" /><label for="driveSync">Enable automatic Google Drive sync</label></div>
+        <div class="field"><label for="driveAutoSyncIntervalMinutes">Auto-sync interval (minutes, min 15)</label><input type="number" min="15" max="1440" id="driveAutoSyncIntervalMinutes" data-sbind="value: options.driveAutoSyncIntervalMinutes" /></div>
+        <div class="field"><span class="muted">Select which data to include in Drive sync:</span></div>
+        <div class="field"><input type="checkbox" id="driveCatOptions" data-sbind="checked: driveCategoryChecked.options" /><label for="driveCatOptions">Options</label></div>
+        <div class="field"><input type="checkbox" id="driveCatProfiles" data-sbind="checked: driveCategoryChecked.profiles" /><label for="driveCatProfiles">Profiles</label></div>
+        <div class="field"><input type="checkbox" id="driveCatAliases" data-sbind="checked: driveCategoryChecked.aliases" /><label for="driveCatAliases">Aliases</label></div>
+        <div class="field"><input type="checkbox" id="driveCatGroups" data-sbind="checked: driveCategoryChecked.groups" /><label for="driveCatGroups">Groups</label></div>
+        <div class="field"><input type="checkbox" id="driveCatUrlRules" data-sbind="checked: driveCategoryChecked.urlRules" /><label for="driveCatUrlRules">URL rules</label></div>
+        <div class="field"><input type="checkbox" id="driveCatHistory" data-sbind="checked: driveCategoryChecked.history" /><label for="driveCatHistory">History</label></div>
+        <div class="field" data-sbind="visible: lastDriveSyncErrorVisible"><span class="muted">Last Drive error:</span> <span class="status error" data-sbind="text: lastDriveSyncErrorLabel"></span></div>
+        <div class="field action-row">
+          <button type="button" title="Sync with Google Drive now" data-sbind="click: driveSyncNow, disable: busy">Sync now</button>
+          <button type="button" title="Upload local data to Google Drive" data-sbind="click: drivePush, disable: busy">Push to Drive</button>
+          <button type="button" title="Download data from Google Drive" data-sbind="click: drivePull, disable: busy">Pull from Drive</button>
+        </div>
+        <div class="field drive-conflict-panel" data-sbind="visible: driveConflictVisible">
+          <p class="status error" data-sbind="text: driveConflictSummary"></p>
+          <div class="action-row">
+            <button type="button" title="Keep this device's data and upload to Drive" data-sbind="click: driveResolveKeepLocal, disable: busy">Keep this device</button>
+            <button type="button" title="Replace local data with Google Drive copy" data-sbind="click: driveResolveKeepRemote, disable: busy">Use Drive copy</button>
+            <button type="button" title="Cancel sync without changes" data-sbind="click: driveResolveCancel, disable: busy">Cancel</button>
+          </div>
+        </div>
+      </fieldset>
+
+      <fieldset class="settings-card">
         <legend>Browser Sync</legend>
-        <div class="field"><span class="muted">Settings and profiles are stored in chrome.storage.sync when the browser provides it. The sync status check verifies that extension data only—not Chromium account sync pages such as brave://sync-internals. Google Drive backup is not yet enabled in this build.</span></div>
+        <div class="field"><span class="muted">Settings and profiles are stored in chrome.storage.sync when the browser provides it. The sync status check verifies that extension data only—not Chromium account sync pages such as brave://sync-internals. Google Drive sync is separate from browser sync.</span></div>
         <div class="field">
           <label for="syncMode">Browser sync mode</label>
           <select id="syncMode" data-sbind="value: options.syncMode">

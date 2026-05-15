@@ -34,7 +34,7 @@ Treat `manifest.json` permissions and any future OAuth or sync settings as sensi
 
 - Chrome Web Store item ID is `gbojjphhdboeaafjdilfibonoflhgcde`; publisher ID `b2564181-7079-402e-8ca4-090a821f8141` (see `docs/release-automation.md`).
 - CWS rejected 4.0.1 for unused `contextMenus` and `identity`; current manifest (4.0.2+) omits them—do not re-add without real `chrome.contextMenus` / `chrome.identity` usage.
-- `js/drive-sync.js` remains an incomplete stub; Google Drive sync is not available and `identity` was removed from the manifest.
+- Google Drive sync is implemented in `js/drive-sync.js` using `chrome.identity` and the Drive app data folder; configure `oauth2.client_id` in `manifest.json` (see `docs/google-drive-sync.md`).
 - Tag pushes matching `v*` trigger `.github/workflows/release-chrome-web-store.yml`, which uploads a CWS draft; human publish is still required in the developer dashboard.
 - `npm run cws:bootstrap` uses a localhost loopback redirect (`http://127.0.0.1:8765/` by default) and requires a Google Cloud **Desktop app** OAuth client—not a Chrome extension OAuth client.
 - CWS OAuth and API setup for this project use the Google Cloud project `gglcloud`.

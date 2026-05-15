@@ -5,6 +5,16 @@
     colorScheme: "auto",
     contrastMode: "normal",
     driveSync: false,
+    driveAutoSyncIntervalMinutes: 60,
+    driveAuthStatus: "unknown",
+    driveSyncCategories: {
+      aliases: true,
+      groups: true,
+      history: false,
+      options: true,
+      profiles: true,
+      urlRules: true
+    },
     dynamicSizing: false,
     enabledFirst: true,
     enableReminders: false,
@@ -14,6 +24,8 @@
     groupApps: true,
     keepAlwaysOn: true,
     lastDriveSync: null,
+    lastDriveSyncError: null,
+    drivePendingConflict: null,
     localProfiles: false,
     migration: "1.4.0",
     profileExtensionSide: "right",
@@ -72,6 +84,11 @@
     groupOrder: [],
     groups: {},
     lastSyncError: null,
+    driveSyncMeta: {
+      categoryTimestamps: {},
+      fileId: null,
+      lastMergedAt: {}
+    },
     reminderQueue: [],
     recentlyUsed: [],
     toolbarPins: [],

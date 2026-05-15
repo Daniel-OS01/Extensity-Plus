@@ -113,6 +113,18 @@ document.addEventListener("DOMContentLoaded", function() {
     normalized.pinMethod = normalizeEnum(normalized.pinMethod, ["auto", "manual"], "auto");
     normalized.syncMode = normalizeEnum(normalized.syncMode, ["full", "smart", "minimal"], "smart");
     normalized.syncProfilesPartial = normalized.syncProfilesPartial === true;
+    normalized.driveAuthStatus = normalizeEnum(
+      normalized.driveAuthStatus,
+      ["unknown", "authorized", "needs_interactive_sign_in", "error"],
+      "unknown"
+    );
+    if (typeof ExtensityDriveSync !== "undefined" && typeof ExtensityDriveSync.normalizeCategoryFlags === "function") {
+      normalized.driveSyncCategories = ExtensityDriveSync.normalizeCategoryFlags(normalized.driveSyncCategories);
+    }
+    normalized.driveAutoSyncIntervalMinutes = Math.max(
+      15,
+      parseInt(normalized.driveAutoSyncIntervalMinutes, 10) || 60
+    );
     return normalized;
   }
 
@@ -252,6 +264,125 @@ document.addEventListener("DOMContentLoaded", function() {
 
   }
 
+  function buildDriveCategoryChecked(self) {
+    var bindings = {};
+    if (typeof ExtensityDriveSync === "undefined" || !Array.isArray(ExtensityDriveSync.CATEGORY_IDS)) {
+      return bindings;
+    }
+    ExtensityDriveSync.CATEGORY_IDS.forEach(function(categoryId) {
+      bindings[categoryId] = ko.pureComputed({
+        read: function() {
+          var categories = self.options.driveSyncCategories() || {};
+          return !!categories[categoryId];
+        },
+        write: function(value) {
+          var categories = Object.assign({}, self.options.driveSyncCategories() || {});
+          categories[categoryId] = !!value;
+          self.options.driveSyncCategories(categories);
+        }
+      });
+    });
+    return bindings;
+  }
+
+  function attachDriveSyncMethods(self) {
+    self.driveCategoryChecked = buildDriveCategoryChecked(self);
+    self.driveConfiguredLabel = ko.observable("");
+    self.driveConflictVisible = ko.pureComputed(function() {
+      return !!self.options.drivePendingConflict();
+    });
+    self.driveConflictSummary = ko.pureComputed(function() {
+      var conflict = self.options.drivePendingConflict();
+      if (!conflict || !Array.isArray(conflict.categories)) {
+        return "";
+      }
+      var labels = conflict.categories.map(function(entry) {
+        return entry.label || entry.categoryId;
+      });
+      return "Sync conflict in: " + labels.join(", ") + ". Choose which copy to keep.";
+    });
+    self.lastDriveSyncErrorLabel = ko.pureComputed(function() {
+      var error = self.options.lastDriveSyncError();
+      if (!error) {
+        return "";
+      }
+      if (typeof error === "string") {
+        return error;
+      }
+      return error.message || "";
+    });
+    self.lastDriveSyncErrorVisible = ko.pureComputed(function() {
+      return !!self.lastDriveSyncErrorLabel();
+    });
+
+    function refreshDriveConfiguredLabel() {
+      if (typeof chrome === "undefined" || !chrome.runtime || typeof chrome.runtime.getManifest !== "function") {
+        self.driveConfiguredLabel("Google Drive sync is available when running as the extension.");
+        return;
+      }
+      var manifest = chrome.runtime.getManifest();
+      var configured = typeof ExtensityDriveSync !== "undefined" && ExtensityDriveSync.isOAuthConfigured(manifest);
+      var authStatus = typeof self.options.driveAuthStatus === "function"
+        ? self.options.driveAuthStatus()
+        : "unknown";
+      self.driveConfiguredLabel(
+        !configured
+          ? "Drive sync requires a Chrome extension OAuth client ID in manifest.json (see docs/google-drive-sync.md)."
+          : (authStatus === "needs_interactive_sign_in"
+            ? "Google Drive sync needs sign-in. Click Sync now once to authorize background auto-sync."
+            : "Google Drive sync is configured.")
+      );
+    }
+
+    function handleDriveSyncResult(payload) {
+      var result = payload && payload.result ? payload.result : {};
+      if (result.status === "conflict") {
+        self.message(result.message || "Drive sync needs your input.");
+        return;
+      }
+      if (result.status === "cancelled") {
+        self.message("Drive sync cancelled.");
+        return;
+      }
+      self.message("Drive sync completed (" + (result.status || "ok") + ").");
+    }
+
+    function runDriveSyncRequest(request) {
+      return self.save().then(function() {
+        return self.performAction(request);
+      }).then(function(payload) {
+        handleDriveSyncResult(payload);
+        return payload;
+      });
+    }
+
+    self.driveSyncNow = function() {
+      return runDriveSyncRequest(ExtensityApi.syncDrive({ direction: "sync" }));
+    };
+
+    self.drivePush = function() {
+      return runDriveSyncRequest(ExtensityApi.syncDrive({ direction: "push" }));
+    };
+
+    self.drivePull = function() {
+      return runDriveSyncRequest(ExtensityApi.syncDrive({ direction: "pull" }));
+    };
+
+    self.driveResolveKeepLocal = function() {
+      return runDriveSyncRequest(ExtensityApi.resolveDriveConflict("keep_local"));
+    };
+
+    self.driveResolveKeepRemote = function() {
+      return runDriveSyncRequest(ExtensityApi.resolveDriveConflict("keep_remote"));
+    };
+
+    self.driveResolveCancel = function() {
+      return runDriveSyncRequest(ExtensityApi.resolveDriveConflict("cancel"));
+    };
+
+    refreshDriveConfiguredLabel();
+  }
+
   function attachSyncStatusMethods(self) {
     self.syncStatus = ko.observable("");
     self.syncStatusReason = ko.observable("");
@@ -350,6 +481,7 @@ document.addEventListener("DOMContentLoaded", function() {
     attachPermissionMethods(self);
     attachDataMethods(self);
     attachPresetMethods(self);
+    attachDriveSyncMethods(self);
     attachSyncStatusMethods(self);
 
     self.applyState = function(state) {

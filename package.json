@@ -7,6 +7,9 @@
     "bundle:chrome-store": "node scripts/create-chrome-store-bundle.js",
     "cws:bootstrap": "node scripts/cws-bootstrap-refresh-token.js",
     "check:manifest": "node scripts/validate-manifest.js",
+    "check:manifest:strict-drive": "EXTENSITY_STRICT_DRIVE=1 node scripts/validate-manifest.js",
+    "drive:set-client-id": "node scripts/set-drive-oauth-client-id.js",
+    "drive:apply-local": "node scripts/set-drive-oauth-client-id.js --from-local",
     "generate:icons": "node scripts/generate-icons.js",
     "release:bump": "node scripts/bump-version.js",
     "test": "node --test tests/*.test.js"

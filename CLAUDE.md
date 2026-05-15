@@ -30,7 +30,7 @@ This is a Chrome Manifest V3 extension. The production source lives entirely in 
 ### Message API
 
 Background handles these message types (defined in `docs/extensity-2.0-plan.md`):
-`GET_STATE`, `SET_EXTENSION_STATE`, `TOGGLE_ALL`, `APPLY_PROFILE`, `UNDO_LAST`, `SAVE_ALIAS`, `SAVE_GROUPS`, `SAVE_URL_RULES`, `IMPORT_BACKUP`, `EXPORT_BACKUP`, `SYNC_DRIVE`, `OPEN_DASHBOARD`
+`GET_STATE`, `SET_EXTENSION_STATE`, `TOGGLE_ALL`, `APPLY_PROFILE`, `UNDO_LAST`, `SAVE_ALIAS`, `SAVE_GROUPS`, `SAVE_URL_RULES`, `IMPORT_BACKUP`, `EXPORT_BACKUP`, `GET_DRIVE_SYNC_STATUS`, `SYNC_DRIVE`, `RESOLVE_DRIVE_CONFLICT`, `OPEN_DASHBOARD`
 
 Each mutating message carries an operation context object with `source` (`manual` | `bulk` | `profile` | `rule` | `undo` | `import`) — this attribution is required for correct history logging and usage metric tracking.
 
@@ -74,7 +74,7 @@ Each HTML page loads its own Knockout.js ViewModel:
 ### Key Constraints
 
 - `chrome.commands` is static — profile shortcuts cannot be dynamically created per user.
-- Google Drive sync (`js/drive-sync.js`) is incomplete; OAuth manifest config is missing. Do not treat it as available.
+- Google Drive sync (`js/drive-sync.js`) requires a real `oauth2.client_id` in `manifest.json` (see `docs/google-drive-sync.md`). Without it, sync actions show a configuration error.
 - `chrome.storage.sync` quota is tight — never move large or unbounded collections there.
 - KSB (knockout-secure-binding) does **not** support the ternary operator `? :` in `data-sbind` expressions. Use ViewModel computeds instead.
 

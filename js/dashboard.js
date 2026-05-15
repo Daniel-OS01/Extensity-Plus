@@ -703,10 +703,71 @@ document.addEventListener("DOMContentLoaded", function() {
       return new Date(timestamp).toLocaleString();
     };
 
-    self.syncDrive = function() {
-      self.performAction(ExtensityApi.syncDrive()).then(function() {
-        self.message("Drive sync completed.");
-      }).catch(function() {});
+    self.driveConflictVisible = ko.pureComputed(function() {
+      return !!self.options.drivePendingConflict();
+    });
+    self.driveConflictSummary = ko.pureComputed(function() {
+      var conflict = self.options.drivePendingConflict();
+      if (!conflict || !Array.isArray(conflict.categories)) {
+        return "";
+      }
+      return "Sync conflict in: " + conflict.categories.map(function(entry) {
+        return entry.label || entry.categoryId;
+      }).join(", ");
+    });
+    self.driveSyncStatusLabel = ko.pureComputed(function() {
+      var authStatus = typeof self.options.driveAuthStatus === "function"
+        ? self.options.driveAuthStatus()
+        : "unknown";
+      var driveError = self.options.lastDriveSyncError();
+      var at = self.options.lastDriveSync();
+      if (authStatus === "needs_interactive_sign_in") {
+        return "Google Drive sync needs sign-in. Run Sync Drive once to authorize background auto-sync.";
+      }
+      if (driveError && driveError.message) {
+        return "Google Drive error: " + driveError.message;
+      }
+      if (!at) {
+        return "Google Drive: not synced yet. Configure OAuth client id and run Sync Drive.";
+      }
+      return "Google Drive last sync: " + new Date(at).toLocaleString();
+    });
+
+    function handleDriveSyncResult(payload) {
+      var result = payload && payload.result ? payload.result : {};
+      if (result.status === "conflict") {
+        self.message(result.message || "Drive sync needs your input.");
+        return;
+      }
+      if (result.status === "cancelled") {
+        self.message("Drive sync cancelled.");
+        return;
+      }
+      self.message("Drive sync completed (" + (result.status || "ok") + ").");
+    }
+
+    self.driveSyncNow = function() {
+      self.performAction(ExtensityApi.syncDrive({ direction: "sync" })).then(handleDriveSyncResult);
+    };
+
+    self.drivePush = function() {
+      self.performAction(ExtensityApi.syncDrive({ direction: "push" })).then(handleDriveSyncResult);
+    };
+
+    self.drivePull = function() {
+      self.performAction(ExtensityApi.syncDrive({ direction: "pull" })).then(handleDriveSyncResult);
+    };
+
+    self.driveResolveKeepLocal = function() {
+      self.performAction(ExtensityApi.resolveDriveConflict("keep_local")).then(handleDriveSyncResult);
+    };
+
+    self.driveResolveKeepRemote = function() {
+      self.performAction(ExtensityApi.resolveDriveConflict("keep_remote")).then(handleDriveSyncResult);
+    };
+
+    self.driveResolveCancel = function() {
+      self.performAction(ExtensityApi.resolveDriveConflict("cancel")).then(handleDriveSyncResult);
     };
 
     self.checkSyncStatus = function() {

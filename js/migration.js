@@ -123,9 +123,62 @@
     return true;
   }
 
+  async function migrateSyncModesAndDismissals() {
+    await storage.ensureSyncDefaults();
+    await storage.ensureLocalDefaults();
+
+    var syncValues = await storage.getArea("sync", [
+      "dismissals",
+      "migration_syncModes",
+      "profiles",
+      "syncMode"
+    ]);
+    if (syncValues.migration_syncModes) {
+      return false;
+    }
+
+    var localPatch = {};
+    var removeKeys = [];
+
+    if (Array.isArray(syncValues.dismissals) && syncValues.dismissals.length > 0) {
+      var localState = await storage.loadLocalState();
+      var mergedDismissals = storage.uniqueArray(
+        (localState.dismissals || []).concat(syncValues.dismissals)
+      );
+      localPatch.dismissals = mergedDismissals;
+      removeKeys.push("dismissals");
+    }
+
+    var nextSyncMode = storage.normalizeSyncMode(syncValues.syncMode);
+    if (typeof syncValues.syncMode === "undefined") {
+      var profileMap = syncValues.profiles || {};
+      var hasCustom = Object.keys(profileMap).some(function(name) {
+        return name && ["__always_on", "__base", "__favorites"].indexOf(name) === -1;
+      });
+      nextSyncMode = hasCustom ? "full" : "smart";
+    }
+
+    if (Object.keys(localPatch).length > 0) {
+      await storage.saveLocalState(localPatch);
+    }
+    if (removeKeys.length > 0) {
+      await storage.removeArea("sync", removeKeys);
+    }
+
+    await storage.saveSyncOptions({
+      migration_syncModes: "2.2.0",
+      syncMode: nextSyncMode
+    });
+
+    var profilesState = await storage.loadProfiles();
+    await storage.saveProfiles(profilesState.map, profilesState.meta);
+    return true;
+  }
+
   root.ExtensityMigrations = {
     migrateLegacyLocalStorage: migrateLegacyLocalStorage,
     migratePopupListStyle: migratePopupListStyle,
+    migrateSyncModesAndDismissals: migrateSyncModesAndDismissals,
     migrateTo2_0_0: migrateTo2_0_0
   };
 })(typeof window !== "undefined" ? window : self);

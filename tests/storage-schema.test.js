@@ -176,6 +176,39 @@ test("uniqueArray returns empty array for non-array input", () => {
   assert.deepEqual(normalize(root.ExtensityStorage.uniqueArray(undefined)), []);
 });
 
+test("clampPopupWidthPx clamps to options range and falls back to default", () => {
+  const root = loadStorage();
+  const clamp = root.ExtensityStorage.clampPopupWidthPx;
+
+  assert.equal(clamp(380), 380);
+  assert.equal(clamp(300), 300);
+  assert.equal(clamp(600), 600);
+  assert.equal(clamp(250), 300);
+  assert.equal(clamp(900), 600);
+  assert.equal(clamp("not-a-number"), 380);
+});
+
+test("applyPopupWidthCss sets --popup-width on documentElement", () => {
+  const fakeDocument = {
+    documentElement: {
+      style: {
+        properties: {},
+        setProperty(name, value) {
+          this.properties[name] = value;
+        }
+      }
+    }
+  };
+
+  const root = loadBrowserScript(path.join(repoRoot, "js/storage.js"), {
+    document: fakeDocument
+  });
+
+  const width = root.ExtensityStorage.applyPopupWidthCss(420);
+  assert.equal(width, 420);
+  assert.equal(fakeDocument.documentElement.style.properties["--popup-width"], "420px");
+});
+
 test("profileMapToItems sorts reserved profiles before alphabetical user profiles", () => {
   const root = loadStorage();
   const items = normalize(root.ExtensityStorage.profileMapToItems({

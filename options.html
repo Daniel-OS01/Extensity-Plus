@@ -162,12 +162,24 @@
 
       <fieldset class="settings-card">
         <legend>Browser Sync</legend>
-        <div class="field"><span class="muted">Settings and profiles sync via Chrome Sync when available. Google Drive backup is not yet enabled in this build.</span></div>
+        <div class="field"><span class="muted">Settings and profiles are stored in chrome.storage.sync when the browser provides it. The sync status check verifies that extension data only—not Chromium account sync pages such as brave://sync-internals. Google Drive backup is not yet enabled in this build.</span></div>
+        <div class="field">
+          <label for="syncMode">Browser sync mode</label>
+          <select id="syncMode" data-sbind="value: options.syncMode">
+            <option value="full">Full sync — all profiles and options</option>
+            <option value="smart">Smart sync (recommended) — options + reserved profiles; large custom profiles stay local</option>
+            <option value="minimal">Minimal sync — options and metadata only</option>
+          </select>
+        </div>
+        <div class="field"><span class="muted" data-sbind="text: syncModeDescription"></span></div>
         <div class="field action-row">
-          <button type="button" title="Check if your settings and profiles are present in browser sync storage" data-sbind="click: checkBrowserSyncStatus">Check sync status</button>
+          <button type="button" title="Check if settings and profiles are present in chrome.storage.sync for this profile" data-sbind="click: checkBrowserSyncStatus">Check sync status</button>
         </div>
         <div class="field" data-sbind="visible: syncStatusLabel">
           <span data-sbind="text: syncStatusLabel"></span>
+        </div>
+        <div class="field" data-sbind="visible: syncStatusDetails">
+          <span class="muted" data-sbind="text: syncStatusDetails"></span>
         </div>
       </fieldset>
 

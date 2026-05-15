@@ -20,6 +20,7 @@
     profileMeta: {},
     migration_2_0_0: null,
     migration_popupListStyle: null,
+    migration_syncModes: null,
     profileDisplay: "landscape",
     profileLayoutDirection: "ltr",
     profileNameDirection: "ltr",
@@ -58,11 +59,14 @@
     fontFamily: "",
     cacheManagementItems: true,
     managementCacheTtlSeconds: 10,
-    pinMethod: "auto"
+    pinMethod: "auto",
+    syncMode: "smart",
+    syncProfilesPartial: false
   };
 
   var localDefaults = {
     aliases: {},
+    dismissals: [],
     bulkToggleRestore: [],
     eventHistory: [],
     groupOrder: [],
@@ -83,6 +87,87 @@
     profileLayoutDirection: syncDefaults.profileLayoutDirection,
     profileNameDirection: syncDefaults.profileNameDirection
   };
+  var SYNC_META_DEFAULTS = {
+    syncOptionsUpdatedAt: 0,
+    syncProfilesUpdatedAt: 0,
+    syncWriterId: ""
+  };
+  var SYNC_FALLBACK_QUOTA_BYTES = 102400;
+  var SYNC_FALLBACK_QUOTA_BYTES_PER_ITEM = 8192;
+  var SMART_PROFILE_PAYLOAD_THRESHOLD_BYTES = 6000;
+  var SYNC_MODE_VALUES = ["full", "smart", "minimal"];
+  var syncWriteHook = null;
+
+  function normalizeSyncMode(mode) {
+    if (SYNC_MODE_VALUES.indexOf(mode) !== -1) {
+      return mode;
+    }
+    return "smart";
+  }
+
+  function isReservedProfileName(name) {
+    return profileNames.indexOf(name) !== -1;
+  }
+
+  function pickReservedProfileMap(profileMap) {
+    var source = isObject(profileMap) ? profileMap : {};
+    var result = {};
+    profileNames.forEach(function(name) {
+      result[name] = uniqueArray(source[name]);
+    });
+    return result;
+  }
+
+  function estimateProfilesPayloadBytes(profileMap) {
+    return estimateStorageEntryBytes("profiles", normalizeProfileMap(profileMap));
+  }
+
+  function buildSyncProfilePayload(profileMap, syncMode) {
+    var normalized = normalizeProfileMap(profileMap);
+    var mode = normalizeSyncMode(syncMode);
+    if (mode === "minimal") {
+      return {
+        membershipsLocal: true,
+        partial: true,
+        profiles: pickReservedProfileMap(normalized)
+      };
+    }
+    if (mode === "smart") {
+      var bytes = estimateProfilesPayloadBytes(normalized);
+      if (bytes > SMART_PROFILE_PAYLOAD_THRESHOLD_BYTES) {
+        return {
+          membershipsLocal: true,
+          partial: true,
+          profiles: pickReservedProfileMap(normalized)
+        };
+      }
+      return {
+        membershipsLocal: false,
+        partial: false,
+        profiles: normalized
+      };
+    }
+    return {
+      membershipsLocal: false,
+      partial: false,
+      profiles: normalized
+    };
+  }
+
+  function mergeProfileMaps(localMap, syncMap) {
+    var merged = normalizeProfileMap(localMap);
+    var syncNormalized = normalizeProfileMap(syncMap);
+    Object.keys(syncNormalized).forEach(function(name) {
+      merged[name] = uniqueArray(syncNormalized[name]);
+    });
+    return merged;
+  }
+
+  function mergeProfileMetaMaps(localMeta, syncMeta) {
+    var localValue = isObject(localMeta) ? localMeta : {};
+    var syncValue = isObject(syncMeta) ? syncMeta : {};
+    return mergeDefaults(localValue, syncValue);
+  }
 
   function clone(value) {
     return JSON.parse(JSON.stringify(value));
@@ -121,8 +206,161 @@
     return callArea(area, "get", keys);
   }
 
+  function registerSyncWriteHook(listener) {
+    syncWriteHook = typeof listener === "function" ? listener : null;
+  }
+
+  function notifySyncWrite(keys) {
+    if (syncWriteHook) {
+      syncWriteHook(keys);
+    }
+  }
+
   function setArea(area, values) {
+    if (area === "sync") {
+      notifySyncWrite(Object.keys(values || {}));
+    }
     return callArea(area, "set", values);
+  }
+
+  function getSyncQuotaLimits() {
+    var syncArea = typeof chrome !== "undefined" && chrome.storage ? chrome.storage.sync : null;
+    return {
+      maxItems: syncArea && syncArea.MAX_ITEMS ? syncArea.MAX_ITEMS : 512,
+      quotaBytes: syncArea && syncArea.QUOTA_BYTES ? syncArea.QUOTA_BYTES : SYNC_FALLBACK_QUOTA_BYTES,
+      quotaBytesPerItem: syncArea && syncArea.QUOTA_BYTES_PER_ITEM
+        ? syncArea.QUOTA_BYTES_PER_ITEM
+        : SYNC_FALLBACK_QUOTA_BYTES_PER_ITEM
+    };
+  }
+
+  function estimateStorageEntryBytes(key, value) {
+    var serialized = JSON.stringify({ [key]: value });
+    if (typeof TextEncoder !== "undefined") {
+      return new TextEncoder().encode(serialized).length;
+    }
+    return serialized.length;
+  }
+
+  function estimatePayloadBytes(payload) {
+    var perKey = {};
+    var total = 0;
+    Object.keys(payload || {}).forEach(function(key) {
+      var bytes = estimateStorageEntryBytes(key, payload[key]);
+      perKey[key] = bytes;
+      total += bytes;
+    });
+    return { perKey: perKey, total: total };
+  }
+
+  function classifySyncError(message) {
+    var text = String(message || "").toLowerCase();
+    if (text.indexOf("quota") !== -1 || text.indexOf("quota_bytes") !== -1) {
+      return "quota";
+    }
+    if (text.indexOf("max_write") !== -1 || text.indexOf("write operations") !== -1) {
+      return "write_rate_limit";
+    }
+    if (text.indexOf("sync") !== -1 && (text.indexOf("disabled") !== -1 || text.indexOf("unavailable") !== -1)) {
+      return "sync_unavailable";
+    }
+    return "unknown";
+  }
+
+  async function getSyncBytesInUse(keys) {
+    if (!chrome.storage || !chrome.storage.sync || typeof chrome.storage.sync.getBytesInUse !== "function") {
+      return null;
+    }
+    return callArea("sync", "getBytesInUse", keys || null);
+  }
+
+  function preflightSyncSet(payload) {
+    var limits = getSyncQuotaLimits();
+    var estimates = estimatePayloadBytes(payload);
+    var oversizeKeys = Object.keys(estimates.perKey).filter(function(key) {
+      return estimates.perKey[key] > limits.quotaBytesPerItem;
+    });
+    if (oversizeKeys.length > 0) {
+      var perItemError = new Error(
+        "Sync item exceeds per-key quota (" + limits.quotaBytesPerItem + " bytes): " + oversizeKeys.join(", ")
+      );
+      perItemError.code = "quota_per_item";
+      throw perItemError;
+    }
+    return getSyncBytesInUse(null).then(function(bytesInUse) {
+      if (bytesInUse == null) {
+        if (estimates.total > limits.quotaBytes) {
+          var totalError = new Error(
+            "Sync payload exceeds total quota (" + limits.quotaBytes + " bytes)."
+          );
+          totalError.code = "quota_total";
+          throw totalError;
+        }
+        return { bytesInUse: null, estimates: estimates, limits: limits };
+      }
+      if (bytesInUse + estimates.total > limits.quotaBytes) {
+        var quotaError = new Error(
+          "Sync storage quota exceeded (" + bytesInUse + " + " + estimates.total + " > " + limits.quotaBytes + ")."
+        );
+        quotaError.code = "quota_total";
+        throw quotaError;
+      }
+      return { bytesInUse: bytesInUse, estimates: estimates, limits: limits };
+    });
+  }
+
+  async function recordSyncError(code, message, context) {
+    await setArea("local", {
+      lastSyncError: {
+        at: Date.now(),
+        code: code || "unknown",
+        context: context || "sync",
+        message: message || ""
+      }
+    });
+  }
+
+  async function clearSyncError() {
+    await setArea("local", { lastSyncError: null });
+  }
+
+  async function loadSyncMeta() {
+    var result = await getArea("sync", SYNC_META_DEFAULTS);
+    return {
+      syncOptionsUpdatedAt: result.syncOptionsUpdatedAt || 0,
+      syncProfilesUpdatedAt: result.syncProfilesUpdatedAt || 0,
+      syncWriterId: result.syncWriterId || ""
+    };
+  }
+
+  async function ensureSyncWriterId() {
+    var meta = await loadSyncMeta();
+    if (meta.syncWriterId) {
+      return meta.syncWriterId;
+    }
+    var writerId = makeId("sync");
+    await setArea("sync", { syncWriterId: writerId });
+    return writerId;
+  }
+
+  async function ensureSyncMetaDefaults() {
+    await ensureAreaDefaults("sync", SYNC_META_DEFAULTS);
+  }
+
+  function pickNewerTimestamp(left, right) {
+    var leftValue = typeof left === "number" ? left : 0;
+    var rightValue = typeof right === "number" ? right : 0;
+    return rightValue > leftValue ? rightValue : leftValue;
+  }
+
+  function resolveConflictByTimestamp(localValue, remoteValue, localUpdatedAt, remoteUpdatedAt) {
+    if (remoteUpdatedAt > localUpdatedAt) {
+      return { source: "remote", value: remoteValue, updatedAt: remoteUpdatedAt };
+    }
+    if (localUpdatedAt > remoteUpdatedAt) {
+      return { source: "local", value: localValue, updatedAt: localUpdatedAt };
+    }
+    return { source: "tie", value: remoteValue, updatedAt: remoteUpdatedAt };
   }
 
   function removeArea(area, keys) {
@@ -183,8 +421,12 @@
   }
 
   async function loadSyncOptions() {
-    var result = await getArea("sync", Object.keys(syncDefaults));
-    return mergeDefaults(syncDefaults, result);
+    var keys = Object.keys(syncDefaults);
+    var result = await getArea("sync", keys);
+    var meta = await loadSyncMeta();
+    var merged = mergeDefaults(syncDefaults, result);
+    merged._syncOptionsUpdatedAt = meta.syncOptionsUpdatedAt || 0;
+    return merged;
   }
 
   async function saveSyncOptions(values) {
@@ -194,8 +436,18 @@
         allowed[key] = values[key];
       }
     });
-    await setArea("sync", allowed);
-    return loadSyncOptions();
+    var nextUpdatedAt = Date.now();
+    await ensureSyncWriterId();
+    var payload = Object.assign({}, allowed, { syncOptionsUpdatedAt: nextUpdatedAt });
+    try {
+      await preflightSyncSet(payload);
+      await setArea("sync", payload);
+      await clearSyncError();
+      return loadSyncOptions();
+    } catch (error) {
+      await recordSyncError(error.code || classifySyncError(error.message), error.message, "options");
+      throw error;
+    }
   }
 
   async function loadLocalState() {
@@ -206,6 +458,28 @@
   async function saveLocalState(values) {
     await setArea("local", values);
     return loadLocalState();
+  }
+
+  async function loadDismissals() {
+    var localState = await getArea("local", { dismissals: [] });
+    return uniqueArray(localState.dismissals || []);
+  }
+
+  async function saveDismissals(dismissals) {
+    await setArea("local", { dismissals: uniqueArray(dismissals || []) });
+    return loadDismissals();
+  }
+
+  async function appendDismissal(id) {
+    if (!id) {
+      return loadDismissals();
+    }
+    var dismissals = await loadDismissals();
+    if (dismissals.indexOf(id) !== -1) {
+      return dismissals;
+    }
+    dismissals.push(id);
+    return saveDismissals(dismissals);
   }
 
   async function ensureAreaDefaults(area, defaults) {
@@ -224,6 +498,7 @@
 
   async function ensureSyncDefaults() {
     await ensureAreaDefaults("sync", syncProfileDirectionDefaults);
+    await ensureSyncMetaDefaults();
   }
 
   async function ensureLocalDefaults() {
@@ -232,71 +507,203 @@
 
   async function loadProfiles() {
     var both = await Promise.all([
-      getArea("sync", { localProfiles: false, profiles: {}, profileMeta: {} }),
+      getArea("sync", {
+        localProfiles: false,
+        profiles: {},
+        profileMeta: {},
+        syncMode: syncDefaults.syncMode,
+        syncProfilesPartial: false
+      }),
       getArea("local", { profiles: {}, profileMeta: {} })
     ]);
     var syncData = both[0];
     var localData = both[1];
-    var useLocal = !!syncData.localProfiles;
-    var payload = useLocal ? localData : syncData;
-    var map = normalizeProfileMap(payload.profiles);
-    var meta = isObject(payload.profileMeta) ? payload.profileMeta : {};
+    var syncMeta = await loadSyncMeta();
+    var syncMode = normalizeSyncMode(syncData.syncMode);
+    var syncProfilesPartial = !!syncData.syncProfilesPartial;
+    var quotaLocalFallback = !!syncData.localProfiles && syncMode === "full" && !syncProfilesPartial;
+    var map;
+    var meta;
+    if (syncMode === "full" && !quotaLocalFallback) {
+      map = normalizeProfileMap(syncData.profiles);
+      meta = isObject(syncData.profileMeta) ? syncData.profileMeta : {};
+    } else {
+      map = mergeProfileMaps(localData.profiles, syncData.profiles);
+      meta = mergeProfileMetaMaps(localData.profileMeta, syncData.profileMeta);
+    }
+    var membershipsLocal = syncMode !== "full" || quotaLocalFallback || syncProfilesPartial;
     return {
       items: profileMapToItems(map, meta),
-      localProfiles: useLocal,
+      localProfiles: membershipsLocal,
       map: map,
-      meta: meta
+      meta: meta,
+      syncMode: syncMode,
+      syncProfilesPartial: syncProfilesPartial,
+      syncProfilesUpdatedAt: syncMeta.syncProfilesUpdatedAt || 0
     };
   }
 
   async function saveProfiles(profileMap, metaMap) {
     var normalized = normalizeProfileMap(profileMap);
-    var syncPayload = { localProfiles: false, profiles: normalized };
-    if (metaMap !== undefined) {
-      syncPayload.profileMeta = metaMap || {};
+    var meta = metaMap !== undefined ? (metaMap || {}) : undefined;
+    var syncModeResult = await getArea("sync", { syncMode: syncDefaults.syncMode });
+    var syncMode = normalizeSyncMode(syncModeResult.syncMode);
+    var profilePayload = buildSyncProfilePayload(normalized, syncMode);
+    var nextUpdatedAt = Date.now();
+    var localPayload = { profiles: normalized };
+    if (meta !== undefined) {
+      localPayload.profileMeta = meta;
+    }
+    await setArea("local", localPayload);
+    var syncPayload = {
+      localProfiles: profilePayload.membershipsLocal,
+      profiles: profilePayload.profiles,
+      syncMode: syncMode,
+      syncProfilesPartial: profilePayload.partial,
+      syncProfilesUpdatedAt: nextUpdatedAt
+    };
+    if (meta !== undefined) {
+      syncPayload.profileMeta = meta;
     }
     try {
+      await ensureSyncWriterId();
+      await preflightSyncSet(syncPayload);
       await setArea("sync", syncPayload);
+      await clearSyncError();
       return {
-        items: profileMapToItems(normalized, metaMap),
-        localProfiles: false,
-        map: normalized
+        items: profileMapToItems(normalized, meta),
+        localProfiles: profilePayload.membershipsLocal,
+        map: normalized,
+        syncMode: syncMode,
+        syncProfilesPartial: profilePayload.partial,
+        syncProfilesUpdatedAt: nextUpdatedAt
       };
     } catch (error) {
-      var localPayload = { profiles: normalized };
-      if (metaMap !== undefined) {
-        localPayload.profileMeta = metaMap || {};
-      }
-      await setArea("local", localPayload);
-      await setArea("sync", { localProfiles: true });
-      return {
-        items: profileMapToItems(normalized, metaMap),
+      var fallbackCode = error.code || classifySyncError(error.message);
+      await recordSyncError(fallbackCode, error.message, "profiles");
+      await setArea("sync", {
         localProfiles: true,
-        map: normalized
+        syncMode: syncMode,
+        syncProfilesPartial: true,
+        syncProfilesUpdatedAt: nextUpdatedAt
+      });
+      return {
+        items: profileMapToItems(normalized, meta),
+        localProfiles: true,
+        map: normalized,
+        syncMode: syncMode,
+        syncProfilesPartial: true,
+        syncProfilesUpdatedAt: nextUpdatedAt
       };
     }
+  }
+
+  async function getSyncDiagnostics() {
+    var limits = getSyncQuotaLimits();
+    var bytesInUse = await getSyncBytesInUse(null);
+    var localState = await getArea("local", { lastSyncError: null });
+    var syncMeta = await loadSyncMeta();
+    var syncFlags = await getArea("sync", {
+      localProfiles: false,
+      syncMode: syncDefaults.syncMode,
+      syncProfilesPartial: false,
+      profiles: {}
+    });
+    var headroomBytes = bytesInUse == null ? null : Math.max(0, limits.quotaBytes - bytesInUse);
+    var profilesBytes = estimateProfilesPayloadBytes(syncFlags.profiles || {});
+    var syncMode = normalizeSyncMode(syncFlags.syncMode);
+    return {
+      bytesInUse: bytesInUse,
+      headroomBytes: headroomBytes,
+      lastSyncError: localState.lastSyncError || null,
+      limits: limits,
+      localProfiles: !!syncFlags.localProfiles,
+      profilesBytes: profilesBytes,
+      profilesBytesThreshold: SMART_PROFILE_PAYLOAD_THRESHOLD_BYTES,
+      syncMode: syncMode,
+      syncProfilesPartial: !!syncFlags.syncProfilesPartial,
+      syncOptionsUpdatedAt: syncMeta.syncOptionsUpdatedAt || 0,
+      syncProfilesUpdatedAt: syncMeta.syncProfilesUpdatedAt || 0,
+      syncWriterId: syncMeta.syncWriterId || ""
+    };
+  }
+
+  function isRelevantSyncChangeKey(key) {
+    if (Object.prototype.hasOwnProperty.call(syncDefaults, key)) {
+      return true;
+    }
+    return [
+      "profiles",
+      "profileMeta",
+      "localProfiles",
+      "syncMode",
+      "syncProfilesPartial",
+      "syncOptionsUpdatedAt",
+      "syncProfilesUpdatedAt",
+      "syncWriterId"
+    ].indexOf(key) !== -1;
   }
 
   function makeId(prefix) {
     return [prefix, Date.now().toString(36), Math.random().toString(36).slice(2, 8)].join("-");
   }
 
+  var POPUP_WIDTH_MIN_PX = 300;
+  var POPUP_WIDTH_MAX_PX = 600;
+  var POPUP_WIDTH_SESSION_KEY = "extensity_popup_width_px";
+
+  function clampPopupWidthPx(value) {
+    var parsed = parseInt(value, 10);
+    if (!isFinite(parsed)) {
+      parsed = syncDefaults.popupWidthPx;
+    }
+    return Math.min(POPUP_WIDTH_MAX_PX, Math.max(POPUP_WIDTH_MIN_PX, parsed));
+  }
+
+  function applyPopupWidthCss(widthPx) {
+    var width = clampPopupWidthPx(widthPx);
+    if (typeof document !== "undefined" && document.documentElement) {
+      document.documentElement.style.setProperty("--popup-width", width + "px");
+    }
+    return width;
+  }
+
   root.ExtensityStorage = {
+    POPUP_WIDTH_SESSION_KEY: POPUP_WIDTH_SESSION_KEY,
+    appendDismissal: appendDismissal,
+    applyPopupWidthCss: applyPopupWidthCss,
+    buildSyncProfilePayload: buildSyncProfilePayload,
+    classifySyncError: classifySyncError,
+    clampPopupWidthPx: clampPopupWidthPx,
     clone: clone,
     ensureLocalDefaults: ensureLocalDefaults,
     ensureSyncDefaults: ensureSyncDefaults,
+    estimatePayloadBytes: estimatePayloadBytes,
+    isReservedProfileName: isReservedProfileName,
     getArea: getArea,
     getLocalDefaults: function() { return clone(localDefaults); },
     getSyncDefaults: function() { return clone(syncDefaults); },
+    getSyncDiagnostics: getSyncDiagnostics,
+    getSyncQuotaLimits: getSyncQuotaLimits,
+    isRelevantSyncChangeKey: isRelevantSyncChangeKey,
+    loadDismissals: loadDismissals,
     loadLocalState: loadLocalState,
     loadProfiles: loadProfiles,
+    loadSyncMeta: loadSyncMeta,
     loadSyncOptions: loadSyncOptions,
     makeId: makeId,
     isObject: isObject,
     mergeDefaults: mergeDefaults,
+    mergeProfileMaps: mergeProfileMaps,
     normalizeProfileMap: normalizeProfileMap,
+    normalizeSyncMode: normalizeSyncMode,
+    pickNewerTimestamp: pickNewerTimestamp,
+    preflightSyncSet: preflightSyncSet,
     profileMapToItems: profileMapToItems,
+    registerSyncWriteHook: registerSyncWriteHook,
     removeArea: removeArea,
+    resolveConflictByTimestamp: resolveConflictByTimestamp,
+    saveDismissals: saveDismissals,
     saveLocalState: saveLocalState,
     saveProfiles: saveProfiles,
     saveSyncOptions: saveSyncOptions,

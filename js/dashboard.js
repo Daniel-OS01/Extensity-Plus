@@ -168,6 +168,20 @@ document.addEventListener("DOMContentLoaded", function() {
   var DRAFT_HASH_MAX = 512;
   var DRAFT_PATTERN_SAFE = /^[A-Za-z0-9.\-:*\/]+$/;
   var DRAFT_HOST_SAFE = /^[a-z0-9.\-]+$/;
+  var DRAFT_EXTENSION_ID_SAFE = /^[a-z0-9_-]{1,64}$/i;
+
+  function resolveDraftEnableIds(draft, extensions) {
+    if (!draft || !draft.extensionId) {
+      return [];
+    }
+    var list = Array.isArray(extensions) ? extensions : [];
+    if (!list.some(function(extension) {
+      return extension && extension.id === draft.extensionId;
+    })) {
+      return [];
+    }
+    return [draft.extensionId];
+  }
 
   function parseRuleDraft(hash) {
     if (!hash || typeof hash !== "string" || hash.length > DRAFT_HASH_MAX) {
@@ -205,8 +219,13 @@ document.addEventListener("DOMContentLoaded", function() {
     if (!DRAFT_PATTERN_SAFE.test(pattern) || pattern.indexOf("://") === -1) {
       return null;
     }
+    var extensionId = params.get("extensionId") || "";
+    if (extensionId && !DRAFT_EXTENSION_ID_SAFE.test(extensionId)) {
+      return null;
+    }
     return {
       draftId: draftId,
+      extensionId: extensionId,
       host: host,
       pattern: pattern,
       source: source,
@@ -234,8 +253,8 @@ document.addEventListener("DOMContentLoaded", function() {
   }
 
   function getSyncStatusLabel(status) {
-    if (status === "synced") {
-      return "Synced";
+    if (status === "synced" || status === "synced_partial") {
+      return status === "synced_partial" ? "Synced (partial)" : "Synced";
     }
     if (status === "error") {
       return "Sync Error";
@@ -244,7 +263,7 @@ document.addEventListener("DOMContentLoaded", function() {
   }
 
   function getSyncStatusBadgeClass(status) {
-    if (status === "synced") {
+    if (status === "synced" || status === "synced_partial") {
       return "sync-status-badge sync-status-synced";
     }
     if (status === "error") {
@@ -303,7 +322,8 @@ document.addEventListener("DOMContentLoaded", function() {
     self.ruleTestResult = ko.observable(null);
     self.selectedRuleId = ko.observable("");
     self.syncStatus = ko.observable("not_connected");
-    self.syncStatusReason = ko.observable("Run a check to verify browser sync availability.");
+    self.syncStatusReason = ko.observable("Run a check to verify extension data in chrome.storage.sync.");
+    self.syncStatusDetails = ko.observable("");
     self.syncStatusTimestamp = ko.observable(null);
     self.syncStatusLabel = ko.pureComputed(function() {
       return getSyncStatusLabel(self.syncStatus());
@@ -491,7 +511,7 @@ document.addEventListener("DOMContentLoaded", function() {
         active: true,
         draftHost: draft.host,
         draftWww: draft.suggestWww,
-        enableIds: [],
+        enableIds: resolveDraftEnableIds(draft, self.extensions()),
         disableIds: [],
         id: draft.draftId,
         isDraft: true,
@@ -694,70 +714,20 @@ document.addEventListener("DOMContentLoaded", function() {
       self.error("");
       self.message("");
 
-      if (!chrome.storage || !chrome.storage.sync || typeof chrome.storage.sync.get !== "function") {
-        self.syncStatus("not_connected");
-        self.syncStatusReason("Browser sync storage is unavailable in this environment.");
+      ExtensityBrowserSync.checkBrowserSyncHealth(self.options.keys || []).then(function(result) {
+        self.syncStatus(result.status);
+        self.syncStatusReason(result.reason);
+        self.syncStatusDetails(result.detailsSummary || "");
         self.syncStatusTimestamp(Date.now());
         self.busy(false);
-        return;
-      }
-
-      chrome.storage.sync.get(["profiles", "localProfiles"], function(syncData) {
-        var syncError = chrome.runtime.lastError;
-        if (syncError) {
-          self.syncStatus("not_connected");
-          self.syncStatusReason("Could not access browser sync storage: " + syncError.message);
-          self.syncStatusTimestamp(Date.now());
-          self.busy(false);
-          return;
-        }
-
-        var optionsKeys = self.options.keys || [];
-        chrome.storage.sync.get(optionsKeys, function(optionsData) {
-          var optionsError = chrome.runtime.lastError;
-          if (optionsError) {
-            self.syncStatus("error");
-            self.syncStatusReason("Could not read sync settings data: " + optionsError.message);
-            self.syncStatusTimestamp(Date.now());
-            self.busy(false);
-            return;
-          }
-
-          var missingOptions = optionsKeys.filter(function(key) {
-            return typeof optionsData[key] === "undefined";
-          });
-          var localProfilesEnabled = !!syncData.localProfiles;
-          var profiles = syncData.profiles;
-          var profilesInSync = profiles && typeof profiles === "object" && !Array.isArray(profiles);
-          var hasMissingData = missingOptions.length > 0 || (!localProfilesEnabled && !profilesInSync);
-          var reason = "Settings and profiles are present in browser sync storage.";
-
-          if (localProfilesEnabled) {
-            self.syncStatus("error");
-            self.syncStatusReason("Profiles are currently local-only because sync fallback is active.");
-          } else if (hasMissingData) {
-            self.syncStatus("error");
-            if (!profilesInSync) {
-              reason = "Profiles are missing from sync storage.";
-            } else {
-              reason = "Some settings keys are missing from sync storage: " + missingOptions.slice(0, 5).join(", ");
-            }
-            self.syncStatusReason(reason);
-          } else {
-            self.syncStatus("synced");
-            self.syncStatusReason(reason);
-          }
-
-          self.syncStatusTimestamp(Date.now());
-          self.busy(false);
-        });
       });
     };
   }
 
   if (typeof window !== "undefined") {
     window.ExtensityDashboardInternals = {
-      parseRuleDraft: parseRuleDraft
+      parseRuleDraft: parseRuleDraft,
+      resolveDraftEnableIds: resolveDraftEnableIds
     };
   }
 
@@ -766,6 +736,11 @@ document.addEventListener("DOMContentLoaded", function() {
     vm.pendingDraft = parseRuleDraft(window.location.hash);
     ko.bindingProvider.instance = new ko.secureBindingsProvider({});
     ko.applyBindings(vm, document.getElementById("dashboard-page"));
+    if (typeof ExtensityBrowserSync !== "undefined" && ExtensityBrowserSync.attachSyncRemoteUpdateListener) {
+      ExtensityBrowserSync.attachSyncRemoteUpdateListener(function() {
+        vm.refresh();
+      });
+    }
     vm.refresh();
   });
 });

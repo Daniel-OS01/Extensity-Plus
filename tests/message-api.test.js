@@ -756,6 +756,33 @@ test("buildDashboardTargetPath builds a draft hash for a supported active tab", 
   assert.equal(params.get("suggestWww"), "1");
   assert.equal(params.get("source"), "add_active_site");
   assert.ok(params.get("draftId"));
+  assert.equal(params.get("extensionId"), null);
+});
+
+test("buildDashboardTargetPath includes extensionId in draft hash when provided", async () => {
+  const root = loadBackground({
+    urlRulesOverrides: {
+      buildHostnamePattern() {
+        return {
+          canonicalHost: "github.com",
+          hostname: "github.com",
+          pattern: "*://github.com/*",
+          reason: "",
+          suggestWww: true,
+          supported: true
+        };
+      }
+    }
+  });
+
+  const path = await root.ExtensityBackground.buildDashboardTargetPath({
+    tab: "rules",
+    source: "add_active_site",
+    tabUrl: "https://github.com/",
+    extensionId: "abcdefghijklmnopabcdefghijklmnop"
+  });
+  const params = new URLSearchParams(path.split("?")[1]);
+  assert.equal(params.get("extensionId"), "abcdefghijklmnopabcdefghijklmnop");
 });
 
 test("buildDashboardTargetPath returns error hash when active tab URL is unsupported", async () => {

@@ -107,6 +107,35 @@ Extensity-Plus uses a background-owned state model:
 - Undo history, reminders, usage counters, and event history are updated through the same mutation path.
 - Larger collections like aliases, groups, rules, and history stay out of sync storage to avoid quota pressure.
 
+### Browser sync status check
+
+Dashboard **Sync Status** and Options **Check sync status** call `ExtensityBrowserSync.checkBrowserSyncHealth()` in `js/engine.js`. They verify that Extensity-Plus settings and profiles are present in **`chrome.storage.sync` for the current profile**, and show sync-area byte usage plus any fallback error recorded by the extension.
+
+That check is **not** the same as Chromium account sync diagnostics (`chrome://sync-internals`, `brave://sync-internals`, etc.). Those pages may not list or search extension sync data even when the extension reports **Synced**. A passing check means the extension can read its sync-area keys locally; cross-device replication still depends on the browser’s sync service.
+
+### Browser sync modes
+
+Options → **Browser Sync** includes three modes:
+
+| Mode | What syncs | Best for |
+|------|------------|----------|
+| **Full** | All options + full profile memberships | Smaller profile sets; maximum portability |
+| **Smart** (default) | All options + reserved profiles (`Always On`, `Base`, `Favorites`) + metadata; large custom profiles stay local | Most users; avoids per-item quota failures |
+| **Minimal** | Options + profile metadata only; memberships stay on each device | Lowest sync footprint |
+
+Dismissal banners are stored in **local** storage (not sync) to save quota.
+
+### Brave cross-device sync setup
+
+Extensity-Plus uses `chrome.storage.sync` (about **100 KB** total, **8 KB** per key) for settings and profiles. To sync between devices:
+
+1. Join the same **Brave Sync chain** on every desktop device (`brave://settings/braveSync` or Settings → Sync).
+2. Keep **Sync enabled** and wait for the chain to finish initial merge.
+3. Reload Extensity-Plus on each device after the first successful save so all pages pick up remote revisions.
+4. Open **Sync Status** (Dashboard) or **Check sync status** (Options) and confirm sync-area bytes are below quota and `localProfiles` is not active.
+
+If profiles are large, the extension may switch to **local-only profiles** (`localProfiles`) when sync quota is exceeded; the dashboard will show that fallback. Brave has also reported intermittent failures for the **Extension settings** sync datatype in `brave://sync-internals` ([brave/brave-browser#46983](https://github.com/brave/brave-browser/issues/46983))—that is a browser sync backend issue, not something the extension can fix directly.
+
 Main UI surfaces:
 
 - `index.html`: popup

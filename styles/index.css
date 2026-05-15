@@ -1,6 +1,7 @@
 html {
   overflow-x: hidden;
   overflow-y: auto;
+  width: var(--popup-width, 380px);
 }
 
 body {
@@ -95,6 +96,13 @@ button,
 input,
 select {
   font: inherit;
+}
+
+#boot-loading,
+#loading-section {
+  box-sizing: border-box;
+  max-width: 100%;
+  width: 100%;
 }
 
 #boot-loading {

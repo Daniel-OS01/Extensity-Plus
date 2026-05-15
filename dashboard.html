@@ -224,13 +224,14 @@
     <section class="dashboard-section" data-sbind="visible: syncStatusTab">
       <h2>Sync Status</h2>
       <div class="sync-status-card">
-        <p class="event-meta">Verifies whether Extensity-Plus settings and profiles are available in browser-managed sync storage.</p>
+        <p class="event-meta">Checks whether Extensity-Plus settings and profiles are present in <code>chrome.storage.sync</code> for this profile. This is separate from Chromium account sync pages such as <code>brave://sync-internals</code>, which may not list extension data even when this check passes.</p>
         <div class="sync-status-line">
           <span class="sync-status-badge" data-sbind="css: syncStatusBadgeClass, text: syncStatusLabel"></span>
           <span class="event-meta" data-sbind="visible: syncStatusCheckedAt, text: syncStatusCheckedAt"></span>
         </div>
         <p class="sync-status-note" data-sbind="visible: syncStatusReason, text: syncStatusReason"></p>
-        <button type="button" title="Check if settings and profiles are synced via browser sync storage" data-sbind="click: checkSyncStatus, disable: busy">Check sync status</button>
+        <p class="sync-status-note event-meta" data-sbind="visible: syncStatusDetails, text: syncStatusDetails"></p>
+        <button type="button" title="Check if settings and profiles are present in chrome.storage.sync for this profile" data-sbind="click: checkSyncStatus, disable: busy">Check sync status</button>
       </div>
     </section>
 

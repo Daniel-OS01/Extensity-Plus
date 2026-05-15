@@ -72,9 +72,13 @@ document.addEventListener("DOMContentLoaded", function() {
       return !!self.current_profile();
     });
 
-    self.iconOptions = (window.ExtensityEngine && window.ExtensityEngine.PROFILE_ICONS || []).map(function(cls) {
-      return { value: cls, label: cls.replace("fa-", "").replace(/-/g, " ") };
-    });
+    self.iconOptions = (window.ExtensityEngine && window.ExtensityEngine.PROFILE_ICONS || [])
+      .map(function(cls) {
+        return { value: cls, label: cls.replace("fa-", "").replace(/-/g, " ") };
+      })
+      .sort(function(left, right) {
+        return left.label.localeCompare(right.label);
+      });
 
     self.editable = ko.pureComputed(function() {
       return !!self.current_profile();
@@ -600,6 +604,11 @@ document.addEventListener("DOMContentLoaded", function() {
     var vm = new ProfilesViewModel();
     ko.bindingProvider.instance = new ko.secureBindingsProvider({});
     ko.applyBindings(vm, document.getElementById("profiles-page"));
+    if (typeof ExtensityBrowserSync !== "undefined" && ExtensityBrowserSync.attachSyncRemoteUpdateListener) {
+      ExtensityBrowserSync.attachSyncRemoteUpdateListener(function() {
+        vm.refresh();
+      });
+    }
     (new DismissalsCollection()).dismiss("profile_page_viewed");
     vm.refresh();
   });

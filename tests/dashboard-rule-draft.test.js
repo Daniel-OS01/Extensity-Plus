@@ -40,12 +40,45 @@ test("parseRuleDraft accepts a valid draft hash", () => {
   );
   assert.deepEqual(JSON.parse(JSON.stringify(result)), {
     draftId: "rule-x",
+    extensionId: "",
     host: "github.com",
     pattern: "*://github.com/*",
     source: "add_active_site",
     suggestWww: true,
     tab: "rules"
   });
+});
+
+test("parseRuleDraft includes extensionId when present", () => {
+  const win = loadDashboard();
+  const result = win.ExtensityDashboardInternals.parseRuleDraft(
+    "#rules?draftId=rule-x&host=github.com&pattern=*%3A%2F%2Fgithub.com%2F*&suggestWww=1&source=add_active_site&extensionId=abcdefghijklmnopabcdefghijklmnop"
+  );
+  assert.equal(result.extensionId, "abcdefghijklmnopabcdefghijklmnop");
+});
+
+test("parseRuleDraft rejects unsafe extensionId", () => {
+  const win = loadDashboard();
+  const hash = "#rules?draftId=x&host=github.com&pattern=*%3A%2F%2Fgithub.com%2F*&suggestWww=0&source=add_active_site&extensionId=" + encodeURIComponent("<script>");
+  assert.equal(win.ExtensityDashboardInternals.parseRuleDraft(hash), null);
+});
+
+test("resolveDraftEnableIds preselects a known extension only", () => {
+  const win = loadDashboard();
+  const draft = { extensionId: "ext-a" };
+  const extensions = [{ id: "ext-a", name: "Alpha" }, { id: "ext-b", name: "Beta" }];
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(win.ExtensityDashboardInternals.resolveDraftEnableIds(draft, extensions))),
+    ["ext-a"]
+  );
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(win.ExtensityDashboardInternals.resolveDraftEnableIds(draft, []))),
+    []
+  );
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(win.ExtensityDashboardInternals.resolveDraftEnableIds({}, extensions))),
+    []
+  );
 });
 
 test("parseRuleDraft suggestWww=0 means false", () => {

@@ -1396,8 +1396,13 @@ importScripts(
   }
 
   async function saveOptions(payload) {
+    var previousOptions = await storage.loadSyncOptions();
     var nextOptions = await storage.saveSyncOptions(payload.options || {});
     applyCacheOptions(nextOptions);
+    if (payload.options && payload.options.syncMode && payload.options.syncMode !== previousOptions.syncMode) {
+      var profilesState = await storage.loadProfiles();
+      await storage.saveProfiles(profilesState.map, profilesState.meta);
+    }
     var localState = await storage.loadLocalState();
 
     if (!nextOptions.enableReminders) {
@@ -1672,6 +1677,9 @@ importScripts(
     params.set("pattern", info.pattern);
     params.set("suggestWww", info.suggestWww ? "1" : "0");
     params.set("source", "add_active_site");
+    if (deepLink.extensionId) {
+      params.set("extensionId", String(deepLink.extensionId));
+    }
     return "dashboard.html#rules?" + params.toString();
   }
 
@@ -1913,6 +1921,9 @@ importScripts(
     if (migrations.migratePopupListStyle) {
       await migrations.migratePopupListStyle();
     }
+    if (migrations.migrateSyncModesAndDismissals) {
+      await migrations.migrateSyncModesAndDismissals();
+    }
   }
 
   addChromeListener(chrome.runtime && chrome.runtime.onInstalled, function() {
@@ -1937,6 +1948,105 @@ importScripts(
   addChromeListener(chrome.management && chrome.management.onUninstalled, invalidateManagementCache);
   addChromeListener(chrome.management && chrome.management.onEnabled, invalidateManagementCache);
   addChromeListener(chrome.management && chrome.management.onDisabled, invalidateManagementCache);
+
+  var syncEchoUntil = 0;
+  var syncEchoKeys = {};
+  var syncIngestTimer = null;
+  var lastKnownSyncOptionsUpdatedAt = 0;
+  var lastKnownSyncProfilesUpdatedAt = 0;
+
+  if (typeof storage.registerSyncWriteHook === "function") {
+    storage.registerSyncWriteHook(function(keys) {
+      syncEchoUntil = Date.now() + 2500;
+      syncEchoKeys = (keys || []).reduce(function(result, key) {
+        result[key] = true;
+        return result;
+      }, {});
+    });
+  }
+
+  function isLocalSyncEcho(changes) {
+    if (Date.now() > syncEchoUntil) {
+      return false;
+    }
+    var changedKeys = Object.keys(changes || {});
+    if (!changedKeys.length) {
+      return false;
+    }
+    return changedKeys.every(function(key) {
+      return !!syncEchoKeys[key];
+    });
+  }
+
+  function hasRelevantSyncChanges(changes) {
+    return Object.keys(changes || {}).some(function(key) {
+      return storage.isRelevantSyncChangeKey(key);
+    });
+  }
+
+  function broadcastSyncRemoteUpdate() {
+    if (!chrome.runtime || typeof chrome.runtime.sendMessage !== "function") {
+      return;
+    }
+    chrome.runtime.sendMessage({ type: "SYNC_REMOTE_UPDATE" }).catch(function() {});
+  }
+
+  async function ingestRemoteSyncChanges(changes) {
+    var meta = await storage.loadSyncMeta();
+    var remoteOptionsAt = changes && changes.syncOptionsUpdatedAt
+      ? (changes.syncOptionsUpdatedAt.newValue || 0)
+      : meta.syncOptionsUpdatedAt;
+    var remoteProfilesAt = changes && changes.syncProfilesUpdatedAt
+      ? (changes.syncProfilesUpdatedAt.newValue || 0)
+      : meta.syncProfilesUpdatedAt;
+    var shouldRefresh = remoteOptionsAt > lastKnownSyncOptionsUpdatedAt
+      || remoteProfilesAt > lastKnownSyncProfilesUpdatedAt
+      || !!(changes && (changes.profiles || changes.profileMeta || changes.localProfiles));
+
+    lastKnownSyncOptionsUpdatedAt = storage.pickNewerTimestamp(
+      lastKnownSyncOptionsUpdatedAt,
+      meta.syncOptionsUpdatedAt
+    );
+    lastKnownSyncProfilesUpdatedAt = storage.pickNewerTimestamp(
+      lastKnownSyncProfilesUpdatedAt,
+      meta.syncProfilesUpdatedAt
+    );
+
+    if (!shouldRefresh) {
+      return;
+    }
+
+    var context = await loadContext();
+    applyCacheOptions(context.options);
+    broadcastSyncRemoteUpdate();
+  }
+
+  async function initializeSyncRevisionMarkers() {
+    var meta = await storage.loadSyncMeta();
+    lastKnownSyncOptionsUpdatedAt = meta.syncOptionsUpdatedAt || 0;
+    lastKnownSyncProfilesUpdatedAt = meta.syncProfilesUpdatedAt || 0;
+  }
+
+  addChromeListener(chrome.storage && chrome.storage.onChanged, function(changes, areaName) {
+    if (areaName !== "sync") {
+      return;
+    }
+    if (isLocalSyncEcho(changes)) {
+      return;
+    }
+    if (!hasRelevantSyncChanges(changes)) {
+      return;
+    }
+    if (syncIngestTimer) {
+      clearTimeout(syncIngestTimer);
+    }
+    syncIngestTimer = setTimeout(function() {
+      syncIngestTimer = null;
+      ingestRemoteSyncChanges(changes).catch(function(error) {
+        console.error("sync_ingest_failed", error);
+      });
+    }, 300);
+  });
 
   addChromeListener(chrome.runtime && chrome.runtime.onMessage, function(message, sender, sendResponse) {
     handleMessage(message).then(function(payload) {
@@ -2091,7 +2201,9 @@ importScripts(
     }
   });
 
-  runMigrations().catch(function(error) {
+  runMigrations().then(function() {
+    return initializeSyncRevisionMarkers();
+  }).catch(function(error) {
     console.error("initial_migration_failed", error);
   });
 

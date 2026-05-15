@@ -111,6 +111,8 @@ document.addEventListener("DOMContentLoaded", function() {
     normalized.popupProfilePillTextMode = normalizePopupTextMode(normalized.popupProfilePillTextMode);
     normalized.popupTableActionPanelPosition = normalizePopupPanelPosition(normalized.popupTableActionPanelPosition);
     normalized.pinMethod = normalizeEnum(normalized.pinMethod, ["auto", "manual"], "auto");
+    normalized.syncMode = normalizeEnum(normalized.syncMode, ["full", "smart", "minimal"], "smart");
+    normalized.syncProfilesPartial = normalized.syncProfilesPartial === true;
     return normalized;
   }
 
@@ -172,10 +174,27 @@ document.addEventListener("DOMContentLoaded", function() {
       return formatTimestamp(self.options.lastDriveSync());
     });
     self.localProfilesLabel = ko.pureComputed(function() {
+      var mode = self.options.syncMode ? self.options.syncMode() : "smart";
+      if (self.options.syncProfilesPartial && self.options.syncProfilesPartial()) {
+        if (mode === "minimal") {
+          return "Minimal sync (memberships local; options/metadata in sync)";
+        }
+        return "Smart sync (reserved profiles in sync; custom memberships may be local)";
+      }
       if (self.options.localProfiles && self.options.localProfiles()) {
-        return "Local storage";
+        return "Local storage (quota fallback)";
       }
       return "Chrome sync storage";
+    });
+    self.syncModeDescription = ko.pureComputed(function() {
+      var mode = self.options.syncMode ? self.options.syncMode() : "smart";
+      if (mode === "full") {
+        return "Sync all options and full profile memberships when quota allows.";
+      }
+      if (mode === "minimal") {
+        return "Sync essential options and profile metadata only; memberships stay on this device.";
+      }
+      return "Sync all options plus reserved profiles; large custom profiles stay local when needed.";
     });
     self.exportJson = function() {
       self.performAction(ExtensityApi.exportBackup()).then(function(payload) {
@@ -236,12 +255,18 @@ document.addEventListener("DOMContentLoaded", function() {
   function attachSyncStatusMethods(self) {
     self.syncStatus = ko.observable("");
     self.syncStatusReason = ko.observable("");
+    self.syncStatusDetails = ko.observable("");
     self.syncStatusTimestamp = ko.observable(0);
 
     self.syncStatusLabel = ko.pureComputed(function() {
       var status = self.syncStatus();
       if (!status) { return ""; }
-      var labels = { synced: "Synced", error: "Error", not_connected: "Not connected" };
+      var labels = {
+        synced: "Synced",
+        synced_partial: "Synced (partial)",
+        error: "Error",
+        not_connected: "Not connected"
+      };
       var reason = self.syncStatusReason();
       var base = labels[status] || status;
       return reason ? base + ": " + reason : base;
@@ -252,56 +277,11 @@ document.addEventListener("DOMContentLoaded", function() {
       self.syncStatusReason("");
       self.syncStatusTimestamp(0);
 
-      if (!chrome.storage || !chrome.storage.sync || typeof chrome.storage.sync.get !== "function") {
-        self.syncStatus("not_connected");
-        self.syncStatusReason("Browser sync storage is unavailable in this environment.");
+      ExtensityBrowserSync.checkBrowserSyncHealth(self.options.keys || []).then(function(result) {
+        self.syncStatus(result.status);
+        self.syncStatusReason(result.reason);
+        self.syncStatusDetails(result.detailsSummary || "");
         self.syncStatusTimestamp(Date.now());
-        return;
-      }
-
-      chrome.storage.sync.get(["profiles", "localProfiles"], function(syncData) {
-        var syncError = chrome.runtime.lastError;
-        if (syncError) {
-          self.syncStatus("not_connected");
-          self.syncStatusReason("Could not access browser sync storage: " + syncError.message);
-          self.syncStatusTimestamp(Date.now());
-          return;
-        }
-
-        var optionsKeys = self.options.keys || [];
-        chrome.storage.sync.get(optionsKeys, function(optionsData) {
-          var optionsError = chrome.runtime.lastError;
-          if (optionsError) {
-            self.syncStatus("error");
-            self.syncStatusReason("Could not read sync settings data: " + optionsError.message);
-            self.syncStatusTimestamp(Date.now());
-            return;
-          }
-
-          var missingOptions = optionsKeys.filter(function(key) {
-            return typeof optionsData[key] === "undefined";
-          });
-          var localProfilesEnabled = !!syncData.localProfiles;
-          var profiles = syncData.profiles;
-          var profilesInSync = profiles && typeof profiles === "object" && !Array.isArray(profiles);
-          var hasMissingData = missingOptions.length > 0 || (!localProfilesEnabled && !profilesInSync);
-
-          if (localProfilesEnabled) {
-            self.syncStatus("error");
-            self.syncStatusReason("Profiles are local-only because sync quota fallback is active.");
-          } else if (hasMissingData) {
-            self.syncStatus("error");
-            if (!profilesInSync) {
-              self.syncStatusReason("Profiles are missing from sync storage.");
-            } else {
-              self.syncStatusReason("Some settings keys are missing from sync storage: " + missingOptions.slice(0, 5).join(", "));
-            }
-          } else {
-            self.syncStatus("synced");
-            self.syncStatusReason("Settings and profiles are present in browser sync storage.");
-          }
-          self.syncStatusTimestamp(Date.now());
-        });
       });
     };
   }
@@ -443,6 +423,11 @@ document.addEventListener("DOMContentLoaded", function() {
     var vm = new OptionsViewModel();
     ko.bindingProvider.instance = new ko.secureBindingsProvider({});
     ko.applyBindings(vm, document.getElementById("options-page"));
+    if (typeof ExtensityBrowserSync !== "undefined" && ExtensityBrowserSync.attachSyncRemoteUpdateListener) {
+      ExtensityBrowserSync.attachSyncRemoteUpdateListener(function() {
+        vm.refresh();
+      });
+    }
     vm.refresh();
   });
 });

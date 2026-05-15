@@ -148,16 +148,33 @@
         return;
       }
       self.dismissals.push(id);
-      chrome.storage.sync.set({ dismissals: self.dismissals() });
+      if (root.ExtensityStorage && typeof root.ExtensityStorage.appendDismissal === "function") {
+        root.ExtensityStorage.appendDismissal(id).catch(function() {});
+        return;
+      }
+      if (chrome.storage && chrome.storage.local) {
+        chrome.storage.local.set({ dismissals: self.dismissals() });
+      }
     };
 
     self.dismissed = function(id) {
       return self.dismissals.indexOf(id) !== -1;
     };
 
-    chrome.storage.sync.get({ dismissals: [] }, function(result) {
-      self.dismissals(result.dismissals || []);
-    });
+    if (root.ExtensityStorage && typeof root.ExtensityStorage.loadDismissals === "function") {
+      root.ExtensityStorage.loadDismissals().then(function(items) {
+        self.dismissals(items || []);
+      }).catch(function() {
+        self.dismissals([]);
+      });
+      return;
+    }
+
+    if (chrome.storage && chrome.storage.local) {
+      chrome.storage.local.get({ dismissals: [] }, function(result) {
+        self.dismissals(result.dismissals || []);
+      });
+    }
   }
 
   function OptionsCollection(initialState) {
@@ -268,10 +285,21 @@
   ];
 
   var PROFILE_ICONS = [
-    "fa-rocket","fa-bolt","fa-star","fa-fire","fa-lightbulb-o",
-    "fa-paint-brush","fa-globe","fa-shield","fa-cogs","fa-flask",
-    "fa-leaf","fa-diamond","fa-music","fa-gamepad","fa-bookmark",
-    "fa-cloud","fa-paper-plane-o","fa-puzzle-piece","fa-code","fa-graduation-cap"
+    "fa-rocket", "fa-bolt", "fa-star", "fa-fire", "fa-lightbulb-o",
+    "fa-paint-brush", "fa-globe", "fa-shield", "fa-cogs", "fa-flask",
+    "fa-leaf", "fa-diamond", "fa-music", "fa-gamepad", "fa-bookmark",
+    "fa-cloud", "fa-paper-plane-o", "fa-puzzle-piece", "fa-code", "fa-graduation-cap",
+    "fa-comments", "fa-comment-o", "fa-envelope-o", "fa-phone", "fa-microphone",
+    "fa-commenting-o", "fa-whatsapp",
+    "fa-folder-o", "fa-tags", "fa-files-o", "fa-clipboard", "fa-paperclip", "fa-cut", "fa-scissors",
+    "fa-download", "fa-cloud-download",
+    "fa-terminal", "fa-keyboard-o", "fa-magic",
+    "fa-search", "fa-book", "fa-university", "fa-binoculars",
+    "fa-shopping-cart", "fa-shopping-bag", "fa-credit-card", "fa-money",
+    "fa-briefcase", "fa-calendar", "fa-camera", "fa-car", "fa-coffee", "fa-heart",
+    "fa-map-marker", "fa-newspaper-o", "fa-pencil", "fa-plane", "fa-wrench",
+    "fa-lock", "fa-bell", "fa-database", "fa-desktop", "fa-film", "fa-gift",
+    "fa-users", "fa-video-camera", "fa-wifi", "fa-trophy", "fa-medkit", "fa-picture-o"
   ];
 
   function randomProfileColor() {
@@ -638,6 +666,237 @@
     return "Backup imported.";
   }
 
+  var BROWSER_SYNC_SUCCESS_REASON =
+    "Extension settings and profiles are present in chrome.storage.sync for this profile. " +
+    "This does not confirm Chromium account sync or entries in brave://sync-internals.";
+
+  var BROWSER_SYNC_PARTIAL_REASONS = {
+    minimal: "Minimal sync mode is active: options and profile metadata sync; custom profile memberships stay on this device.",
+    smart: "Smart sync mode is active: reserved profiles and metadata sync; large custom profile memberships may stay on this device.",
+    smart_quota: "Smart sync is using local profile storage because the profile payload exceeded sync limits."
+  };
+
+  function getSyncModeLabel(syncMode) {
+    if (syncMode === "full") {
+      return "Full sync";
+    }
+    if (syncMode === "minimal") {
+      return "Minimal sync";
+    }
+    return "Smart sync";
+  }
+
+  function evaluateBrowserSyncHealth(input) {
+    var params = input || {};
+    var optionsKeys = params.optionsKeys || [];
+    var syncData = params.syncData || {};
+    var optionsData = params.optionsData || {};
+
+    if (params.syncAvailable === false) {
+      return {
+        status: "not_connected",
+        reason: "chrome.storage.sync is unavailable in this environment (extension sync area cannot be read)."
+      };
+    }
+
+    if (params.syncReadError) {
+      return {
+        status: "not_connected",
+        reason: "Could not read chrome.storage.sync: " + params.syncReadError
+      };
+    }
+
+    if (params.optionsReadError) {
+      return {
+        status: "error",
+        reason: "Could not read extension settings from chrome.storage.sync: " + params.optionsReadError
+      };
+    }
+
+    var missingOptions = optionsKeys.filter(function(key) {
+      return typeof optionsData[key] === "undefined";
+    });
+    var localProfilesEnabled = !!syncData.localProfiles;
+    var syncProfilesPartial = !!syncData.syncProfilesPartial;
+    var syncMode = root.ExtensityStorage && typeof root.ExtensityStorage.normalizeSyncMode === "function"
+      ? root.ExtensityStorage.normalizeSyncMode(optionsData.syncMode || syncData.syncMode)
+      : (optionsData.syncMode || syncData.syncMode || "smart");
+    var profiles = syncData.profiles;
+    var profilesInSync = profiles && typeof profiles === "object" && !Array.isArray(profiles);
+    var profilesRequiredInSync = !(localProfilesEnabled && syncMode === "full" && !syncProfilesPartial);
+    var hasMissingData = missingOptions.length > 0 || (profilesRequiredInSync && !profilesInSync);
+
+    if (localProfilesEnabled && syncMode === "full" && !syncProfilesPartial) {
+      return {
+        status: "error",
+        reason: "Profiles are stored locally only because sync quota fallback is active (localProfiles is set).",
+        missingOptions: missingOptions,
+        profilesInSync: profilesInSync,
+        syncMode: syncMode,
+        syncProfilesPartial: syncProfilesPartial
+      };
+    }
+
+    if (hasMissingData) {
+      var reason = !profilesInSync
+        ? "Profiles are missing from chrome.storage.sync."
+        : "Some extension settings keys are missing from chrome.storage.sync: " + missingOptions.slice(0, 5).join(", ");
+      return {
+        status: "error",
+        reason: reason,
+        missingOptions: missingOptions,
+        profilesInSync: profilesInSync,
+        syncMode: syncMode,
+        syncProfilesPartial: syncProfilesPartial
+      };
+    }
+
+    if (syncProfilesPartial || (localProfilesEnabled && syncMode !== "full")) {
+      var partialReason = BROWSER_SYNC_PARTIAL_REASONS[syncMode] || BROWSER_SYNC_PARTIAL_REASONS.smart;
+      if (syncMode === "smart" && localProfilesEnabled && params.diagnostics && params.diagnostics.lastSyncError) {
+        partialReason = BROWSER_SYNC_PARTIAL_REASONS.smart_quota;
+      }
+      return {
+        status: "synced_partial",
+        reason: partialReason,
+        missingOptions: [],
+        profilesInSync: profilesInSync,
+        syncMode: syncMode,
+        syncProfilesPartial: true
+      };
+    }
+
+    return {
+      status: "synced",
+      reason: BROWSER_SYNC_SUCCESS_REASON,
+      missingOptions: [],
+      profilesInSync: true,
+      syncMode: syncMode,
+      syncProfilesPartial: false
+    };
+  }
+
+  function formatSyncErrorLabel(lastSyncError) {
+    if (!lastSyncError) {
+      return "";
+    }
+    var code = lastSyncError.code || "unknown";
+    var labels = {
+      quota: "Sync quota exceeded",
+      quota_per_item: "Sync item too large",
+      quota_total: "Sync storage full",
+      sync_unavailable: "Sync unavailable",
+      sync_conflict: "Sync conflict",
+      unknown: "Sync write error",
+      write_rate_limit: "Sync write rate limit"
+    };
+    return labels[code] || labels.unknown;
+  }
+
+  function formatSyncDiagnosticsSummary(diagnostics) {
+    if (!diagnostics) {
+      return "";
+    }
+    var parts = [];
+    if (typeof diagnostics.bytesInUse === "number" && diagnostics.limits) {
+      parts.push(
+        "Sync area: " + diagnostics.bytesInUse + " / " + diagnostics.limits.quotaBytes + " bytes"
+      );
+    }
+    if (diagnostics.syncMode) {
+      parts.push("Mode: " + getSyncModeLabel(diagnostics.syncMode) + ".");
+    }
+    if (diagnostics.syncProfilesPartial) {
+      parts.push("Profile memberships may be device-local by design in this mode.");
+    } else if (diagnostics.localProfiles) {
+      parts.push("Profiles are in local fallback mode (not in chrome.storage.sync).");
+    }
+    if (typeof diagnostics.profilesBytes === "number" && diagnostics.profilesBytesThreshold) {
+      parts.push(
+        "Profiles payload in sync: " + diagnostics.profilesBytes + " / " + diagnostics.profilesBytesThreshold + " bytes (smart threshold)"
+      );
+    }
+    if (diagnostics.lastSyncError) {
+      parts.push(formatSyncErrorLabel(diagnostics.lastSyncError) + ": " + diagnostics.lastSyncError.message);
+    }
+    if (diagnostics.syncOptionsUpdatedAt || diagnostics.syncProfilesUpdatedAt) {
+      parts.push(
+        "Revision markers — options: " + diagnostics.syncOptionsUpdatedAt +
+        ", profiles: " + diagnostics.syncProfilesUpdatedAt
+      );
+    }
+    return parts.join(" ");
+  }
+
+  function checkBrowserSyncHealth(optionsKeys) {
+    return new Promise(function(resolve) {
+      var diagnosticsPromise = root.ExtensityStorage && typeof root.ExtensityStorage.getSyncDiagnostics === "function"
+        ? root.ExtensityStorage.getSyncDiagnostics()
+        : Promise.resolve(null);
+
+      if (!chrome.storage || !chrome.storage.sync || typeof chrome.storage.sync.get !== "function") {
+        diagnosticsPromise.then(function(diagnostics) {
+          var result = evaluateBrowserSyncHealth({
+            syncAvailable: false,
+            optionsKeys: optionsKeys || []
+          });
+          result.diagnostics = diagnostics;
+          result.detailsSummary = formatSyncDiagnosticsSummary(diagnostics);
+          resolve(result);
+        });
+        return;
+      }
+
+      chrome.storage.sync.get(["profiles", "localProfiles"], function(syncData) {
+        var syncError = chrome.runtime.lastError;
+        if (syncError) {
+          diagnosticsPromise.then(function(diagnostics) {
+            var result = evaluateBrowserSyncHealth({
+              syncAvailable: true,
+              syncReadError: syncError.message,
+              optionsKeys: optionsKeys || []
+            });
+            result.diagnostics = diagnostics;
+            result.detailsSummary = formatSyncDiagnosticsSummary(diagnostics);
+            resolve(result);
+          });
+          return;
+        }
+
+        chrome.storage.sync.get(optionsKeys || [], function(optionsData) {
+          var optionsError = chrome.runtime.lastError;
+          diagnosticsPromise.then(function(diagnostics) {
+            var result = evaluateBrowserSyncHealth({
+              syncAvailable: true,
+              syncData: syncData,
+              optionsData: optionsData || {},
+              optionsReadError: optionsError ? optionsError.message : null,
+              optionsKeys: optionsKeys || []
+            });
+            result.diagnostics = diagnostics;
+            result.detailsSummary = formatSyncDiagnosticsSummary(diagnostics);
+            resolve(result);
+          });
+        });
+      });
+    });
+  }
+
+  function attachSyncRemoteUpdateListener(refreshHandler) {
+    if (!chrome.runtime || typeof chrome.runtime.onMessage !== "object" || typeof refreshHandler !== "function") {
+      return function() {};
+    }
+    var listener = function(message) {
+      if (message && message.type === "SYNC_REMOTE_UPDATE") {
+        refreshHandler();
+      }
+    };
+    chrome.runtime.onMessage.addListener(listener);
+    return function() {
+      chrome.runtime.onMessage.removeListener(listener);
+    };
+  }
+
   var ExtensityApi = {
     assignExtensionProfile: function(extensionId, profileNameOrNull) {
       return chromeMessage({
@@ -837,6 +1096,14 @@
   root.fadeOutMessage = fadeOutMessage;
   root.ExtensityEngine = {
     PROFILE_ICONS: PROFILE_ICONS
+  };
+  root.ExtensityBrowserSync = {
+    attachSyncRemoteUpdateListener: attachSyncRemoteUpdateListener,
+    checkBrowserSyncHealth: checkBrowserSyncHealth,
+    evaluateBrowserSyncHealth: evaluateBrowserSyncHealth,
+    formatSyncDiagnosticsSummary: formatSyncDiagnosticsSummary,
+    formatSyncErrorLabel: formatSyncErrorLabel,
+    getSyncModeLabel: getSyncModeLabel
   };
   root.ExtensityUtils = {
     applyThemeClasses: applyThemeClasses,

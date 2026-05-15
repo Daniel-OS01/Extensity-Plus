@@ -73,3 +73,15 @@ test("popup hides content by default until knockout applies loading state", () =
   assert.match(html, /<section id="content" class="main" style="display:none;" data-sbind="visible: !loading\(\)">/);
   assert.match(html, /<section id="loading-section" class="main" data-sbind="visible: loading">/);
 });
+
+test("popup applies configured width before knockout via early bootstrap", () => {
+  const indexScript = fs.readFileSync(path.join(repoRoot, "js/index.js"), "utf8");
+  const css = fs.readFileSync(path.join(repoRoot, "styles/index.css"), "utf8");
+
+  assert.match(indexScript, /function bootstrapPopupWidthEarly\(\)/);
+  assert.match(indexScript, /POPUP_WIDTH_SESSION_KEY/);
+  assert.match(indexScript, /ExtensityStorage\.applyPopupWidthCss/);
+  assert.match(indexScript, /sessionStorage\.setItem\(ExtensityStorage\.POPUP_WIDTH_SESSION_KEY/);
+  assert.match(css, /html \{[\s\S]*width: var\(--popup-width, 380px\)/);
+  assert.match(css, /#boot-loading,\s*#loading-section/);
+});

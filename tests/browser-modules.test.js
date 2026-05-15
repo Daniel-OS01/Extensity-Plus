@@ -116,6 +116,9 @@ function loadBackgroundModule(extraSelf = {}, overrides = {}) {
         },
         migrateTo2_0_0: async function() {
           return false;
+        },
+        migrateSyncModesAndDismissals: async function() {
+          return false;
         }
       },
       ExtensityReminders: {},
@@ -123,6 +126,20 @@ function loadBackgroundModule(extraSelf = {}, overrides = {}) {
         clone(value) {
           return JSON.parse(JSON.stringify(value));
         },
+        isRelevantSyncChangeKey() {
+          return true;
+        },
+        loadSyncMeta: async function() {
+          return {
+            syncOptionsUpdatedAt: 0,
+            syncProfilesUpdatedAt: 0,
+            syncWriterId: ""
+          };
+        },
+        pickNewerTimestamp(left, right) {
+          return Math.max(left || 0, right || 0);
+        },
+        registerSyncWriteHook() {},
         uniqueArray(items) {
           return Array.from(new Set(items || []));
         },
@@ -234,7 +251,10 @@ test("ensureSyncDefaults backfills missing profile direction keys", async () => 
 
   assert.deepEqual(normalize(syncState), {
     profileLayoutDirection: "ltr",
-    profileNameDirection: "ltr"
+    profileNameDirection: "ltr",
+    syncOptionsUpdatedAt: 0,
+    syncProfilesUpdatedAt: 0,
+    syncWriterId: ""
   });
 });
 
@@ -271,7 +291,10 @@ test("ensureSyncDefaults preserves existing profile direction values", async () 
 
   assert.deepEqual(normalize(syncState), {
     profileLayoutDirection: "ltr",
-    profileNameDirection: "rtl"
+    profileNameDirection: "rtl",
+    syncOptionsUpdatedAt: 0,
+    syncProfilesUpdatedAt: 0,
+    syncWriterId: ""
   });
 });
 
@@ -288,6 +311,182 @@ test("popup profile badge labels support full and compact formatting", () => {
   assert.equal(root.ExtensityPopupLabels.formatProfileBadgeLabel("Testing", "compact", 4), "Test");
   assert.equal(root.ExtensityPopupLabels.formatProfileBadgeLabel("Bookmark Organization", "full", 4), "Bookmark Organization");
   assert.equal(root.ExtensityPopupLabels.formatProfileBadgeLabel("Bookmark Organization", "icons_only", 4), "");
+});
+
+test("PROFILE_ICONS offers a broad unique Font Awesome 4.7 set", () => {
+  const root = {};
+  loadBrowserScript(path.join(repoRoot, "js/engine.js"), {
+    ko: { extenders: {} },
+    window: root
+  });
+
+  const icons = root.ExtensityEngine.PROFILE_ICONS;
+  const faCss = fs.readFileSync(path.join(repoRoot, "styles/font-awesome.min.css"), "utf8");
+
+  assert.ok(icons.length >= 45, "expected at least 45 profile icon choices");
+  assert.equal(new Set(icons).size, icons.length, "PROFILE_ICONS must not contain duplicates");
+
+  icons.forEach(function(icon) {
+    assert.match(icon, /^fa-[a-z0-9-]+$/);
+    assert.ok(
+      faCss.includes("." + icon + ":before") || faCss.includes("." + icon + ","),
+      "missing Font Awesome class: " + icon
+    );
+  });
+
+  const required = [
+    "fa-whatsapp",
+    "fa-shopping-cart",
+    "fa-scissors",
+    "fa-comments",
+    "fa-download",
+    "fa-bookmark",
+    "fa-folder-o",
+    "fa-terminal",
+    "fa-search"
+  ];
+  required.forEach(function(icon) {
+    assert.ok(icons.includes(icon), "expected PROFILE_ICONS to include " + icon);
+  });
+});
+
+function makeMinimalKo() {
+  function observable(initialValue) {
+    let value = initialValue;
+    const obs = function(nextValue) {
+      if (arguments.length === 0) {
+        return value;
+      }
+      value = nextValue;
+      return obs;
+    };
+    return obs;
+  }
+
+  function observableArray(initialValue) {
+    return observable((initialValue || []).slice());
+  }
+
+  return {
+    extenders: {},
+    observable: observable,
+    observableArray: observableArray,
+    pureComputed(fn) {
+      return fn;
+    }
+  };
+}
+
+test("popup recent sort prioritizes lastUsed over installedAt", () => {
+  const root = {};
+  const ko = makeMinimalKo();
+
+  loadBrowserScript(path.join(repoRoot, "js/engine.js"), {
+    ko: ko,
+    window: root
+  });
+
+  const ExtensionModel = root.ExtensionModel;
+  const oldUsed = new ExtensionModel({
+    enabled: true,
+    id: "ext-old-used",
+    installedAt: 100,
+    isApp: false,
+    lastUsed: 500,
+    mayDisable: true,
+    name: "Old Used"
+  });
+  const newInstall = new ExtensionModel({
+    enabled: true,
+    id: "ext-new-install",
+    installedAt: 900,
+    isApp: false,
+    lastUsed: 2,
+    mayDisable: true,
+    name: "New Install"
+  });
+
+  function compareByRecent(left, right) {
+    if (left.lastUsed() !== right.lastUsed()) {
+      return right.lastUsed() - left.lastUsed();
+    }
+    if (left.installedAt() !== right.installedAt()) {
+      return right.installedAt() - left.installedAt();
+    }
+    return left.displayName().toUpperCase().localeCompare(right.displayName().toUpperCase());
+  }
+
+  const sorted = [newInstall, oldUsed].sort(compareByRecent);
+  assert.deepEqual(sorted.map((item) => item.id()), ["ext-old-used", "ext-new-install"]);
+});
+
+test("popup favorites recent sort keeps enabled favorites above disabled", () => {
+  const root = {};
+  const ko = makeMinimalKo();
+
+  loadBrowserScript(path.join(repoRoot, "js/engine.js"), {
+    ko: ko,
+    window: root
+  });
+
+  const ExtensionModel = root.ExtensionModel;
+  const enabledFavorite = new ExtensionModel({
+    enabled: true,
+    favorite: true,
+    id: "ext-fav-on",
+    installedAt: 100,
+    isApp: false,
+    lastUsed: 1,
+    mayDisable: true,
+    name: "Enabled Favorite"
+  });
+  const disabledFavorite = new ExtensionModel({
+    enabled: false,
+    favorite: true,
+    id: "ext-fav-off",
+    installedAt: 900,
+    isApp: false,
+    lastUsed: 999,
+    mayDisable: true,
+    name: "Disabled Favorite"
+  });
+
+  function favoriteBucketRank(item) {
+    var favorite = typeof item.favorite === "function" && item.favorite();
+    var enabled = !!item.status();
+
+    if (!favorite && enabled) {
+      return 0;
+    }
+    if (favorite && enabled) {
+      return 1;
+    }
+    if (favorite) {
+      return 2;
+    }
+    return 3;
+  }
+
+  function compareByRecent(left, right) {
+    if (left.lastUsed() !== right.lastUsed()) {
+      return right.lastUsed() - left.lastUsed();
+    }
+    if (left.installedAt() !== right.installedAt()) {
+      return right.installedAt() - left.installedAt();
+    }
+    return left.displayName().toUpperCase().localeCompare(right.displayName().toUpperCase());
+  }
+
+  const sorted = [disabledFavorite, enabledFavorite].sort(function(left, right) {
+    const leftBucket = favoriteBucketRank(left);
+    const rightBucket = favoriteBucketRank(right);
+    if (leftBucket !== rightBucket) {
+      return leftBucket - rightBucket;
+    }
+    return compareByRecent(left, right);
+  });
+
+  assert.deepEqual(sorted.map((item) => item.id()), ["ext-fav-on", "ext-fav-off"]);
 });
 
 test("clampInteger enforces boundaries through utility function", () => {
@@ -2216,7 +2415,7 @@ test("options page normalizes activeProfile against loaded profiles and saves No
     { label: "Favorites", value: "__favorites" },
     { label: "Work", value: "Work" }
   ]);
-  assert.equal(capturedVm.localProfilesLabel(), "Local storage");
+  assert.equal(capturedVm.localProfilesLabel(), "Local storage (quota fallback)");
 
   capturedVm.applyState({
     options: {
@@ -2862,19 +3061,19 @@ test("popup rows expose direct profile membership and sort handlers", async () =
   assert.equal(typeof extension.onProfileMembershipChange, "function");
   assert.equal(typeof extension.pinToToolbarAction, "function");
   assert.equal(extension.pinToToolbarTitle(), "Pin to browser toolbar");
-  assert.deepEqual(normalize(listedExtensionIds.slice(0, 6)), ["ext-ao", "ext-alpha", "ext-zeta", "ext-off"]);
+  assert.deepEqual(normalize(listedExtensionIds.slice(0, 6)), ["ext-alpha", "ext-zeta", "ext-ao", "ext-off"]);
   assert.deepEqual(normalize(listedFavoriteIds.slice(0, 6)), ["ext-1", "ext-fav-off"]);
   assert.equal(extension.showTableRow(), true);
   assert.deepEqual(normalize(recentSortedIds.slice(0, 6)), [
-    "ext-ao",
     "ext-alpha",
     "ext-zeta",
+    "ext-ao",
     "ext-off"
   ]);
   assert.deepEqual(normalize(capturedVm.listedItems().map((item) => item.id()).slice(0, 6)), [
-    "ext-ao",
     "ext-alpha",
     "ext-zeta",
+    "ext-ao",
     "ext-off"
   ]);
   assert.deepEqual(normalize(profileNames), ["__always_on", "__base", "__favorites", "Work", "Focus", "Travel", "Home"]);

@@ -1,3 +1,36 @@
+(function bootstrapPopupWidthEarly() {
+  var storage = typeof ExtensityStorage !== "undefined" ? ExtensityStorage : null;
+  if (!storage || typeof storage.applyPopupWidthCss !== "function") {
+    return;
+  }
+
+  try {
+    if (typeof sessionStorage !== "undefined") {
+      var cached = sessionStorage.getItem(storage.POPUP_WIDTH_SESSION_KEY);
+      if (cached) {
+        storage.applyPopupWidthCss(cached);
+      }
+    }
+  } catch (error) {
+    // ignore — sessionStorage may be unavailable
+  }
+
+  if (typeof storage.getArea === "function") {
+    storage.getArea("sync", ["popupWidthPx"]).then(function(result) {
+      var width = storage.applyPopupWidthCss(result && result.popupWidthPx);
+      try {
+        if (typeof sessionStorage !== "undefined") {
+          sessionStorage.setItem(storage.POPUP_WIDTH_SESSION_KEY, String(width));
+        }
+      } catch (error) {
+        // ignore
+      }
+    }).catch(function() {
+      // ignore — popup keeps cached/default width
+    });
+  }
+})();
+
 document.addEventListener("DOMContentLoaded", function() {
   function normalizePopupState(state) {
     return state && state.options ? state : null;
@@ -308,7 +341,14 @@ document.addEventListener("DOMContentLoaded", function() {
       style.setProperty("--item-v-space-adjust", (isFinite(itemVerticalSpace) ? Math.min(itemVerticalSpace, 0) : 0) + "px");
       style.setProperty("--extension-icon-size", px(self.opts.extensionIconSizePx(), 16));
       style.setProperty("--popup-main-padding-x", px(self.opts.popupMainPaddingPx(), 0));
-      style.setProperty("--popup-width", px(self.opts.popupWidthPx(), 380));
+      var popupWidth = ExtensityStorage.applyPopupWidthCss(self.opts.popupWidthPx());
+      try {
+        if (typeof sessionStorage !== "undefined") {
+          sessionStorage.setItem(ExtensityStorage.POPUP_WIDTH_SESSION_KEY, String(popupWidth));
+        }
+      } catch (error) {
+        // ignore — sessionStorage may be unavailable
+      }
       if (self.opts.accentColor()) { style.setProperty("--accent", self.opts.accentColor()); }
       if (self.opts.popupBgColor()) { document.body.style.background = self.opts.popupBgColor(); }
       if (self.opts.fontFamily()) { document.body.style.fontFamily = self.opts.fontFamily(); }
@@ -453,7 +493,7 @@ document.addEventListener("DOMContentLoaded", function() {
         return self.openPermissionsPage(item);
       };
       item.addActiveSiteToUrlRulesAction = function() {
-        return self.addActiveSiteToUrlRulesAction();
+        return self.addActiveSiteToUrlRulesAction(item);
       };
       item.addActiveSiteEnabled = self.addActiveSiteEnabled;
       item.addActiveSiteTooltip = self.addActiveSiteTooltip;
@@ -697,12 +737,21 @@ document.addEventListener("DOMContentLoaded", function() {
       });
     };
 
-    self.addActiveSiteToUrlRulesAction = function() {
+    self.addActiveSiteToUrlRulesAction = function(item) {
       if (!self.addActiveSiteEnabled()) {
         return false;
       }
+      var extensionId = item && typeof item.id === "function" ? item.id() : "";
+      var deepLink = {
+        source: "add_active_site",
+        tab: "rules",
+        tabUrl: self._activeSiteRawUrl
+      };
+      if (extensionId) {
+        deepLink.extensionId = extensionId;
+      }
       ExtensityApi.openDashboard({
-        deepLink: { source: "add_active_site", tab: "rules", tabUrl: self._activeSiteRawUrl }
+        deepLink: deepLink
       }).catch(function(error) {
         self.error(error.message);
       }).finally(function() {
@@ -987,11 +1036,11 @@ document.addEventListener("DOMContentLoaded", function() {
       }
 
       function compareByRecent(left, right) {
-        if (left.installedAt() !== right.installedAt()) {
-          return right.installedAt() - left.installedAt();
-        }
         if (left.lastUsed() !== right.lastUsed()) {
           return right.lastUsed() - left.lastUsed();
+        }
+        if (left.installedAt() !== right.installedAt()) {
+          return right.installedAt() - left.installedAt();
         }
         return compareByName(left, right);
       }
@@ -1087,6 +1136,13 @@ document.addEventListener("DOMContentLoaded", function() {
     var vm = new ExtensityViewModel();
     vm._popupBindingsReady = false;
     ko.bindingProvider.instance = new ko.secureBindingsProvider({});
+    if (typeof ExtensityBrowserSync !== "undefined" && ExtensityBrowserSync.attachSyncRemoteUpdateListener) {
+      ExtensityBrowserSync.attachSyncRemoteUpdateListener(function() {
+        if (vm._popupBindingsReady) {
+          vm.refresh();
+        }
+      });
+    }
 
     ExtensityApi.getState().then(function(payload) {
       var state = payload && payload.state ? payload.state : null;

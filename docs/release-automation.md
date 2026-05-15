@@ -9,15 +9,20 @@ Tag pushes (`v*`) trigger [`.github/workflows/release-chrome-web-store.yml`](../
 1. Open [Google Cloud Console](https://console.cloud.google.com/) and select or create a project.
 2. Enable **Chrome Web Store API** for that project.
 3. Go to **APIs & Services → Credentials → Create credentials → OAuth client ID**.
-4. Application type: **Desktop app**.
-5. Copy the **Client ID** and **Client secret**.
+4. Application type: **Desktop app** (not Chrome extension, not Web application).
+5. Copy the **Client ID** and **Client secret** from that Desktop client’s JSON download.
+6. On the same Desktop client, add an **Authorized redirect URI**:
+   - `http://127.0.0.1:8765/`
+   - If you use another port via `CWS_OAUTH_PORT` or `--port`, add `http://127.0.0.1:PORT/` instead.
+
+If you see **Error 400: invalid_request** or “Access blocked”, you are almost certainly using the wrong client type (for example the **Extensity-Plus Chrome extension** OAuth client). Create or select **Desktop app** credentials instead.
 
 ### 2. Refresh token (local only)
 
 From the repository root:
 
 ```bash
-CWS_CLIENT_ID="your-client-id" CWS_CLIENT_SECRET="your-client-secret" npm run cws:bootstrap
+CWS_CLIENT_ID="your-desktop-client-id" CWS_CLIENT_SECRET="your-desktop-client-secret" npm run cws:bootstrap
 ```
 
 Or:
@@ -26,7 +31,7 @@ Or:
 npm run cws:bootstrap -- --client-id "..." --client-secret "..."
 ```
 
-The script prints a consent URL, accepts the authorization code Google shows, and prints a `refresh_token`. **Do not commit it.**
+The script starts a local callback on `http://127.0.0.1:8765/`, prints a consent URL, captures the redirect automatically, and prints a `refresh_token`. **Do not commit it.**
 
 ### 3. GitHub Actions secrets
 
@@ -88,6 +93,8 @@ Build artifacts from each run are stored as a GitHub Actions artifact named `cws
 
 ## Troubleshooting
 
+- **Error 400 invalid_request / Access blocked**: Use a **Desktop app** OAuth client, not Chrome extension or Web application. Add redirect URI `http://127.0.0.1:8765/` on that Desktop client. Re-download that client’s JSON for `client_id` / `client_secret`.
+- **redirect_uri_mismatch**: The redirect URI in Google Cloud must exactly match what the script prints (including trailing slash and port).
 - **Tag mismatch**: Ensure `git tag vX.Y.Z` matches `manifest.json` `"version": "X.Y.Z"`.
 - **Permission audit failure**: Every entry in `permissions` / `optional_permissions` must be referenced as `chrome.<name>` in `js/` (not only in tests).
 - **Upload failure**: Confirm all four `CWS_*` secrets are set and the Google account used for bootstrap owns the extension item.

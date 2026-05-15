@@ -1,6 +1,6 @@
 {
   "name": "Extensity-Plus",
-  "version": "4.0.1",
+  "version": "4.0.2",
   "manifest_version": 3,
   "description": "Quickly enable/disable Google Chrome extensions",
   "options_ui": {
@@ -23,7 +23,6 @@
   },
   "permissions": [
     "alarms",
-    "contextMenus",
     "debugger",
     "management",
     "notifications",
@@ -33,9 +32,6 @@
   ],
   "optional_host_permissions": [
     "https://chromewebstore.google.com/*"
-  ],
-  "optional_permissions": [
-    "identity"
   ],
   "commands": {
     "toggle-all-extensions": {

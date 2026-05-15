@@ -5,6 +5,7 @@
   "scripts": {
     "build": "make dist",
     "bundle:chrome-store": "node scripts/create-chrome-store-bundle.js",
+    "cws:bootstrap": "node scripts/cws-bootstrap-refresh-token.js",
     "check:manifest": "node scripts/validate-manifest.js",
     "generate:icons": "node scripts/generate-icons.js",
     "release:bump": "node scripts/bump-version.js",

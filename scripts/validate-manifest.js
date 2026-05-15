@@ -41,7 +41,6 @@ assert(manifest.icons && typeof manifest.icons === "object", "Manifest icons mus
 
 const requiredPermissions = [
   "alarms",
-  "contextMenus",
   "management",
   "notifications",
   "storage",
@@ -51,9 +50,6 @@ const requiredPermissions = [
 
 assert(Array.isArray(manifest.permissions), "Manifest permissions must be an array.");
 assert(hasAllEntries(manifest.permissions, requiredPermissions), "Manifest is missing one or more required permissions.");
-
-assert(Array.isArray(manifest.optional_permissions), "Manifest optional_permissions must be an array.");
-assert(manifest.optional_permissions.includes("identity"), "Manifest must keep identity as an optional permission.");
 
 const requiredCommands = [
   "toggle-all-extensions",

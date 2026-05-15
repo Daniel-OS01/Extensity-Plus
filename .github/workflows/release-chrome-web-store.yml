@@ -1,0 +1,160 @@
+name: Release to Chrome Web Store
+
+on:
+  push:
+    tags:
+      - "v*"
+
+concurrency:
+  group: cws-release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    name: Build, verify, and upload CWS draft
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify tag matches manifest version
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          MANIFEST_VERSION="$(node -p "require('./manifest.json').version")"
+          if [ "$TAG" != "$MANIFEST_VERSION" ]; then
+            echo "Tag v${TAG} does not match manifest.json version ${MANIFEST_VERSION}."
+            exit 1
+          fi
+          echo "MANIFEST_VERSION=${MANIFEST_VERSION}" >> "$GITHUB_ENV"
+          echo "Tag and manifest version match: ${MANIFEST_VERSION}"
+
+      - name: Validate manifest
+        run: npm run check:manifest
+
+      - name: Run unit tests
+        run: npm test
+
+      - name: Audit declared permissions are used in code
+        run: |
+          node - <<'EOF'
+          const fs = require("fs");
+          const path = require("path");
+
+          function walkJsFiles(dir, files) {
+            for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+              const fullPath = path.join(dir, entry.name);
+              if (entry.isDirectory()) {
+                if (entry.name === "libs") {
+                  continue;
+                }
+                walkJsFiles(fullPath, files);
+              } else if (entry.name.endsWith(".js")) {
+                files.push(fullPath);
+              }
+            }
+          }
+
+          function referencesPermission(files, perm) {
+            const pattern = new RegExp(`chrome\\.${perm}\\b`);
+            return files.some((filePath) => pattern.test(fs.readFileSync(filePath, "utf8")));
+          }
+
+          const manifest = JSON.parse(fs.readFileSync("manifest.json", "utf8"));
+          const declared = [
+            ...(manifest.permissions || []),
+            ...(manifest.optional_permissions || [])
+          ];
+          const jsFiles = [];
+          walkJsFiles("js", jsFiles);
+
+          const skipHostLike = (p) => p.includes("://") || p === "activeTab";
+          const failures = [];
+
+          for (const perm of declared) {
+            if (skipHostLike(perm)) {
+              continue;
+            }
+            if (!referencesPermission(jsFiles, perm)) {
+              failures.push(perm);
+            }
+          }
+
+          if (failures.length) {
+            console.error("Unused permissions declared in manifest.json:", failures.join(", "));
+            process.exit(1);
+          }
+
+          console.log("All declared permissions are referenced in js/.");
+          EOF
+
+      - name: Build distributable extension
+        run: make dist
+
+      - name: Build Chrome Web Store submission bundle
+        run: npm run bundle:chrome-store
+
+      - name: Resolve submission zip path
+        run: |
+          PACKAGE_NAME="$(node -p "require('./package.json').name")"
+          ZIP_PATH="artifacts/chrome-web-store/${PACKAGE_NAME}-v${MANIFEST_VERSION}.zip"
+          if [ ! -f "$ZIP_PATH" ]; then
+            echo "Expected submission zip not found: ${ZIP_PATH}"
+            exit 1
+          fi
+          echo "SUBMISSION_ZIP=${ZIP_PATH}" >> "$GITHUB_ENV"
+          echo "Submission zip: ${ZIP_PATH}"
+
+      - name: Upload to Chrome Web Store (draft)
+        uses: mnao305/chrome-extension-upload@v5
+        with:
+          file-path: ${{ env.SUBMISSION_ZIP }}
+          extension-id: ${{ secrets.CWS_EXTENSION_ID }}
+          client-id: ${{ secrets.CWS_CLIENT_ID }}
+          client-secret: ${{ secrets.CWS_CLIENT_SECRET }}
+          refresh-token: ${{ secrets.CWS_REFRESH_TOKEN }}
+          publish: false
+
+      - name: Upload release artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: cws-release-${{ github.ref_name }}
+          path: |
+            dist/dist.zip
+            artifacts/chrome-web-store/
+          if-no-files-found: error
+
+      - name: Release summary
+        if: success()
+        run: |
+          {
+            echo "## Chrome Web Store release"
+            echo ""
+            echo "Version **${MANIFEST_VERSION}** was built, verified, and uploaded as a **draft**."
+            echo ""
+            echo "Review and publish manually:"
+            echo "https://chrome.google.com/webstore/devconsole/b2564181-7079-402e-8ca4-090a821f8141/gbojjphhdboeaafjdilfibonoflhgcde/edit/package"
+            echo ""
+            echo "Submission zip: \`${SUBMISSION_ZIP}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Release summary (failure)
+        if: failure()
+        run: |
+          {
+            echo "## Chrome Web Store release failed"
+            echo ""
+            echo "The upload did not complete. Check the job logs for the failing gate (manifest, tests, permission audit, build, or CWS upload)."
+          } >> "$GITHUB_STEP_SUMMARY"

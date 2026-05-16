@@ -3011,9 +3011,6 @@ test("popup rows expose direct profile membership and sort handlers", async () =
           style: {}
         };
       },
-      execCommand() {
-        return true;
-      },
       getElementById() {
         return null;
       }

@@ -4,6 +4,13 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Git ref to build and upload (branch, tag, or commit SHA)"
+        required: false
+        default: main
+        type: string
 
 concurrency:
   group: cws-release
@@ -21,6 +28,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.ref }}
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -31,16 +40,30 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Verify tag matches manifest version
+      - name: Resolve release version
         run: |
-          TAG="${GITHUB_REF_NAME#v}"
           MANIFEST_VERSION="$(node -p "require('./manifest.json').version")"
-          if [ "$TAG" != "$MANIFEST_VERSION" ]; then
-            echo "Tag v${TAG} does not match manifest.json version ${MANIFEST_VERSION}."
+          PACKAGE_VERSION="$(node -p "require('./package.json').version")"
+          if [ "$PACKAGE_VERSION" != "$MANIFEST_VERSION" ]; then
+            echo "package.json and manifest.json versions must match."
             exit 1
           fi
+
+          if [ "${{ github.event_name }}" = "push" ]; then
+            TAG="${GITHUB_REF_NAME#v}"
+            if [ "$TAG" != "$MANIFEST_VERSION" ]; then
+              echo "Tag v${TAG} does not match manifest.json version ${MANIFEST_VERSION}."
+              exit 1
+            fi
+            RELEASE_LABEL="${GITHUB_REF_NAME}"
+            echo "Tag and manifest version match: ${MANIFEST_VERSION}"
+          else
+            RELEASE_LABEL="manual-v${MANIFEST_VERSION}"
+            echo "Manual release from ref '${{ inputs.ref }}' at manifest version ${MANIFEST_VERSION}"
+          fi
+
           echo "MANIFEST_VERSION=${MANIFEST_VERSION}" >> "$GITHUB_ENV"
-          echo "Tag and manifest version match: ${MANIFEST_VERSION}"
+          echo "RELEASE_LABEL=${RELEASE_LABEL}" >> "$GITHUB_ENV"
 
       - name: Validate manifest
         run: npm run check:manifest
@@ -131,7 +154,7 @@ jobs:
       - name: Upload release artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: cws-release-${{ github.ref_name }}
+          name: cws-release-${{ env.RELEASE_LABEL }}
           path: |
             dist/dist.zip
             artifacts/chrome-web-store/
@@ -143,6 +166,10 @@ jobs:
           {
             echo "## Chrome Web Store release"
             echo ""
+            if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+              echo "Triggered manually from ref \`${{ inputs.ref }}\`."
+              echo ""
+            fi
             echo "Version **${MANIFEST_VERSION}** was built, verified, and uploaded as a **draft**."
             echo ""
             echo "Review and publish manually:"

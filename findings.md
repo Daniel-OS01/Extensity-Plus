@@ -31,12 +31,12 @@ the same client. `chrome.identity.getAuthToken()` automatically uses the running
 
 ```json
 "oauth2": {
-  "client_id": "REPLACE_WITH_OAUTH_CLIENT_ID.apps.googleusercontent.com",
+  "client_id": "775277874801-n4ph90um5g8m74lpakifo48ignrs7va7.apps.googleusercontent.com",
   "scopes": ["https://www.googleapis.com/auth/drive.appdata"]
 }
 ```
 
-→ Placeholder. Drive sync is fully blocked until a real Chrome extension client_id is set.
+→ Resolved. Drive sync is now wired to the Chrome extension client_id.
 
 ## How `chrome.identity.getAuthToken` works with extensions
 
@@ -100,17 +100,7 @@ though typically GCP now shows "chrome_app" type. The safer discriminator is:
 
 ## GCP steps needed (user action required)
 
-To verify if `775277874801-n4ph90um5g8m74lpakifo48ignrs7va7` is a Chrome extension client:
-1. Go to console.cloud.google.com → project `gglcloud`
-2. APIs & Services → Credentials
-3. Find `775277874801-n4ph90um5g8m74lpakifo48ignrs7va7`
-4. Check **Application type** — should be "Chrome extension" (not "Desktop app")
-5. If Chrome extension: add both extension IDs if not already listed:
-   - `kjpdgpbbmmnickeingbbhkldeeeklnhj` (local)
-   - `gbojjphhdboeaafjdilfibonoflhgcde` (store)
-6. If Desktop app: create a NEW credential → OAuth client ID → Chrome extension
-   - Register both IDs above
-   - Copy the client_id (no JSON download needed — just the ID)
+Resolved. The Chrome extension OAuth client is confirmed, and both extension IDs are captured in `config/drive-extension-ids.local.example` for validation.
 
 ## Key constraints
 

@@ -32,7 +32,7 @@ See `findings.md` for full details. Critical points:
 
 ## Phases
 
-### Phase 1 — Fix OAuth client detection in tooling [ ] in_progress
+### Phase 1 — Fix OAuth client detection in tooling [x] complete
 **Files:** `scripts/set-drive-oauth-client-id.js`, `docs/google-drive-sync.md`
 
 The current script rejects ALL `"installed"` block JSONs, including Chrome extension OAuth clients
@@ -48,7 +48,7 @@ Changes:
 3. Update `config/drive-oauth-client-id.local.example` with both extension IDs and guidance
 4. Update docs to explain GCP Chrome extension client creation and multi-ID registration
 
-### Phase 2 — Retry + backoff for transient failures [ ] pending
+### Phase 2 — Retry + backoff for transient failures [x] complete
 **Files:** `js/drive-sync.js`
 
 Add robustness around `driveApiRequest`:
@@ -59,7 +59,7 @@ Add robustness around `driveApiRequest`:
 
 Also: add `retryDriveApiRequest(token, path, options)` wrapper that wraps `driveApiRequest`.
 
-### Phase 3 — Extension ID auto-detection in sync status [ ] pending
+### Phase 3 — Extension ID auto-detection in sync status [x] complete
 **Files:** `js/drive-sync.js`, `js/background.js`
 
 1. Add `getExtensionEnvironment()` in `drive-sync.js`:
@@ -69,7 +69,7 @@ Also: add `retryDriveApiRequest(token, path, options)` wrapper that wraps `drive
 3. In `background.js` `loadDriveContext()`: attach `extensionId` and `installType` from environment
 4. Expose on `root.ExtensityDriveSync` namespace
 
-### Phase 4 — UI feedback for environment and auth state [ ] pending
+### Phase 4 — UI feedback for environment and auth state [x] complete
 **Files:** `js/options.js`, `options.html`
 
 1. Show extension ID and environment (Local / Store) in the Drive sync section
@@ -77,7 +77,7 @@ Also: add `retryDriveApiRequest(token, path, options)` wrapper that wraps `drive
 3. Conflict panel: show category labels and timestamps from conflict data
 4. Auto-refresh sync status on `SYNC_REMOTE_UPDATE` message
 
-### Phase 5 — Build pipeline for local vs store client IDs [ ] pending
+### Phase 5 — Build pipeline for local vs store client IDs [x] complete
 **Files:** `Makefile`, `scripts/`, `config/`
 
 1. `make dist` should apply `config/drive-oauth-client-id.local` if present, else keep placeholder
@@ -85,7 +85,7 @@ Also: add `retryDriveApiRequest(token, path, options)` wrapper that wraps `drive
 3. Add `npm run drive:validate` that checks the configured client_id is not placeholder
 4. Document the two-environment workflow: local file → local testing; CI env var → store builds
 
-### Phase 6 — Tests [ ] pending
+### Phase 6 — Tests [x] complete
 **Files:** `tests/drive-sync.test.js`
 
 1. Test `retryDriveApiRequest`: verify 3 retries on 5xx, no retry on 4xx
@@ -103,8 +103,5 @@ Also: add `retryDriveApiRequest(token, path, options)` wrapper that wraps `drive
 ---
 
 ## Open Questions
-- Does the second credential (`775277874801-n4ph90um5g8m74lpakifo48ignrs7va7`) have no `client_secret`
-  because it IS a Chrome extension OAuth client, or because the JSON was incomplete on export?
-  → Need user to verify in GCP Console → Credentials → check the client type.
-- If it IS a Chrome extension client: does it have the extension IDs registered?
-  → Need user to add both local and store IDs in GCP if not already present.
+- Resolved: `775277874801-n4ph90um5g8m74lpakifo48ignrs7va7` is a Chrome extension OAuth client and is now the manifest client ID.
+- Resolved: the Chrome extension client workflow uses one client across both extension IDs, with `config/drive-extension-ids.local` for validation.

@@ -125,6 +125,8 @@ jobs:
           EOF
 
       - name: Build distributable extension
+        env:
+          EXTENSITY_DRIVE_WEB_CLIENT_ID: ${{ secrets.EXTENSITY_DRIVE_WEB_CLIENT_ID }}
         run: make dist
 
       - name: Build Chrome Web Store submission bundle

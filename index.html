@@ -64,7 +64,12 @@
   <p><i class="fa fa-search"></i> <input type="text" data-sbind="value: search.q, valueUpdate: 'keyup'" tabindex="1" autofocus /></p>
 </section>
 
-<section id="content" class="main" style="display:none;" data-sbind="visible: !loading()">
+<section id="search-results" class="main" data-sbind="visible: isSearching">
+  <ul class="items" data-sbind="template: {name: 'item-template', foreach: searchResults}"></ul>
+  <p class="empty" data-sbind="visible: searchEmpty"><i class="fa fa-exclamation-triangle"></i><br />No results found.</p>
+</section>
+
+<section id="content" class="main" style="display:none;" data-sbind="visible: showContent">
   <section id="profiles" data-sbind="if: listedProfiles.any, visible: !search.q">
     <h1>Profiles</h1>
     <ul class="items" data-sbind="foreach: listedProfiles">

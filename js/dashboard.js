@@ -426,7 +426,6 @@ document.addEventListener("DOMContentLoaded", function() {
     self.aliasesTab = ko.pureComputed(function() { return self.activeTab() === "aliases"; });
     self.dataTab = ko.pureComputed(function() { return self.activeTab() === "data"; });
     self.syncStatusTab = ko.pureComputed(function() { return self.activeTab() === "sync_status"; });
-    self.logTab = ko.pureComputed(function() { return self.activeTab() === "log"; });
     self.aboutTab = ko.pureComputed(function() { return self.activeTab() === "about"; });
     self.showTabHistory = function() { self.activeTab("history"); };
     self.showTabGroups = function() { self.activeTab("groups"); };
@@ -437,7 +436,6 @@ document.addEventListener("DOMContentLoaded", function() {
       self.activeTab("sync_status");
       self.refreshDriveSyncStatus();
     };
-    self.showTabLog = function() { self.activeTab("log"); };
     self.showTabAbout = function() { self.activeTab("about"); };
     self.appVersion = ko.observable("");
     self.needsWebStorePermission = ko.observable(false);
@@ -999,16 +997,57 @@ document.addEventListener("DOMContentLoaded", function() {
     };
 
     var _logger = typeof window !== "undefined" && window.ExtensityLogger ? window.ExtensityLogger : null;
+    var _levelClass = { error: "event-badge event-state_changed_off", warn: "event-badge event-scheduled", info: "event-badge event-state_changed_on", debug: "event-badge event-meta" };
 
     function buildLogRow(entry) {
-      var levelClass = { error: "event-badge event-state_changed_off", warn: "event-badge event-scheduled", info: "event-badge event-state_changed_on", debug: "event-badge event-meta" };
+      var rawTs = entry.timestamp || "";
+      var epochTs = rawTs ? new Date(rawTs).getTime() : Date.now();
       return {
+        isLogEntry: true,
+        isHistoryEntry: false,
+        epochTs: isFinite(epochTs) ? epochTs : Date.now(),
         level: entry.level,
-        levelBadgeClass: levelClass[entry.level] || "event-badge",
-        timestamp: (entry.timestamp || "").replace("T", " ").slice(0, 19),
+        levelBadgeClass: _levelClass[entry.level] || "event-badge",
+        timestamp: rawTs.replace("T", " ").slice(0, 19),
         message: entry.message,
         dataLine: entry.data ? JSON.stringify(entry.data) : null
       };
+    }
+
+    var _debugOrigConsoleError = null;
+    var _debugOrigConsoleWarn = null;
+    var _debugOrigOnerror = null;
+
+    function installDebugHooks() {
+      if (_debugOrigConsoleError !== null) { return; }
+      _debugOrigConsoleError = console.error;
+      _debugOrigConsoleWarn = console.warn;
+      console.error = function() {
+        _debugOrigConsoleError.apply(console, arguments);
+        if (_logger) { _logger.error("[console.error] " + Array.prototype.slice.call(arguments).join(" ")); }
+      };
+      console.warn = function() {
+        _debugOrigConsoleWarn.apply(console, arguments);
+        if (_logger) { _logger.warn("[console.warn] " + Array.prototype.slice.call(arguments).join(" ")); }
+      };
+      _debugOrigOnerror = window.onerror || null;
+      window.onerror = function(msg, src, line) {
+        if (_logger) { _logger.error("[uncaught] " + msg, { src: src, line: line }); }
+        if (typeof _debugOrigOnerror === "function") { return _debugOrigOnerror.apply(window, arguments); }
+      };
+    }
+
+    function removeDebugHooks() {
+      if (_debugOrigConsoleError !== null) {
+        console.error = _debugOrigConsoleError;
+        _debugOrigConsoleError = null;
+      }
+      if (_debugOrigConsoleWarn !== null) {
+        console.warn = _debugOrigConsoleWarn;
+        _debugOrigConsoleWarn = null;
+      }
+      window.onerror = _debugOrigOnerror;
+      _debugOrigOnerror = null;
     }
 
     self.logEntries = ko.observableArray([]);
@@ -1016,9 +1055,29 @@ document.addEventListener("DOMContentLoaded", function() {
     self.logEmpty = ko.pureComputed(function() { return self.logEntries().length === 0; });
 
     if (_logger) {
-      _logger.loadLevel(function(level) { self.logLevel(level); });
+      _logger.loadLevel(function(level) {
+        self.logLevel(level);
+        if (level === "debug") { installDebugHooks(); }
+      });
       _logger.subscribe(function(entry) {
         self.logEntries.unshift(buildLogRow(entry));
+      });
+      _logger.readShared(function(entries) {
+        var rows = entries.map(buildLogRow);
+        self.logEntries(rows.reverse().concat(self.logEntries()));
+      });
+    }
+
+    if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.onChanged) {
+      chrome.storage.onChanged.addListener(function(changes, area) {
+        if (area !== "local" || !changes.extensityLog) { return; }
+        var newList = changes.extensityLog.newValue;
+        var oldList = changes.extensityLog.oldValue || [];
+        if (!Array.isArray(newList)) { return; }
+        var added = newList.slice(oldList.length);
+        added.forEach(function(entry) {
+          self.logEntries.unshift(buildLogRow(entry));
+        });
       });
     }
 
@@ -1026,23 +1085,56 @@ document.addEventListener("DOMContentLoaded", function() {
       if (_logger) {
         _logger.setLevel(val);
       }
+      if (val === "debug") {
+        installDebugHooks();
+      } else {
+        removeDebugHooks();
+      }
     });
 
     self.clearLog = function() {
       if (_logger) {
         _logger.clearEntries();
+        _logger.clearShared();
       }
       self.logEntries([]);
     };
 
     self.copyLog = function() {
-      var text = self.logEntries().map(function(row) {
+      var text = self.logEntries().slice().reverse().map(function(row) {
         return [row.timestamp, row.level.toUpperCase(), row.message, row.dataLine].filter(Boolean).join(" | ");
       }).join("\n");
       if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
         navigator.clipboard.writeText(text);
       }
     };
+
+    self.unifiedTimeline = ko.computed(function() {
+      var historyItems = self.filteredHistoryRows().map(function(row) {
+        return {
+          isHistoryEntry: true,
+          isLogEntry: false,
+          epochTs: row.timestamp,
+          event: row.event,
+          extensionName: row.extensionName,
+          triggeredBy: row.triggeredBy,
+          details: row.details,
+          ruleId: row.ruleId,
+          badgeClass: row.badgeClass,
+          result: row.result,
+          formattedDate: row.formattedDate,
+          id: row.id
+        };
+      });
+      var logItems = self.logEntries();
+      var all = historyItems.concat(logItems);
+      all.sort(function(a, b) { return b.epochTs - a.epochTs; });
+      return all;
+    });
+
+    self.unifiedEmpty = ko.pureComputed(function() {
+      return self.unifiedTimeline().length === 0;
+    });
 
     self.driveConnectionReport = ko.observable(null);
 

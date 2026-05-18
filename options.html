@@ -184,6 +184,12 @@
           <button type="button" title="Download data from Google Drive" data-sbind="click: drivePull, disable: busy">Pull from Drive</button>
           <button type="button" title="Test Drive connection (read-only check)" data-sbind="click: testDriveConnection, disable: busy">Test connection</button>
         </div>
+        <div class="field" data-sbind="visible: driveMessage">
+          <span class="status" data-sbind="text: driveMessage"></span>
+        </div>
+        <div class="field" data-sbind="visible: driveError">
+          <span class="status error" data-sbind="text: driveError"></span>
+        </div>
         <div class="field" data-sbind="if: driveConnectionReport">
           <div data-sbind="foreach: driveTestSteps">
             <div><span data-sbind="text: statusBadge"></span> <span data-sbind="text: name"></span> <span class="muted" data-sbind="text: detail"></span></div>

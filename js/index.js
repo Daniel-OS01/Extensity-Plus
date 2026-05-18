@@ -141,6 +141,47 @@ document.addEventListener("DOMContentLoaded", function() {
     return previous[right.length] <= limit;
   }
 
+  // Returns a relevance score for a single text field against query.
+  // Higher = better match. 0 = no match.
+  function scoreText(text, query) {
+    if (!text || !query) { return 0; }
+    var lower = text.toLowerCase();
+    var i, words;
+
+    if (lower === query) { return 1000; }
+    if (lower.indexOf(query) === 0) { return 600; }
+
+    words = lower.split(/\s+/);
+    for (i = 0; i < words.length; i++) {
+      if (words[i] === query) { return 400; }
+    }
+    if (lower.indexOf(query) !== -1) { return 200; }
+    for (i = 0; i < words.length; i++) {
+      if (words[i].indexOf(query) === 0) { return 120; }
+    }
+
+    if (query.length < 3) { return 0; }
+
+    for (i = 0; i < words.length; i++) {
+      if (levenshteinWithin(words[i], query, 1)) { return 60; }
+    }
+    for (i = 0; i < words.length; i++) {
+      if (levenshteinWithin(words[i], query, 2)) { return 25; }
+    }
+
+    return 0;
+  }
+
+  // Returns a composite relevance score for an extension against query.
+  function scoreExtension(extension, query) {
+    if (!query) { return 0; }
+    var aliasScore = scoreText(extension.alias ? extension.alias() : "", query);
+    var nameScore = scoreText(extension.name ? extension.name() : "", query);
+    var primaryScore = Math.max(aliasScore, nameScore);
+    var descScore = Math.round(scoreText(extension.description ? extension.description() : "", query) * 0.2);
+    return primaryScore + descScore;
+  }
+
   function focusSiblingRow(target, direction) {
     var rows = Array.prototype.slice.call(document.querySelectorAll(".keyboard-row"));
     var index = rows.indexOf(target);
@@ -160,43 +201,8 @@ document.addEventListener("DOMContentLoaded", function() {
 
     self.matchesExtension = function(extension) {
       var query = (self.q() || "").trim().toLowerCase();
-      if (!query) {
-        return true;
-      }
-
-      var rawValues = [
-        extension.alias(),
-        extension.name(),
-        extension.description()
-      ];
-      var haystacks = [];
-
-      for (var i = 0; i < rawValues.length; i++) {
-        var val = rawValues[i];
-        if (val) {
-          var lower = val.toLowerCase();
-          // Performance: Early return on exact match to skip Levenshtein computation
-          if (lower.indexOf(query) !== -1) {
-            return true;
-          }
-          haystacks.push(lower);
-        }
-      }
-
-      if (query.length < 3) {
-        return false;
-      }
-
-      for (var i = 0; i < haystacks.length; i++) {
-        var words = haystacks[i].split(/\s+/);
-        for (var j = 0; j < words.length; j++) {
-          if (levenshteinWithin(words[j], query, 2)) {
-            return true;
-          }
-        }
-      }
-
-      return false;
+      if (!query) { return true; }
+      return scoreExtension(extension, query) > 0;
     };
   }
 
@@ -232,6 +238,35 @@ document.addEventListener("DOMContentLoaded", function() {
     self.exts = new ExtensionCollectionModel();
     self.dismissals = new DismissalsCollection();
     self.search = new SearchViewModel();
+
+    self.isSearching = ko.pureComputed(function() {
+      return !!(self.search.q() || "").trim();
+    });
+
+    self.showContent = ko.pureComputed(function() {
+      return !self.loading() && !self.isSearching();
+    });
+
+    self.searchResults = ko.computed(function() {
+      var query = (self.search.q() || "").trim().toLowerCase();
+      if (!query) { return []; }
+      var all = self.exts.items();
+      var scored = [];
+      var i, s;
+      for (i = 0; i < all.length; i++) {
+        s = scoreExtension(all[i], query);
+        if (s > 0) { scored.push({ item: all[i], score: s }); }
+      }
+      scored.sort(function(a, b) { return b.score - a.score; });
+      var result = [];
+      for (i = 0; i < scored.length; i++) { result.push(scored[i].item); }
+      return result;
+    }).extend({ countable: null });
+
+    self.searchEmpty = ko.pureComputed(function() {
+      return self.isSearching() && !self.loading() && self.searchResults().length === 0;
+    });
+
     self.switch = new SwitchViewModel(self);
     self.activeProfile = ko.observable(null);
     self.expandedExtensionId = ko.observable(null);
@@ -675,6 +710,11 @@ document.addEventListener("DOMContentLoaded", function() {
       }
       self.loading(false);
       self.error("");
+
+      _.defer(function() {
+        var searchInput = document.querySelector("#search input");
+        if (searchInput) { searchInput.focus(); }
+      });
     };
 
     self.performAction = function(request) {

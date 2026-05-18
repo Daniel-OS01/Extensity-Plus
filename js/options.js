@@ -318,6 +318,18 @@ document.addEventListener("DOMContentLoaded", function() {
       return !!self.lastDriveSyncErrorLabel();
     });
 
+    self.driveMessage = ko.observable("");
+    self.driveError = ko.observable("");
+
+    function clearDriveFeedback() {
+      self.driveMessage("");
+      self.driveError("");
+    }
+
+    function fadeDriveMessage(key) {
+      fadeOutMessage(key);
+    }
+
     function describeDriveSyncStatus(status) {
       if (!status) {
         return "Google Drive sync status is unavailable.";
@@ -401,21 +413,30 @@ document.addEventListener("DOMContentLoaded", function() {
       var result = payload && payload.result ? payload.result : {};
       if (result.status === "conflict") {
         self.message(result.message || "Drive sync needs your input.");
+        self.driveMessage(result.message || "Drive sync needs your input.");
         return;
       }
       if (result.status === "cancelled") {
         self.message("Drive sync cancelled.");
+        self.driveMessage("Drive sync cancelled.");
         return;
       }
-      self.message("Drive sync completed (" + (result.status || "ok") + ").");
+      var msg = "Drive sync completed (" + (result.status || "ok") + ").";
+      self.message(msg);
+      self.driveMessage(msg);
     }
 
     function runDriveSyncRequest(request) {
+      clearDriveFeedback();
       return self.save().then(function() {
         return self.performAction(request);
       }).then(function(payload) {
         handleDriveSyncResult(payload);
         return payload;
+      }).catch(function(err) {
+        var msg = (err && err.message) || "Drive sync failed.";
+        self.driveError(msg);
+        self.error(msg);
       });
     }
 
@@ -448,13 +469,17 @@ document.addEventListener("DOMContentLoaded", function() {
     });
 
     self.testDriveConnection = function() {
+      clearDriveFeedback();
       self.busy(true);
       self.error("");
       self.driveConnectionReport(null);
       ExtensityApi.testDriveConnection().then(function(result) {
         self.driveConnectionReport(result && result.report ? result.report : null);
+        self.driveMessage("Connection test complete.");
       }).catch(function(err) {
-        self.error((err && err.message) || "Drive connection test failed.");
+        var msg = (err && err.message) || "Drive connection test failed.";
+        self.error(msg);
+        self.driveError(msg);
       }).finally(function() {
         self.busy(false);
       });

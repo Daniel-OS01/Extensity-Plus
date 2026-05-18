@@ -152,6 +152,21 @@ function loadBackgroundModule(extraSelf = {}, overrides = {}) {
         ...storageOverrides
       },
       ExtensityUrlRules: {},
+      ExtensityLogger: {
+        debug() {},
+        info() {},
+        warn() {},
+        error() {},
+        getLevel() { return "warn"; },
+        setLevel() {},
+        loadLevel(cb) { if (cb) cb("warn"); },
+        subscribe() {},
+        getEntries() { return []; },
+        clearEntries() {},
+        readShared(cb) { if (cb) cb([]); },
+        clearShared() {},
+        LEVELS: ["none", "error", "warn", "info", "debug"]
+      },
       ...selfOverrides
     }
   });

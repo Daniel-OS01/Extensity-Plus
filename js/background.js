@@ -18,6 +18,7 @@ importScripts(
   var history = root.ExtensityHistory;
   var reminders = root.ExtensityReminders;
   var driveSync = root.ExtensityDriveSync;
+  var logger = root.ExtensityLogger;
   var driveSyncAlarmName = "extensity-drive-auto-sync";
   var urlRuleTimeoutAlarmPrefix = "extensity-url-rule-timeout-";
   var urlEvaluationTimers = {};
@@ -1454,7 +1455,7 @@ importScripts(
         lastDriveSyncError: buildDriveErrorPayload(error)
       });
       if (!error || error.code !== "auth") {
-        console.error("drive_auto_sync_failed", error);
+        logger.error("drive_auto_sync_failed", { message: error && error.message, code: error && error.code });
       }
     }
   }
@@ -1768,9 +1769,11 @@ importScripts(
 
   async function syncDriveNow(message) {
     var payload = message || {};
+    var direction = payload.direction || "sync";
+    logger.info("drive_sync_started", { direction: direction });
     try {
       var result = await driveSync.syncDrive({
-        direction: payload.direction || "sync",
+        direction: direction,
         interactive: payload.interactive !== false,
         loadContext: loadDriveContext,
         resolution: payload.resolution || null,
@@ -1787,6 +1790,11 @@ importScripts(
         driveAuthStatus: "authorized",
         lastDriveSyncError: null
       });
+      if (result.status === "conflict") {
+        logger.warn("drive_sync_conflict", { direction: direction });
+      } else {
+        logger.info("drive_sync_complete", { direction: direction, status: result.status });
+      }
       return {
         result: result,
         state: await buildState()
@@ -1799,6 +1807,7 @@ importScripts(
         driveAuthStatus: normalized.code === "auth" ? "needs_interactive_sign_in" : "error",
         lastDriveSyncError: buildDriveErrorPayload(error)
       });
+      logger.error("drive_sync_failed", { direction: direction, code: normalized.code, message: error && error.message });
       throw error;
     }
   }
@@ -2018,7 +2027,7 @@ importScripts(
     urlEvaluationTimers[tabId] = setTimeout(function() {
       delete urlEvaluationTimers[tabId];
       evaluateRulesForUrl(url, tabId).catch(function(error) {
-        console.error("url_rule_failed", error);
+        logger.error("url_rule_failed", { message: error && error.message });
       });
     }, 300);
   }
@@ -2099,7 +2108,7 @@ importScripts(
     try {
       await migrations.migrateLegacyLocalStorage();
     } catch (error) {
-      console.warn("legacy_migration_skipped", error.message);
+      logger.warn("legacy_migration_skipped", { message: error && error.message });
     }
     await migrations.migrateTo2_0_0();
     if (migrations.migratePopupListStyle) {
@@ -2112,20 +2121,20 @@ importScripts(
 
   addChromeListener(chrome.runtime && chrome.runtime.onInstalled, function() {
     runMigrations().catch(function(error) {
-      console.error("migration_failed", error);
+      logger.error("migration_failed", { message: error && error.message });
     });
   });
 
   addChromeListener(chrome.runtime && chrome.runtime.onStartup, function() {
     runMigrations().catch(function(error) {
-      console.error("startup_migration_failed", error);
+      logger.error("startup_migration_failed", { message: error && error.message });
     });
   });
 
   addChromeListener(chrome.management && chrome.management.onInstalled, function(itemInfo) {
     invalidateManagementCache();
     recordInstallFirstSeen(itemInfo).catch(function(error) {
-      console.error("install_first_seen_failed", error);
+      logger.error("install_first_seen_failed", { message: error && error.message });
     });
   });
 
@@ -2227,7 +2236,7 @@ importScripts(
     syncIngestTimer = setTimeout(function() {
       syncIngestTimer = null;
       ingestRemoteSyncChanges(changes).catch(function(error) {
-        console.error("sync_ingest_failed", error);
+        logger.warn("sync_ingest_failed", { message: error && error.message });
       });
     }, 300);
   });
@@ -2247,21 +2256,21 @@ importScripts(
   addChromeListener(chrome.commands && chrome.commands.onCommand, function(command) {
     if (command === "toggle-all-extensions") {
       runToggleAll().catch(function(error) {
-        console.error("toggle_all_command_failed", error);
+        logger.error("toggle_all_command_failed", { message: error && error.message });
       });
       return;
     }
 
     if (command === "cycle-next-profile") {
       cycleProfiles(1).catch(function(error) {
-        console.error("cycle_next_profile_failed", error);
+        logger.error("cycle_next_profile_failed", { message: error && error.message });
       });
       return;
     }
 
     if (command === "cycle-previous-profile") {
       cycleProfiles(-1).catch(function(error) {
-        console.error("cycle_previous_profile_failed", error);
+        logger.error("cycle_previous_profile_failed", { message: error && error.message });
       });
     }
   });
@@ -2282,7 +2291,7 @@ importScripts(
         scheduleRuleEvaluation(tab.id, tab.url);
       }
     }).catch(function(error) {
-      console.error("tab_activation_failed", error);
+      logger.error("tab_activation_failed", { message: error && error.message });
     });
   });
 
@@ -2338,7 +2347,7 @@ importScripts(
           historyRecords: closeDebugRecord ? [closeDebugRecord] : [],
           pushUndo: false
         }).catch(function(err) {
-          console.error("rule_close_disable_failed", err);
+          logger.error("rule_close_disable_failed", { message: err && err.message });
         });
         return;
       }
@@ -2360,33 +2369,33 @@ importScripts(
       });
       if (timeoutDebugRecord) {
         appendDebugHistoryRecords([timeoutDebugRecord]).catch(function(err) {
-          console.error("rule_timeout_debug_history_failed", err);
+          logger.warn("rule_timeout_debug_history_failed", { message: err && err.message });
         });
       }
       scheduleUrlRuleTimeoutDisable(entries, minutes, tabId).catch(function(err) {
-        console.error("rule_timeout_schedule_failed", err);
+        logger.error("rule_timeout_schedule_failed", { message: err && err.message });
       });
     }).catch(function(err) {
-      console.error("rule_timeout_context_failed", err);
+      logger.error("rule_timeout_context_failed", { message: err && err.message });
     });
   });
 
   addChromeListener(chrome.alarms && chrome.alarms.onAlarm, function(alarm) {
     if (reminders.isReminderAlarm(alarm.name)) {
       reminders.handleAlarm(alarm.name).catch(function(error) {
-        console.error("reminder_alarm_failed", error);
+        logger.error("reminder_alarm_failed", { message: error && error.message });
       });
       return;
     }
     if (isUrlRuleTimeoutAlarm(alarm.name)) {
       handleUrlRuleTimeoutAlarm(alarm.name).catch(function(error) {
-        console.error("url_rule_timeout_alarm_failed", error);
+        logger.error("url_rule_timeout_alarm_failed", { message: error && error.message });
       });
       return;
     }
     if (alarm.name === driveSyncAlarmName) {
       runAutoDriveSync().catch(function(error) {
-        console.error("drive_sync_alarm_failed", error);
+        logger.error("drive_sync_alarm_failed", { message: error && error.message });
       });
     }
   });
@@ -2396,12 +2405,12 @@ importScripts(
   }).then(function() {
     return rescheduleDriveSyncAlarm();
   }).catch(function(error) {
-    console.error("initial_migration_failed", error);
+    logger.error("initial_migration_failed", { message: error && error.message });
   });
 
   if (typeof storage.loadSyncOptions === "function") {
     storage.loadSyncOptions().then(applyCacheOptions).catch(function(error) {
-      console.error("cache_options_load_failed", error);
+      logger.error("cache_options_load_failed", { message: error && error.message });
     });
   }
 

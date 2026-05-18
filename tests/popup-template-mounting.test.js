@@ -70,7 +70,7 @@ test("popup favorites section renders as a dedicated divider list", () => {
 test("popup hides content by default until knockout applies loading state", () => {
   const html = fs.readFileSync(path.join(repoRoot, "index.html"), "utf8");
 
-  assert.match(html, /<section id="content" class="main" style="display:none;" data-sbind="visible: !loading\(\)">/);
+  assert.match(html, /<section id="content" class="main" style="display:none;" data-sbind="visible: showContent">/);
   assert.match(html, /<section id="loading-section" class="main" data-sbind="visible: loading">/);
 });
 

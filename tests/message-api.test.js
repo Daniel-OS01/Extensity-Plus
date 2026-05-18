@@ -110,6 +110,14 @@ function loadBackground(options = {}) {
       ExtensityDriveSync: {},
       ExtensityHistory: {},
       ExtensityImportExport: {},
+      ExtensityLogger: {
+        debug() {}, info() {}, warn() {}, error() {},
+        getLevel() { return "warn"; }, setLevel() {},
+        loadLevel(cb) { if (cb) cb("warn"); }, subscribe() {},
+        getEntries() { return []; }, clearEntries() {},
+        readShared(cb) { if (cb) cb([]); }, clearShared() {},
+        LEVELS: ["none", "error", "warn", "info", "debug"]
+      },
       ExtensityMigrations: {
         migrateLegacyLocalStorage: async function() { return false; },
         migratePopupListStyle: async function() { return false; },
@@ -345,6 +353,14 @@ test("management onInstalled stores installFirstSeenAt for new items immediately
       ExtensityDriveSync: {},
       ExtensityHistory: {},
       ExtensityImportExport: {},
+      ExtensityLogger: {
+        debug() {}, info() {}, warn() {}, error() {},
+        getLevel() { return "warn"; }, setLevel() {},
+        loadLevel(cb) { if (cb) cb("warn"); }, subscribe() {},
+        getEntries() { return []; }, clearEntries() {},
+        readShared(cb) { if (cb) cb([]); }, clearShared() {},
+        LEVELS: ["none", "error", "warn", "info", "debug"]
+      },
       ExtensityMigrations: {
         migrateLegacyLocalStorage: async function() { return false; },
         migratePopupListStyle: async function() { return false; },

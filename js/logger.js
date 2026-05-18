@@ -2,7 +2,9 @@
   var LEVEL_RANK = { none: 0, error: 1, warn: 2, info: 3, debug: 4 };
   var LEVELS = ["none", "error", "warn", "info", "debug"];
   var MAX_ENTRIES = 200;
+  var MAX_SHARED = 300;
   var STORAGE_KEY = "logLevel";
+  var SHARED_KEY = "extensityLog";
   var DEFAULT_LEVEL = "warn";
 
   var _level = DEFAULT_LEVEL;
@@ -31,6 +33,29 @@
     return LEVEL_RANK[_level] >= LEVEL_RANK[entryLevel];
   }
 
+  function writeShared(entry) {
+    if (
+      typeof chrome === "undefined" ||
+      !chrome.storage ||
+      !chrome.storage.local ||
+      typeof chrome.storage.local.get !== "function"
+    ) {
+      return;
+    }
+    var defaults = {};
+    defaults[SHARED_KEY] = [];
+    chrome.storage.local.get(defaults, function(result) {
+      var list = Array.isArray(result[SHARED_KEY]) ? result[SHARED_KEY] : [];
+      list.push(entry);
+      if (list.length > MAX_SHARED) {
+        list = list.slice(list.length - MAX_SHARED);
+      }
+      var patch = {};
+      patch[SHARED_KEY] = list;
+      chrome.storage.local.set(patch);
+    });
+  }
+
   function appendEntry(level, message, data) {
     if (!shouldLog(level)) {
       return;
@@ -48,6 +73,7 @@
     for (var i = 0; i < _listeners.length; i++) {
       _listeners[i](entry);
     }
+    writeShared(entry);
   }
 
   function info(message, data) {
@@ -103,15 +129,45 @@
     }
   }
 
+  function readShared(callback) {
+    if (
+      typeof chrome === "undefined" ||
+      !chrome.storage ||
+      !chrome.storage.local ||
+      typeof chrome.storage.local.get !== "function"
+    ) {
+      callback([]);
+      return;
+    }
+    var defaults = {};
+    defaults[SHARED_KEY] = [];
+    chrome.storage.local.get(defaults, function(result) {
+      callback(Array.isArray(result[SHARED_KEY]) ? result[SHARED_KEY] : []);
+    });
+  }
+
+  function clearShared() {
+    if (
+      typeof chrome !== "undefined" &&
+      chrome.storage &&
+      chrome.storage.local &&
+      typeof chrome.storage.local.remove === "function"
+    ) {
+      chrome.storage.local.remove(SHARED_KEY);
+    }
+  }
+
   root.ExtensityLogger = {
     LEVELS: LEVELS,
     clearEntries: clearEntries,
+    clearShared: clearShared,
     debug: debug,
     error: error,
     getEntries: getEntries,
     getLevel: getLevel,
     info: info,
     loadLevel: loadLevel,
+    readShared: readShared,
     setLevel: setLevel,
     subscribe: subscribe,
     warn: warn

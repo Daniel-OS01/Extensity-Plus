@@ -1,4 +1,0 @@
-💡 What: Converted state arrays (`alwaysOn`, `favorites`, `toolbarPins`, `desiredIds`) into ES6 `Set`s and `recentList` into a `Map` before iterating over extensions in `normalizeExtensions` and `runApplyProfile`.
-🎯 Why: Calling `.indexOf(id)` repeatedly inside a `.map()` or `.filter()` loop results in an $O(N \times M)$ time complexity. This is a hidden performance bottleneck when mapping extension states.
-📊 Impact: Reduces time complexity from $O(N \times M)$ to $O(N + M)$ by providing $O(1)$ presence check lookups per loop iteration. This improves the performance of loading the dashboard/popup UI states drastically on slower devices or when a user has a large number of items.
-🔬 Measurement: Verify this by running `pnpm test` (which should remain unaffected), and using a CPU performance profile while applying a large profile to measure time spent in `normalizeExtensions` or `runApplyProfile`.

@@ -1,0 +1,4 @@
+💡 What: Added accessible `<button>` wrappers for previously icon-only interactive elements (`<i class="fa fa-gear">` and `<i class="fa fa-trash-o">`) in `index.html` and `profiles.html`.
+🎯 Why: Making these elements proper `<button>`s enables keyboard accessibility (focus states, tabbing) and ensures correct screen reader support.
+📸 Before/After: Before, they were `<i>` tags capturing click events directly. After, they are interactive buttons with inner decorative `<i>` tags without disrupting the current layout.
+♿ Accessibility: Added `aria-label` to the outer `<button>` elements, added `aria-hidden="true"` to the decorative inner icons, and applied standard role definitions.

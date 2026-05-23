@@ -1,3 +1,7 @@
 ## 2024-04-20 - Icon-Only Button Accessibility Pattern Verification
 **Learning:** Adding `aria-label` to the interactive `<button>` wrappers and explicit `aria-hidden="true"` to the inner decorative FontAwesome `<i>` tags is a clean, non-disruptive accessibility enhancement for this codebase. It perfectly avoids layout shifts or CSS selector breakage (like accidentally triggering hover/active states that rely on direct parent-child relationships) that might occur if we changed the DOM structure itself.
 **Action:** Always prefer this two-step attribute injection pattern for icon-only components in `index.html` to maintain CSS and logic parity while maximizing screen reader compatibility.
+
+## 2024-05-23 - Search Input Accessibility and Affordance
+**Learning:** For standalone inputs within popup interfaces (like the search box in `index.html`), relying solely on a preceding icon for visual affordance is insufficient for both UX and accessibility. An explicit `placeholder` text provides crucial context to sighted users, while a clear `aria-label` ensures screen reader users understand the input's purpose without needing an explicit `<label>` tag that might disrupt the layout.
+**Action:** Always provide both `placeholder` attributes (for visual affordance) and explicit `aria-label` attributes (for screen reader context) on search or filtering inputs, and explicitly hide decorative icons from screen readers using `aria-hidden="true"`.

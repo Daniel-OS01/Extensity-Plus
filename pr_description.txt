@@ -1,0 +1,4 @@
+💡 What: Added a `placeholder` attribute to the search input in `index.html`, added an explicit `aria-label`, and hid the decorative search icon from screen readers using `aria-hidden="true"`.
+🎯 Why: Standalone inputs in the popup lacked visual affordance for sighted users (no placeholder or visible label) and context for screen reader users. The adjacent search icon provided visual context but was not explicitly tied to the input and might be redundantly announced by screen readers.
+📸 Before/After: Before, the search box was just an empty text field next to a magnifying glass icon. Now, it has "Search extensions and apps" as placeholder text, providing immediate context, and is properly labeled for screen readers.
+♿ Accessibility: Improved screen reader experience by adding an explicit `aria-label` to the search input and `aria-hidden="true"` to the decorative icon, preventing redundant or confusing announcements.

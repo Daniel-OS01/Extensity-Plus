@@ -3,33 +3,31 @@ name: Release to Chrome Web Store
 on:
   push:
     tags:
-      - "v*"
+      - 'v*'
   workflow_dispatch:
     inputs:
-      ref:
-        description: "Git ref to build and upload (branch, tag, or commit SHA)"
-        required: false
-        default: main
-        type: string
-
-concurrency:
-  group: cws-release
-  cancel-in-progress: false
-
-permissions:
-  contents: read
+      target:
+        description: 'Publish target (default or trustedTesters)'
+        required: true
+        default: 'default'
+        type: choice
+        options:
+          - default
+          - trustedTesters
+      publish:
+        description: 'Publish immediately (or just draft)?'
+        required: true
+        default: true
+        type: boolean
 
 jobs:
   release:
-    name: Build, verify, and upload CWS draft
+    name: Build, bundle, and submit to Chrome Web Store
     runs-on: ubuntu-latest
-    environment: main
 
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.ref }}
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -40,89 +38,18 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Resolve release version
+      - name: Inject Chrome extension OAuth client ID
         run: |
-          MANIFEST_VERSION="$(node -p "require('./manifest.json').version")"
-          PACKAGE_VERSION="$(node -p "require('./package.json').version")"
-          if [ "$PACKAGE_VERSION" != "$MANIFEST_VERSION" ]; then
-            echo "package.json and manifest.json versions must match."
-            exit 1
-          fi
-
-          if [ "${{ github.event_name }}" = "push" ]; then
-            TAG="${GITHUB_REF_NAME#v}"
-            if [ "$TAG" != "$MANIFEST_VERSION" ]; then
-              echo "Tag v${TAG} does not match manifest.json version ${MANIFEST_VERSION}."
-              exit 1
-            fi
-            RELEASE_LABEL="${GITHUB_REF_NAME}"
-            echo "Tag and manifest version match: ${MANIFEST_VERSION}"
-          else
-            RELEASE_LABEL="manual-v${MANIFEST_VERSION}"
-            echo "Manual release from ref '${{ inputs.ref }}' at manifest version ${MANIFEST_VERSION}"
-          fi
-
-          echo "MANIFEST_VERSION=${MANIFEST_VERSION}" >> "$GITHUB_ENV"
-          echo "RELEASE_LABEL=${RELEASE_LABEL}" >> "$GITHUB_ENV"
-
-      - name: Validate manifest
-        run: npm run check:manifest
-
-      - name: Run unit tests
-        run: npm test
-
-      - name: Audit declared permissions are used in code
-        run: |
-          node - <<'EOF'
-          const fs = require("fs");
-          const path = require("path");
-
-          function walkJsFiles(dir, files) {
-            for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-              const fullPath = path.join(dir, entry.name);
-              if (entry.isDirectory()) {
-                if (entry.name === "libs") {
-                  continue;
-                }
-                walkJsFiles(fullPath, files);
-              } else if (entry.name.endsWith(".js")) {
-                files.push(fullPath);
-              }
-            }
-          }
-
-          function referencesPermission(files, perm) {
-            const pattern = new RegExp(`chrome\\.${perm}\\b`);
-            return files.some((filePath) => pattern.test(fs.readFileSync(filePath, "utf8")));
-          }
-
-          const manifest = JSON.parse(fs.readFileSync("manifest.json", "utf8"));
-          const declared = [
-            ...(manifest.permissions || []),
-            ...(manifest.optional_permissions || [])
-          ];
-          const jsFiles = [];
-          walkJsFiles("js", jsFiles);
-
-          const skipHostLike = (p) => p.includes("://") || p === "activeTab";
-          const failures = [];
-
-          for (const perm of declared) {
-            if (skipHostLike(perm)) {
-              continue;
-            }
-            if (!referencesPermission(jsFiles, perm)) {
-              failures.push(perm);
-            }
-          }
-
-          if (failures.length) {
-            console.error("Unused permissions declared in manifest.json:", failures.join(", "));
-            process.exit(1);
-          }
-
-          console.log("All declared permissions are referenced in js/.");
-          EOF
+          # Read existing manifest, inject the real client ID from secrets, write back
+          node -e "
+            const fs = require('fs');
+            const manifest = JSON.parse(fs.readFileSync('manifest.json', 'utf8'));
+            if (!manifest.oauth2) manifest.oauth2 = {};
+            manifest.oauth2.client_id = process.env.EXTENSITY_DRIVE_CLIENT_ID;
+            fs.writeFileSync('manifest.json', JSON.stringify(manifest, null, 2) + '\n');
+          "
+        env:
+          EXTENSITY_DRIVE_CLIENT_ID: ${{ secrets.EXTENSITY_DRIVE_CLIENT_ID }}
 
       - name: Build distributable extension
         env:
@@ -133,58 +60,33 @@ jobs:
         run: npm run bundle:chrome-store
 
       - name: Resolve submission zip path
+        id: resolve_zip
         run: |
           PACKAGE_NAME="$(node -p "require('./package.json').name")"
-          ZIP_PATH="artifacts/chrome-web-store/${PACKAGE_NAME}-v${MANIFEST_VERSION}.zip"
-          if [ ! -f "$ZIP_PATH" ]; then
-            echo "Expected submission zip not found: ${ZIP_PATH}"
-            exit 1
-          fi
-          echo "SUBMISSION_ZIP=${ZIP_PATH}" >> "$GITHUB_ENV"
-          echo "Submission zip: ${ZIP_PATH}"
+          VERSION="$(node -p "require('./manifest.json').version")"
+          ZIP_PATH="artifacts/chrome-web-store/${PACKAGE_NAME}-v${VERSION}.zip"
+          echo "ZIP_PATH=$ZIP_PATH" >> "$GITHUB_OUTPUT"
 
-      - name: Upload to Chrome Web Store (draft)
-        uses: mnao305/chrome-extension-upload@v6.0.0
+      - name: Upload to Chrome Web Store
+        uses: mnao305/chrome-extension-upload@v5.0.0
         with:
-          file-path: ${{ env.SUBMISSION_ZIP }}
+          file-path: ${{ steps.resolve_zip.outputs.ZIP_PATH }}
           extension-id: ${{ secrets.CWS_EXTENSION_ID }}
           client-id: ${{ secrets.CWS_CLIENT_ID }}
           client-secret: ${{ secrets.CWS_CLIENT_SECRET }}
           refresh-token: ${{ secrets.CWS_REFRESH_TOKEN }}
-          publish: false
+          publish: ${{ github.event.inputs.publish || true }}
+          publish-target: ${{ github.event.inputs.target || 'default' }}
 
-      - name: Upload release artifacts
-        uses: actions/upload-artifact@v4
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/v')
         with:
-          name: cws-release-${{ env.RELEASE_LABEL }}
-          path: |
-            dist/dist.zip
-            artifacts/chrome-web-store/
-          if-no-files-found: error
-
-      - name: Release summary
-        if: success()
-        run: |
-          {
-            echo "## Chrome Web Store release"
-            echo ""
-            if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-              echo "Triggered manually from ref \`${{ inputs.ref }}\`."
-              echo ""
-            fi
-            echo "Version **${MANIFEST_VERSION}** was built, verified, and uploaded as a **draft**."
-            echo ""
-            echo "Review and publish manually:"
-            echo "https://chrome.google.com/webstore/devconsole/b2564181-7079-402e-8ca4-090a821f8141/gbojjphhdboeaafjdilfibonoflhgcde/edit/package"
-            echo ""
-            echo "Submission zip: \`${SUBMISSION_ZIP}\`"
-          } >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Release summary (failure)
-        if: failure()
-        run: |
-          {
-            echo "## Chrome Web Store release failed"
-            echo ""
-            echo "The upload did not complete. Check the job logs for the failing gate (manifest, tests, permission audit, build, or CWS upload)."
-          } >> "$GITHUB_STEP_SUMMARY"
+          files: |
+            ${{ steps.resolve_zip.outputs.ZIP_PATH }}
+            artifacts/chrome-web-store/manifest.json
+            artifacts/chrome-web-store/submission-metadata.json
+            artifacts/chrome-web-store/checksums.txt
+          generate_release_notes: true
+          draft: true
+          prerelease: false

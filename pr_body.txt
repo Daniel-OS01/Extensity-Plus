@@ -1,0 +1,4 @@
+💡 **What**: Added `placeholder="Search..."` and `aria-label="Search"` to the search `<input>` element in `index.html`. Added `aria-hidden="true"` to the adjacent decorative FontAwesome search `<i>` icon.
+🎯 **Why**: The search box lacked visual guidance (placeholder) and was completely inaccessible to screen readers as it lacked both a `<label>` and an `aria-label`. The adjacent icon would also be incorrectly announced by screen readers without `aria-hidden="true"`.
+📸 **Before/After**: Visually, a "Search..." placeholder is now displayed in the input field when empty, making its purpose clearer to all users.
+♿ **Accessibility**: Screen readers will now announce the input properly as "Search" instead of just "edit text". The purely decorative search icon is now hidden from the accessibility tree, preventing confusing announcements.

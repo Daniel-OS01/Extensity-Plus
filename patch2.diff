@@ -1,37 +1,13 @@
-<<<<<<< SEARCH
-#profiles .sidebar ul.items li .profile-name-text {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  text-align: start;
-  white-space: nowrap;
-}
+--- .github/workflows/codex-build-and-bundle-smoke.yml
++++ .github/workflows/codex-build-and-bundle-smoke.yml
+@@ -24,8 +24,8 @@
+       - name: Build distributable extension
+         run: make dist
+         env:
+-          EXTENSITY_DRIVE_CLIENT_ID: dummy-client-id.apps.googleusercontent.com
+-          EXTENSITY_DRIVE_WEB_CLIENT_ID: dummy-web-client-id.apps.googleusercontent.com
++          EXTENSITY_DRIVE_CLIENT_ID: 12345-dummy.apps.googleusercontent.com
++          EXTENSITY_DRIVE_WEB_CLIENT_ID: 12345-dummy.apps.googleusercontent.com
 
-#profiles .sidebar .remove-profile {
-  color: var(--muted);
-}
-=======
-#profiles .sidebar ul.items li .profile-name-text {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  text-align: start;
-  white-space: nowrap;
-}
-
-#profiles .sidebar ul.items li .profile-count {
-  color: var(--muted);
-  font-size: 0.85em;
-  font-weight: normal;
-  opacity: 0.75;
-}
-
-#profiles .sidebar ul.items li.active .profile-count,
-#profiles .sidebar ul.items li:hover .profile-count {
-  color: inherit;
-}
-
-#profiles .sidebar .remove-profile {
-  color: var(--muted);
-}
->>>>>>> REPLACE
+       - name: Build Chrome Web Store submission bundle
+         run: npm run bundle:chrome-store

@@ -28,8 +28,8 @@ jobs:
       - name: Build distributable extension
         run: make dist
         env:
-          EXTENSITY_DRIVE_CLIENT_ID: 12345-dummy.apps.googleusercontent.com
-          EXTENSITY_DRIVE_WEB_CLIENT_ID: 12345-dummy.apps.googleusercontent.com
+          EXTENSITY_DRIVE_CLIENT_ID: dummy-client-id.apps.googleusercontent.com
+          EXTENSITY_DRIVE_WEB_CLIENT_ID: dummy-web-client-id.apps.googleusercontent.com
 
       - name: Build Chrome Web Store submission bundle
         run: npm run bundle:chrome-store

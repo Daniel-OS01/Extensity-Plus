@@ -1,14 +1,12 @@
---- js/background.js	2024-05-24 12:00:00.000000000 -0400
-+++ js/background.js	2024-05-24 12:01:00.000000000 -0400
-@@ -77,9 +77,9 @@
+--- .github/workflows/codex-build-and-bundle-smoke.yml
++++ .github/workflows/codex-build-and-bundle-smoke.yml
+@@ -23,6 +23,9 @@
 
-   async function clearUrlRuleTimeoutQueue(queue) {
-     var entries = Array.isArray(queue) ? queue : [];
--    for (var index = 0; index < entries.length; index += 1) {
--      await chromeCall(chrome.alarms, "clear", [entries[index].alarmName]);
--    }
-+    await Promise.all(entries.map(function(entry) {
-+      return chromeCall(chrome.alarms, "clear", [entry.alarmName]);
-+    }));
-     await storage.saveLocalState({ urlRuleTimeoutQueue: [] });
-   }
+       - name: Build distributable extension
+         run: make dist
++        env:
++          EXTENSITY_DRIVE_CLIENT_ID: dummy-client-id.apps.googleusercontent.com
++          EXTENSITY_DRIVE_WEB_CLIENT_ID: dummy-web-client-id.apps.googleusercontent.com
+
+       - name: Build Chrome Web Store submission bundle
+         run: npm run bundle:chrome-store

@@ -56,6 +56,9 @@ jobs:
         run: pnpm run check:manifest
 
       - name: Build distributable extension
+        env:
+          EXTENSITY_DRIVE_CLIENT_ID: 123-dummy.apps.googleusercontent.com
+          EXTENSITY_DRIVE_WEB_CLIENT_ID: 123-dummy.apps.googleusercontent.com
         run: make dist
 
       - name: Build Chrome Web Store submission bundle
@@ -144,6 +147,9 @@ jobs:
         run: pnpm install
 
       - name: Build distributable extension
+        env:
+          EXTENSITY_DRIVE_CLIENT_ID: 123-dummy.apps.googleusercontent.com
+          EXTENSITY_DRIVE_WEB_CLIENT_ID: 123-dummy.apps.googleusercontent.com
         run: make dist
 
       - name: Build Chrome Web Store submission bundle
@@ -213,6 +219,9 @@ jobs:
         run: pnpm run check:manifest
 
       - name: Build extension artifact
+        env:
+          EXTENSITY_DRIVE_CLIENT_ID: 123-dummy.apps.googleusercontent.com
+          EXTENSITY_DRIVE_WEB_CLIENT_ID: 123-dummy.apps.googleusercontent.com
         run: |
           make dist
           mkdir -p release-assets
@@ -295,6 +304,9 @@ jobs:
           echo "package_name=$PACKAGE_NAME" >> "$GITHUB_OUTPUT"
 
       - name: Build extension artifact
+        env:
+          EXTENSITY_DRIVE_CLIENT_ID: 123-dummy.apps.googleusercontent.com
+          EXTENSITY_DRIVE_WEB_CLIENT_ID: 123-dummy.apps.googleusercontent.com
         run: |
           make dist
           mkdir -p release-assets

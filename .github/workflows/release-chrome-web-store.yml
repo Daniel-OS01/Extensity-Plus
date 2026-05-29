@@ -126,7 +126,7 @@ jobs:
 
       - name: Build distributable extension
         env:
-          EXTENSITY_DRIVE_CLIENT_ID: dummy-123.apps.googleusercontent.com
+          EXTENSITY_DRIVE_CLIENT_ID: 123-dummy.apps.googleusercontent.com
           EXTENSITY_DRIVE_WEB_CLIENT_ID: ${{ secrets.EXTENSITY_DRIVE_WEB_CLIENT_ID }}
         run: make dist
 

@@ -113,26 +113,40 @@ document.addEventListener("DOMContentLoaded", function() {
 
     self.filteredEnableExtensions = ko.pureComputed(function() {
       var normalized = String(self.enableFilter() || "").trim().toLowerCase();
-      return self.availableExtensions().filter(function(extension) {
+      var source = self.availableExtensions();
+      var result = [];
+      for (var i = 0; i < source.length; i++) {
+        var extension = source[i];
         if (!normalized) {
-          return true;
+          result.push(extension);
+          continue;
         }
         var name = String(extension.name || "").toLowerCase();
         var alias = String(extension.alias || "").toLowerCase();
-        return name.indexOf(normalized) !== -1 || alias.indexOf(normalized) !== -1;
-      });
+        if (name.indexOf(normalized) !== -1 || alias.indexOf(normalized) !== -1) {
+          result.push(extension);
+        }
+      }
+      return result;
     });
 
     self.filteredDisableExtensions = ko.pureComputed(function() {
       var normalized = String(self.disableFilter() || "").trim().toLowerCase();
-      return self.availableExtensions().filter(function(extension) {
+      var source = self.availableExtensions();
+      var result = [];
+      for (var i = 0; i < source.length; i++) {
+        var extension = source[i];
         if (!normalized) {
-          return true;
+          result.push(extension);
+          continue;
         }
         var name = String(extension.name || "").toLowerCase();
         var alias = String(extension.alias || "").toLowerCase();
-        return name.indexOf(normalized) !== -1 || alias.indexOf(normalized) !== -1;
-      });
+        if (name.indexOf(normalized) !== -1 || alias.indexOf(normalized) !== -1) {
+          result.push(extension);
+        }
+      }
+      return result;
     });
 
     self.isSelected = ko.observable(false);

@@ -8,3 +8,4 @@
 ## 2024-05-24 - Parallelized Chrome Alarm Clearing
 **Learning:** Sequential `await` statements inside `for` loops used for Chrome API calls (like `chrome.alarms.clear`) represent a hidden I/O bottleneck in the background service worker, particularly when tearing down or rebuilding rule states.
 **Action:** Always look for loops awaiting independent Chrome extension API calls and refactor them to use `Promise.all` with `Array.prototype.map()` for concurrent execution, which drastically cuts down total execution time.
+## 2024-05-24 - Performance Refactor\n**Learning:** Consolidating array filtering into a single pass for loop minimizes intermediate array allocations and overhead of callback functions significantly improving execution time in performance-sensitive computed observables.\n**Action:** Use a single `for` loop, cache results conditionally, and use `return` early when possible.

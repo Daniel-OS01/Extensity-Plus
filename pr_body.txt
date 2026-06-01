@@ -1,0 +1,4 @@
+💡 **What:** Added `placeholder` and `aria-label` attributes to the main search box in `index.html`, and hid the decorative search icon using `aria-hidden='true'`.
+🎯 **Why:** Standalone inputs without explicit `<label>` tags (like this search box) require these attributes for proper screen reader support and visual affordance, enhancing both accessibility and general UX.
+📸 **Before/After:** (Visual verification screenshot attached during review showing the 'Search...' placeholder).
+♿ **Accessibility:** Screen readers can now correctly identify the purpose of the search box, and the decorative icon is ignored, preventing confusing redundant readouts.

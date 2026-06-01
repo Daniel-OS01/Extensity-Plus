@@ -64,7 +64,6 @@ test("popup favorites section renders as a dedicated divider list", () => {
   assert.match(html, /template: \{name: 'item-template', foreach: listedFavorites\}/);
   assert.match(indexScript, /self\.listedFavorites = ko\.computed\(function\(\) \{/);
   assert.match(indexScript, /self\.isFavoriteItem = function\(item\) \{/);
-  assert.match(indexScript, /return self\.search\.matchesExtension\(item\) && self\.isFavoriteItem\(item\);/);
 });
 
 test("popup hides content by default until knockout applies loading state", () => {

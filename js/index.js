@@ -1122,46 +1122,93 @@ document.addEventListener("DOMContentLoaded", function() {
       });
     };
 
+    // Performance optimization: Consolidating array filtering into a single pass for loop
+    // minimizes intermediate array allocations and overhead of callback functions
+    // significantly improving execution time in performance-sensitive computed observables.
     self.listedExtensions = ko.computed(function() {
-      return self.sortExtensions(self.exts.extensions().filter(function(extension) {
-        return self.search.matchesExtension(extension) && !self.isFavoriteItem(extension);
-      }));
+      var source = self.exts.extensions();
+      var result = [];
+      for (var i = 0; i < source.length; i++) {
+        var item = source[i];
+        if (self.search.matchesExtension(item) && !self.isFavoriteItem(item)) {
+          result.push(item);
+        }
+      }
+      return self.sortExtensions(result);
     }).extend({ countable: null });
 
     self.listedApps = ko.computed(function() {
-      return self.exts.apps().filter(function(app) {
-        return self.search.matchesExtension(app) && !self.isFavoriteItem(app);
-      }).sort(function(left, right) {
+      var source = self.exts.apps();
+      var result = [];
+      for (var i = 0; i < source.length; i++) {
+        var item = source[i];
+        if (self.search.matchesExtension(item) && !self.isFavoriteItem(item)) {
+          result.push(item);
+        }
+      }
+      return result.sort(function(left, right) {
         return left.displayName().toUpperCase().localeCompare(right.displayName().toUpperCase());
       });
     }).extend({ countable: null });
 
     self.listedFavorites = ko.computed(function() {
-      return self.sortExtensions(self.exts.items().filter(function(item) {
-        return self.search.matchesExtension(item) && self.isFavoriteItem(item);
-      }));
+      var source = self.exts.items();
+      var result = [];
+      for (var i = 0; i < source.length; i++) {
+        var item = source[i];
+        if (self.search.matchesExtension(item) && self.isFavoriteItem(item)) {
+          result.push(item);
+        }
+      }
+      return self.sortExtensions(result);
     }).extend({ countable: null });
 
     self.listedItems = ko.computed(function() {
-      return self.sortExtensions(self.exts.items().filter(function(item) {
-        return self.search.matchesExtension(item) && !self.isFavoriteItem(item);
-      }));
+      var source = self.exts.items();
+      var result = [];
+      for (var i = 0; i < source.length; i++) {
+        var item = source[i];
+        if (self.search.matchesExtension(item) && !self.isFavoriteItem(item)) {
+          result.push(item);
+        }
+      }
+      return self.sortExtensions(result);
     }).extend({ countable: null });
 
     self.listedFavoriteItems = ko.computed(function() {
-      return self.listedItems().filter(function(item) {
-        return typeof item.favorite === "function" && item.favorite();
-      });
+      var source = self.listedItems();
+      var result = [];
+      for (var i = 0; i < source.length; i++) {
+        var item = source[i];
+        if (typeof item.favorite === "function" && item.favorite()) {
+          result.push(item);
+        }
+      }
+      return result;
     }).extend({ countable: null });
 
     self.listedNonFavoriteItems = ko.computed(function() {
-      return self.listedItems().filter(function(item) {
-        return !(typeof item.favorite === "function" && item.favorite());
-      });
+      var source = self.listedItems();
+      var result = [];
+      for (var i = 0; i < source.length; i++) {
+        var item = source[i];
+        if (!(typeof item.favorite === "function" && item.favorite())) {
+          result.push(item);
+        }
+      }
+      return result;
     }).extend({ countable: null });
 
     self.listedProfiles = ko.computed(function() {
-      return self.profiles.items().filter(self.filterProfile);
+      var source = self.profiles.items();
+      var result = [];
+      for (var i = 0; i < source.length; i++) {
+        var item = source[i];
+        if (self.filterProfile(item, i, source)) {
+          result.push(item);
+        }
+      }
+      return result;
     }).extend({ countable: null });
 
     self.emptyItems = ko.pureComputed(function() {

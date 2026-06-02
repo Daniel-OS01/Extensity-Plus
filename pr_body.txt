@@ -1,4 +1,0 @@
-💡 **What:** Added `placeholder` and `aria-label` to the standalone search input in `index.html`, and applied `aria-hidden="true"` to the adjacent decorative search icon.
-🎯 **Why:** To improve accessibility for screen readers and visual guidance for users on standalone inputs that lack explicit label tags.
-📸 **Before/After:** No major visual layout changes, just added a placeholder text when the search box is empty.
-♿ **Accessibility:** Screen readers will now announce 'Search extensions and apps' instead of simply 'edit' or reading out the unhelpful adjacent font-awesome icon.

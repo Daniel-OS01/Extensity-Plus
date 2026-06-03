@@ -26,6 +26,9 @@ jobs:
         run: npm ci
 
       - name: Build distributable extension
+        env:
+          EXTENSITY_DRIVE_CLIENT_ID: dummy-client-id
+          EXTENSITY_DRIVE_WEB_CLIENT_ID: dummy-web-client-id
         run: make dist
 
       - name: Build Chrome Web Store submission bundle

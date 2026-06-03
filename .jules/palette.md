@@ -6,6 +6,6 @@
 **Learning:** Some interactive icons (`<i class="fa" data-sbind="click: ...">`) exist without `<button>` wrappers. Replacing them with `<button>` elements with `style="background:none; border:none; padding:0; cursor:pointer; color:inherit;"` makes them accessible to keyboard users while preserving layout and hover states.
 **Action:** Convert clickable icon-only `<i>` tags into proper `<button>` elements with `aria-label`.
 
-## 2024-05-18 - Replacing Interactive Icons with Buttons
-**Learning:** Some interactive icons (`<i class="fa" data-sbind="click: ...">`) exist without `<button>` wrappers. Replacing them with `<button>` elements with `style="background:none; border:none; padding:0; cursor:pointer; color:inherit;"` makes them accessible to keyboard users while preserving layout and hover states.
-**Action:** Convert clickable icon-only `<i>` tags into proper `<button>` elements with `aria-label`.
+## 2024-06-03 - CI OAuth Validation Fix
+**Learning:** To prevent the Chrome Web Store bundle script from failing in CI workflows (like `codex-build-and-bundle-smoke.yml`), dummy environment variables for `EXTENSITY_DRIVE_CLIENT_ID` and `EXTENSITY_DRIVE_WEB_CLIENT_ID` must be provided to the `make dist` step. These dummy values must conform to the Google OAuth format (e.g., '123-abc.apps.googleusercontent.com') to pass regex validation in `scripts/set-drive-oauth-client-id.js`.
+**Action:** When adding dummy credentials for CI workflows, always use format-compliant strings rather than arbitrary placeholders.

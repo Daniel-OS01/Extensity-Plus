@@ -1,4 +1,0 @@
-💡 What: Wrapped the icon-only trash button in a semantic `<button type="button">` element with proper attributes.
-🎯 Why: The original `<i>` tag with an onclick binding was inaccessible to screen readers and keyboard users.
-📸 Before/After: Before, a raw `<i>` tag. After, a semantic `<button>` preserving layout with inline styles and `color:inherit`.
-♿ Accessibility: Added `aria-label="Delete this profile"` to the button and `aria-hidden="true"` to the inner `<i>` tag, making the action fully accessible to assistive technologies.

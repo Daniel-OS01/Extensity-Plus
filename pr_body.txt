@@ -1,0 +1,7 @@
+💡 What: Replaced inefficient `.filter().map()` method chaining with a single `for` loop pass in both `runToggleAll` and `runApplyProfile` functions within `js/background.js`.
+
+🎯 Why: The original implementation performed up to four consecutive iteration passes over the `current.items` array and allocated intermediate arrays at each step. For users with large lists of extensions or when running frequent bulk toggles, this generated unnecessary garbage collection pressure and slowed down execution.
+
+📊 Impact: Reduces array iteration passes from O(3N/4N) down to O(N). Completely eliminates the allocation overhead of three intermediate, transient arrays per function call. Reduces execution time and memory jitter during bulk profile or toggle changes.
+
+🔬 Measurement: Verify by executing the test suite (`pnpm test`), which runs profile-related assertions, and observing that functionality exactly matches the prior behavior with less memory allocation.

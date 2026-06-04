@@ -1,0 +1,11 @@
+### 💡 What
+Added `placeholder="Search..."` and `aria-label="Search"` to the standalone search `<input>` element in `index.html`. Additionally, applied `aria-hidden="true"` to the adjacent decorative FontAwesome search icon.
+
+### 🎯 Why
+The search box previously relied solely on a visual magnifying glass icon and lacked explicitly bound descriptive text. Users navigating via screen readers wouldn't have proper context about the input field's purpose, and sighted users lacked a helpful placeholder.
+
+### 📸 Before/After
+*(See Playwright verification screenshot/video artifacts attached to the pre-commit workflow)*
+
+### ♿ Accessibility
+This change ensures WCAG compliance by properly labelling an input field that intentionally omits a `<label>` tag for layout reasons. By hiding the `<i>` icon from assistive technology, it also prevents redundant or confusing screen reader announcements.

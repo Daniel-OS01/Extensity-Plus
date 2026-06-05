@@ -1,0 +1,13 @@
+**💡 What:**
+Replaced interactive icon-only elements (`<i>` tags) with semantic `<button type="button">` wrappers in `index.html` and `profiles.html`.
+
+**🎯 Why:**
+The original `<i>` tags acting as buttons lacked keyboard accessibility (focusability) and semantic meaning, making them difficult to use for users relying on keyboard navigation or screen readers.
+
+**📸 Before/After:**
+The visual appearance remains completely identical, as inline styles (`style="background:none; border:none; padding:0; cursor:pointer;"`) were applied to the new `<button>` tags to reset default button styling.
+
+**♿ Accessibility:**
+* **Screen Readers:** Added descriptive `aria-label`s to the new `<button>` tags (e.g., "Options", "Delete this profile").
+* **Keyboard Navigation:** By using `<button>`, these elements are now naturally part of the document's tab order and can be activated using the Space or Enter keys.
+* **Redundancy Reduction:** Added `aria-hidden="true"` to the inner FontAwesome `<i>` tags to hide them from assistive technologies, preventing redundant announcements.

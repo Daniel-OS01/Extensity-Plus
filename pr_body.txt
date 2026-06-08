@@ -1,0 +1,4 @@
+💡 What: Added `aria-label` and `placeholder` attributes to standalone inputs (search box and new profile input) and hid decorative icons with `aria-hidden="true"`.
+🎯 Why: Standalone inputs relying solely on placeholders are an accessibility anti-pattern. Screen readers require an explicit `aria-label` when a visible `<label>` is absent. Decorative icons that accompany these inputs also need to be hidden to prevent redundant or confusing screen reader announcements.
+📸 Before/After: Visuals remain unchanged, but screen reader experience is significantly improved.
+♿ Accessibility: Improved screen reader support for the main search input and the profile creation input.

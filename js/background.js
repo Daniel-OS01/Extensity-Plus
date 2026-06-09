@@ -1276,23 +1276,22 @@ importScripts(
     }
 
     var alwaysOn = current.profiles.map.__always_on || [];
-    var enabledIds = current.items.filter(function(item) {
-      return item.type === "extension" && item.mayDisable && item.enabled;
-    }).map(function(item) {
-      return item.id;
-    });
-
-    var disableIds = enabledIds.filter(function(extensionId) {
-      if (!current.options.keepAlwaysOn) {
-        return true;
+    // Performance optimization: Replace chained .filter().map().filter().map()
+    // with a single loop to avoid multiple intermediate array allocations.
+    var enabledIds = [];
+    var disableChanges = [];
+    for (var i = 0; i < current.items.length; i++) {
+      var item = current.items[i];
+      if (item.type === "extension" && item.mayDisable && item.enabled) {
+        enabledIds.push(item.id);
+        if (!current.options.keepAlwaysOn || alwaysOn.indexOf(item.id) === -1) {
+          disableChanges.push({ enabled: false, id: item.id });
+        }
       }
-      return alwaysOn.indexOf(extensionId) === -1;
-    });
+    }
 
     return applyExtensionChanges(
-      disableIds.map(function(extensionId) {
-        return { enabled: false, id: extensionId };
-      }),
+      disableChanges,
       { source: "bulk" },
       {
         action: "toggle_all_disable",
@@ -1312,15 +1311,19 @@ importScripts(
 
     var alwaysOn = current.profiles.map.__always_on || [];
     var desiredIds = storage.uniqueArray(targetProfile.concat(alwaysOn));
-    var changes = current.items.filter(function(item) {
-      return item.type === "extension" && item.mayDisable;
-    }).map(function(item) {
-      return {
-        enabled: desiredIds.indexOf(item.id) !== -1,
-        id: item.id,
-        profileId: profileName
-      };
-    });
+    // Performance optimization: Replace chained .filter().map() with a
+    // single loop to avoid an intermediate array allocation.
+    var changes = [];
+    for (var i = 0; i < current.items.length; i++) {
+      var item = current.items[i];
+      if (item.type === "extension" && item.mayDisable) {
+        changes.push({
+          enabled: desiredIds.indexOf(item.id) !== -1,
+          id: item.id,
+          profileId: profileName
+        });
+      }
+    }
 
     return applyExtensionChanges(
       changes,

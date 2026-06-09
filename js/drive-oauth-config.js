@@ -1,6 +1,6 @@
 (function(root) {
   root.ExtensityDriveConfig = Object.assign({
     drivePreferWebAuth: false,
-    driveWebClientId: "123-abc.apps.googleusercontent.com"
+    driveWebClientId: "REPLACE_WITH_DRIVE_WEB_CLIENT_ID.apps.googleusercontent.com"
   }, root.ExtensityDriveConfig || {});
 })(typeof window !== "undefined" ? window : self);

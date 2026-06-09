@@ -32,7 +32,7 @@ jobs:
 
       - name: Build distributable extension
         id: build
-        run: make dist 2>&1 | tee build-output.txt
+        run: EXTENSITY_DRIVE_CLIENT_ID="123-abc.apps.googleusercontent.com" EXTENSITY_DRIVE_WEB_CLIENT_ID="123-abc.apps.googleusercontent.com" make dist 2>&1 | tee build-output.txt
         continue-on-error: true
 
       - name: Verify dist/dist.zip exists and is a valid zip

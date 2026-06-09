@@ -25,6 +25,13 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Set temporary Drive OAuth credentials for build
+        run: |
+          export EXTENSITY_DRIVE_CLIENT_ID='123-abc.apps.googleusercontent.com'
+          export EXTENSITY_DRIVE_WEB_CLIENT_ID='123-abc.apps.googleusercontent.com'
+          npm run drive:set-client-id
+          npm run drive:set-web-client-id
+
       - name: Build distributable extension
         run: make dist
 

@@ -26,6 +26,9 @@ jobs:
         run: npm ci
 
       - name: Build distributable extension
+        env:
+          EXTENSITY_DRIVE_CLIENT_ID: 123-abc.apps.googleusercontent.com
+          EXTENSITY_DRIVE_WEB_CLIENT_ID: 123-abc.apps.googleusercontent.com
         run: make dist
 
       - name: Build Chrome Web Store submission bundle

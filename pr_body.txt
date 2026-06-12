@@ -1,0 +1,4 @@
+💡 What: Added `placeholder="Search"`, `aria-label="Search"`, and `aria-hidden="true"` to the standalone search input and its adjacent icon in `index.html`.
+🎯 Why: Standalone inputs without `<label>` elements are inaccessible to screen reader users, who need an `aria-label` to understand the input's purpose. Visual users benefit from a clear `placeholder`. The adjacent decorative search icon must be hidden from screen readers to prevent redundant or confusing announcements.
+📸 Before/After: Visual change is adding the "Search" placeholder text.
+♿ Accessibility: Improved screen reader support for the main search box by explicitly labeling it and hiding the decorative icon.

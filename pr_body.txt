@@ -1,0 +1,8 @@
+💡 **What:** Refactored interactive `<i>` tags (Options gears and Delete profile icons) into accessible `<button type="button">` wrappers across `index.html` and `profiles.html`.
+🎯 **Why:** To drastically improve keyboard accessibility and screen reader support. Previously, these icon-only buttons could not be tabbed to via keyboard or interpreted by screen readers. Now they have proper semantic roles and explicit `aria-label`s.
+📸 **Before/After:** The visual appearance remains completely unchanged due to a carefully applied inline style reset (`background:none; border:none; padding:0; cursor:pointer; color:inherit;`) that inherits existing font properties and hover colors.
+♿ **Accessibility:**
+- Added `<button type="button">` wrappers to interactive icons.
+- Added explicit `aria-label` attributes to the buttons.
+- Added `aria-hidden="true"` to the inner decorative FontAwesome `<i>` tags to hide them from screen readers.
+- Ensured keyboard focusability (Tab key) and interaction (Enter/Space keys).

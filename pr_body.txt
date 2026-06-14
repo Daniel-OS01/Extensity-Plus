@@ -1,0 +1,4 @@
+💡 **What:** Added accessibility and placeholder text to the popup search box.
+🎯 **Why:** To improve accessibility for screen readers and provide visual affordance for keyboard navigation.
+📸 **Before/After:** No visual changes.
+♿ **Accessibility:** Added an `aria-label` to the search input, defined a `placeholder` attribute, and added `aria-hidden="true"` to the decorative search icon.

@@ -1,9 +1,0 @@
-💡 **What:** Added `placeholder` and `aria-label` attributes to the search `<input>` in the extension popup (`index.html`), and explicitly hid the adjacent decorative FontAwesome search icon from screen readers using `aria-hidden="true"`.
-
-🎯 **Why:** To make the search box fully accessible to screen reader users (who otherwise wouldn't hear a label for the input) and to provide a visual affordance (`Search extensions`) for sighted users without relying purely on the icon.
-
-📸 **Before/After:** The visual change is a "Search extensions" placeholder inside the input box when empty.
-
-♿ **Accessibility:**
-- Added `aria-label="Search extensions"` for screen readers.
-- Hid the decorative `<i class="fa fa-search">` using `aria-hidden="true"` to prevent screen readers from reading out confusing character data.

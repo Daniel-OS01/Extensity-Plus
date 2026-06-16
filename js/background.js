@@ -407,8 +407,19 @@ importScripts(
       return "";
     }
 
-    function readCategoryFromJsonObject(value) {
+    function readCategoryFromJsonObject(value, state, depth) {
       if (!value || typeof value !== "object") {
+        return "";
+      }
+
+      depth = depth || 0;
+      if (depth > 10) {
+        return "";
+      }
+
+      state = state || { visited: 0 };
+      state.visited += 1;
+      if (state.visited > 1000) {
         return "";
       }
 
@@ -433,7 +444,7 @@ importScripts(
         var nextValue = value[key];
         if (Array.isArray(nextValue)) {
           for (var j = 0; j < nextValue.length; j += 1) {
-            var fromArray = readCategoryFromJsonObject(nextValue[j]);
+            var fromArray = readCategoryFromJsonObject(nextValue[j], state, depth + 1);
             if (fromArray) {
               return fromArray;
             }
@@ -441,7 +452,7 @@ importScripts(
           continue;
         }
 
-        var nested = readCategoryFromJsonObject(nextValue);
+        var nested = readCategoryFromJsonObject(nextValue, state, depth + 1);
         if (nested) {
           return nested;
         }
@@ -455,8 +466,12 @@ importScripts(
       var scriptMatch;
       while ((scriptMatch = ldJsonRegex.exec(html))) {
         try {
-          var parsedJson = JSON.parse(scriptMatch[1]);
-          var categoryFromLd = readCategoryFromJsonObject(parsedJson);
+          var matchStr = scriptMatch[1];
+          if (matchStr && matchStr.length > 131072) { // 128KB
+            continue;
+          }
+          var parsedJson = JSON.parse(matchStr);
+          var categoryFromLd = readCategoryFromJsonObject(parsedJson, { visited: 0 }, 0);
           if (categoryFromLd) {
             return categoryFromLd;
           }

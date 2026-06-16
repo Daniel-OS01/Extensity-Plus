@@ -1,5 +1,0 @@
-🚨 Severity: CRITICAL
-💡 Vulnerability: The `categoryFromStructuredData` and `readCategoryFromJsonObject` functions in `js/background.js` parse dynamically fetched `ld+json` blobs from the Chrome Web Store without depth or size limitations. This allows an arbitrarily nested JSON object or a massive payload to crash the background script via an Uncaught RangeError (Maximum call stack size exceeded) or CPU/memory exhaustion (Denial of Service).
-🎯 Impact: An attacker who manages to inject or serve a malicious extension page on the Chrome Web Store could disable the core extension's functionality or severely degrade the user's browser performance by causing the extension's background process to continually crash when parsing the manipulated structured data payload.
-🔧 Fix: Added safeguards to `js/background.js`. The payload size is now restricted to a maximum of 128KB before parsing. Additionally, `readCategoryFromJsonObject` enforces a maximum recursive depth limit of 10 and a maximum object nodes visited limit of 1000.
-✅ Verification: Tested via unit tests using deeply nested objects mimicking an `ld+json` object. Tests ran clean.

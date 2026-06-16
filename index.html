@@ -61,7 +61,7 @@
 </section>
 
 <section id="search" class="main" data-sbind="if: opts.searchBox">
-  <p><i class="fa fa-search"></i> <input type="text" data-sbind="value: search.q, valueUpdate: 'keyup'" tabindex="1" autofocus /></p>
+  <p><i class="fa fa-search" aria-hidden="true"></i> <input type="text" placeholder="Search extensions and apps..." aria-label="Search extensions and apps" data-sbind="value: search.q, valueUpdate: 'keyup'" tabindex="1" autofocus /></p>
 </section>
 
 <section id="search-results" class="main" data-sbind="visible: isSearching">

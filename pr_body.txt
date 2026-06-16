@@ -1,0 +1,9 @@
+💡 **What:** Added a placeholder ("Search extensions and apps...") and an `aria-label` to the main search box in `index.html`. Also explicitly hid the decorative search icon using `aria-hidden="true"`. Furthermore, added dummy `EXTENSITY_DRIVE_CLIENT_ID` and `EXTENSITY_DRIVE_WEB_CLIENT_ID` environment variables to the CI workflow so `make dist` correctly runs and `npm run bundle:chrome-store` succeeds.
+
+🎯 **Why:** Standalone inputs without explicit `<label>` tags must be made accessible to screen readers, and adding a `placeholder` gives a strong visual affordance about the input's purpose before typing. Hiding the decorative icon prevents screen readers from reading it as confusing extra text. The CI fix was needed to unblock builds.
+
+📸 **Before/After:** The search box now clearly displays "Search extensions and apps..." when empty, improving clarity.
+
+♿ **Accessibility:**
+- Added `aria-label="Search extensions and apps"` to the search `<input>`.
+- Added `aria-hidden="true"` to the decorative `<i class="fa fa-search"></i>` icon.

@@ -1275,24 +1275,25 @@ importScripts(
       );
     }
 
+    // Performance optimization: Consolidate array transformations into a single pass.
+    // Replaces .filter().map().filter().map() chain with a single for loop.
     var alwaysOn = current.profiles.map.__always_on || [];
-    var enabledIds = current.items.filter(function(item) {
-      return item.type === "extension" && item.mayDisable && item.enabled;
-    }).map(function(item) {
-      return item.id;
-    });
+    var enabledIds = [];
+    var disableChanges = [];
+    var alwaysOnSet = new Set(alwaysOn);
 
-    var disableIds = enabledIds.filter(function(extensionId) {
-      if (!current.options.keepAlwaysOn) {
-        return true;
+    for (var i = 0; i < current.items.length; i++) {
+      var item = current.items[i];
+      if (item.type === "extension" && item.mayDisable && item.enabled) {
+        enabledIds.push(item.id);
+        if (!current.options.keepAlwaysOn || !alwaysOnSet.has(item.id)) {
+          disableChanges.push({ enabled: false, id: item.id });
+        }
       }
-      return alwaysOn.indexOf(extensionId) === -1;
-    });
+    }
 
     return applyExtensionChanges(
-      disableIds.map(function(extensionId) {
-        return { enabled: false, id: extensionId };
-      }),
+      disableChanges,
       { source: "bulk" },
       {
         action: "toggle_all_disable",
@@ -1310,17 +1311,23 @@ importScripts(
       throw new Error("Unknown profile: " + profileName);
     }
 
+    // Performance optimization: Consolidate array transformations into a single pass and use a Set for O(1) lookups.
+    // Replaces .filter().map() chain and O(N) .indexOf() lookups inside the map.
     var alwaysOn = current.profiles.map.__always_on || [];
     var desiredIds = storage.uniqueArray(targetProfile.concat(alwaysOn));
-    var changes = current.items.filter(function(item) {
-      return item.type === "extension" && item.mayDisable;
-    }).map(function(item) {
-      return {
-        enabled: desiredIds.indexOf(item.id) !== -1,
-        id: item.id,
-        profileId: profileName
-      };
-    });
+    var desiredIdsSet = new Set(desiredIds);
+    var changes = [];
+
+    for (var j = 0; j < current.items.length; j++) {
+      var item2 = current.items[j];
+      if (item2.type === "extension" && item2.mayDisable) {
+        changes.push({
+          enabled: desiredIdsSet.has(item2.id),
+          id: item2.id,
+          profileId: profileName
+        });
+      }
+    }
 
     return applyExtensionChanges(
       changes,

@@ -1,0 +1,5 @@
+💡 **What**: Replaced non-semantic elements (e.g., `<a>` tags acting as buttons, or raw `<i>` icons with click handlers) across the UI with semantic `<button type="button">` wrappers.
+
+🎯 **Why**: Improves keyboard navigation and makes interactive icon-only components fully accessible for screen readers, while preserving the existing layout and hover effects.
+
+♿ **Accessibility**: Added `aria-label`s to the new interactive `<button>` elements, matching their intended titles. Also explicitly hid the inner decorative FontAwesome icons from screen readers using `aria-hidden="true"`.

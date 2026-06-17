@@ -54,8 +54,8 @@
         <div class="editor-header">
           <input class="profile-title" type="text" data-sbind="value: current_profile().name, disable: current_profile().reserved(), attr:{dir: currentProfileNameDir}" />
           <div class="toggle">
-            <a href="#" title="Include all extensions in this profile" data-sbind="click: toggleAll">All</a> |
-            <a href="#" title="Remove all extensions from this profile" data-sbind="click: toggleNone">None</a>
+            <button type="button" title="Include all extensions in this profile" data-sbind="click: toggleAll" style="background:none; border:none; padding:0; cursor:pointer; color:inherit; text-decoration:underline;">All</button> |
+            <button type="button" title="Remove all extensions from this profile" data-sbind="click: toggleNone" style="background:none; border:none; padding:0; cursor:pointer; color:inherit; text-decoration:underline;">None</button>
           </div>
         </div>
         <div class="profile-meta-editor" data-sbind="visible: !current_profile().reserved()">
@@ -139,7 +139,7 @@
             <i class="fa" data-sbind="attr:{class: 'fa ' + icon()}"></i>
             <a class="profile-name-text" data-sbind="text: short_name"></a>
             <span class="profile-count" title="Extensions in this profile" data-sbind="text: itemCount"></span>
-            <i class="fa fa-trash-o remove-profile" title="Delete this profile" data-sbind="click: requestRemove, clickBubble: false"></i>
+            <button type="button" class="remove-profile" title="Delete this profile" aria-label="Delete this profile" data-sbind="click: requestRemove, clickBubble: false" style="background:none; border:none; padding:0; cursor:pointer;"><i class="fa fa-trash-o" aria-hidden="true"></i></button>
           </li>
         </ul>
 
@@ -150,7 +150,7 @@
 
         <div class="footer-actions">
           <button id="save" type="button" title="Save profile changes" data-sbind="click: save">Save</button>
-          <a href="#" id="close" title="Close profiles without saving more changes" data-sbind="click: close">Close</a>
+          <button type="button" id="close" title="Close profiles without saving more changes" data-sbind="click: close" style="background:none; border:none; padding:0; cursor:pointer; color:inherit; text-decoration:underline;">Close</button>
           <span id="save-result" class="hidden">Saved!</span>
         </div>
       </div>

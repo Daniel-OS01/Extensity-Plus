@@ -1089,6 +1089,12 @@ importScripts(
     var toolbarPins = state.localState.toolbarPins || [];
     var installFirstSeenAt = state.localState.installFirstSeenAt || {};
 
+    // Performance optimization: Pre-computing Sets from arrays replaces O(N) array
+    // traversal with O(1) hash map lookups inside the .map() iteration loop.
+    var alwaysOnSet = new Set(alwaysOn);
+    var favoritesSet = new Set(favorites);
+    var toolbarPinsSet = new Set(toolbarPins);
+
     return items.slice().sort(function(left, right) {
       return left.name.toUpperCase().localeCompare(right.name.toUpperCase());
     }).map(function(item) {
@@ -1106,16 +1112,17 @@ importScripts(
         ? normalizeCategoryText(cachedMetadata.category)
         : fallbackMetadata.category;
       var normalizedStoreUrl = normalizeStoreUrl(cachedMetadata.storeUrl) || fallbackMetadata.storeUrl;
+      var recentIndex = recentList.indexOf(item.id);
 
       return {
         alias: aliases[item.id] || "",
-        alwaysOn: alwaysOn.indexOf(item.id) !== -1,
+        alwaysOn: alwaysOnSet.has(item.id),
         category: normalizedCategory,
         description: item.description || "",
         descriptionLine: cachedMetadata.descriptionLine || fallbackMetadata.descriptionLine,
         displayName: aliases[item.id] || item.name,
         enabled: !!item.enabled,
-        favorite: favorites.indexOf(item.id) !== -1,
+        favorite: favoritesSet.has(item.id),
         groupBadges: extensionGroups,
         groupIds: groupLookup[item.id] || [],
         homepageUrl: item.homepageUrl || "",
@@ -1124,14 +1131,14 @@ importScripts(
         installType: item.installType,
         isApp: isAppType(item.type),
         installedAt: installFirstSeenAt[item.id] || 0,
-        lastUsed: recentList.indexOf(item.id) === -1 ? 0 : (recentList.length - recentList.indexOf(item.id)),
+        lastUsed: recentIndex === -1 ? 0 : (recentList.length - recentIndex),
         mayDisable: !!item.mayDisable,
         metadataFetchedAt: cachedMetadata.fetchedAt || fallbackMetadata.fetchedAt,
         metadataSource: cachedMetadata.source || fallbackMetadata.source,
         name: item.name,
         optionsUrl: item.optionsUrl || "",
         storeUrl: normalizedStoreUrl,
-        toolbarPinned: toolbarPins.indexOf(item.id) !== -1,
+        toolbarPinned: toolbarPinsSet.has(item.id),
         type: item.type,
         usageCount: counters[item.id] || 0,
         version: item.version || ""
@@ -1276,6 +1283,7 @@ importScripts(
     }
 
     var alwaysOn = current.profiles.map.__always_on || [];
+    var alwaysOnSet = new Set(alwaysOn);
     var enabledIds = current.items.filter(function(item) {
       return item.type === "extension" && item.mayDisable && item.enabled;
     }).map(function(item) {
@@ -1286,7 +1294,7 @@ importScripts(
       if (!current.options.keepAlwaysOn) {
         return true;
       }
-      return alwaysOn.indexOf(extensionId) === -1;
+      return !alwaysOnSet.has(extensionId);
     });
 
     return applyExtensionChanges(
@@ -1312,11 +1320,15 @@ importScripts(
 
     var alwaysOn = current.profiles.map.__always_on || [];
     var desiredIds = storage.uniqueArray(targetProfile.concat(alwaysOn));
+
+    // Performance optimization: Pre-compute a Set for desiredIds to replace
+    // the O(N) array lookup with an O(1) hash map lookup inside the filter/map loop.
+    var desiredIdsSet = new Set(desiredIds);
     var changes = current.items.filter(function(item) {
       return item.type === "extension" && item.mayDisable;
     }).map(function(item) {
       return {
-        enabled: desiredIds.indexOf(item.id) !== -1,
+        enabled: desiredIdsSet.has(item.id),
         id: item.id,
         profileId: profileName
       };

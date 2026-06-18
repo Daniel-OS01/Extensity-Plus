@@ -1,0 +1,7 @@
+💡 **What:** Added a `placeholder="Search"` and `aria-label="Search"` to the search input field in the popup UI (`index.html`), and hid the adjacent decorative search icon from screen readers using `aria-hidden="true"`.
+
+🎯 **Why:** Standalone input fields without explicit text labels are confusing for screen reader users and can lack immediate visual affordance. The placeholder provides immediate context for sighted users, while the ARIA label ensures screen readers can identify the field's purpose. Hiding the decorative icon prevents redundant announcements.
+
+📸 **Before/After:** The search box now displays the text "Search" before the user starts typing.
+
+♿ **Accessibility:** Improved screen reader support for the primary search input by providing an explicit ARIA label and silencing the decorative icon.

@@ -1,4 +1,0 @@
-💡 What: Replaced multiple `Array.prototype.indexOf()` lookups with ES6 `Set.prototype.has()` inside the `normalizeExtensions` object mapping loop, and cached a `recentList.indexOf()` lookup inside the loop to a local variable.
-🎯 Why: Inside an extensive `.map()` loop, invoking `.indexOf()` on external arrays (`alwaysOn`, `favorites`, `toolbarPins`) for each extension results in O(N * M) time complexity where N is extensions and M is array lengths.
-📊 Impact: Reduces array iteration time complexity from O(N * M) to O(N + M) utilizing O(1) Set checks, scaling better with large extension catalogs and numerous profile overrides.
-🔬 Measurement: Verify changes with `pnpm test` and `pnpm run check:manifest`.

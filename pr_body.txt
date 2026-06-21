@@ -1,0 +1,7 @@
+💡 **What**: Replaced `Array.prototype.indexOf()` lookups with `Set.prototype.has()` inside iterators (`.map()` and `.filter()`) within `js/background.js` (specifically in `normalizeExtensions`, `runToggleAll`, and `runApplyProfile`). Also cached a repeated `indexOf` lookup.
+
+🎯 **Why**: Nested O(N) `indexOf` lookups inside iterators effectively create O(N²) time complexity. This causes unnecessary main-thread blocking when rendering or filtering larger extension lists. Using `Set` reduces the lookup time to O(1), bringing the total time complexity down to O(N).
+
+📊 **Impact**: Significantly reduces the execution time for data normalization and profile application, particularly for users with many installed extensions and large custom profiles.
+
+🔬 **Measurement**: Verify by running `pnpm test` and ensuring all unit tests pass, confirming no logic regressions were introduced.

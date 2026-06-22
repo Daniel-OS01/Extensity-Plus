@@ -1276,23 +1276,23 @@ importScripts(
     }
 
     var alwaysOn = current.profiles.map.__always_on || [];
-    var enabledIds = current.items.filter(function(item) {
-      return item.type === "extension" && item.mayDisable && item.enabled;
-    }).map(function(item) {
-      return item.id;
-    });
+    var alwaysOnSet = new Set(alwaysOn); // Performance optimization: O(1) set lookup instead of O(N) indexOf
 
-    var disableIds = enabledIds.filter(function(extensionId) {
-      if (!current.options.keepAlwaysOn) {
-        return true;
+    // Performance optimization: Consolidate multiple array transformations (filter/map/filter/map) into a single loop pass
+    var enabledIds = [];
+    var disableChanges = [];
+    for (var i = 0; i < current.items.length; i++) {
+      var item = current.items[i];
+      if (item.type === "extension" && item.mayDisable && item.enabled) {
+        enabledIds.push(item.id);
+        if (!current.options.keepAlwaysOn || !alwaysOnSet.has(item.id)) {
+          disableChanges.push({ enabled: false, id: item.id });
+        }
       }
-      return alwaysOn.indexOf(extensionId) === -1;
-    });
+    }
 
     return applyExtensionChanges(
-      disableIds.map(function(extensionId) {
-        return { enabled: false, id: extensionId };
-      }),
+      disableChanges,
       { source: "bulk" },
       {
         action: "toggle_all_disable",
@@ -1312,15 +1312,20 @@ importScripts(
 
     var alwaysOn = current.profiles.map.__always_on || [];
     var desiredIds = storage.uniqueArray(targetProfile.concat(alwaysOn));
-    var changes = current.items.filter(function(item) {
-      return item.type === "extension" && item.mayDisable;
-    }).map(function(item) {
-      return {
-        enabled: desiredIds.indexOf(item.id) !== -1,
-        id: item.id,
-        profileId: profileName
-      };
-    });
+    var desiredIdsSet = new Set(desiredIds); // Performance optimization: O(1) Set lookup instead of O(N) indexOf
+
+    // Performance optimization: Consolidate multiple array transformations into a single loop pass
+    var changes = [];
+    for (var i = 0; i < current.items.length; i++) {
+      var item = current.items[i];
+      if (item.type === "extension" && item.mayDisable) {
+        changes.push({
+          enabled: desiredIdsSet.has(item.id),
+          id: item.id,
+          profileId: profileName
+        });
+      }
+    }
 
     return applyExtensionChanges(
       changes,

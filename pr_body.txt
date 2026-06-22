@@ -1,0 +1,12 @@
+💡 What:
+Replaced icon-only action elements (such as purely JavaScript-driven `<a>` tags with `href="#"` and standalone decorative `<i>` tags) with semantic `<button type="button">` wrappers across `index.html` and `profiles.html`. Injected explicit `aria-label`s on the interactive wrappers and `aria-hidden="true"` attributes on the internal FontAwesome decorations. We also added an inline style reset (`style="background:none; border:none; padding:0; cursor:pointer; color:inherit;"`) to the new button wrappers to maintain the original layout and CSS hover state dependencies.
+
+🎯 Why:
+Users relying on assistive technologies like screen readers need context to understand the purpose of purely visual interactive elements. Similarly, keyboard-only users depend on natively focusable elements like `<button>`s to navigate the application efficiently (tabbing, using Enter/Spacebar to activate actions). Without proper semantic roles or ARIA descriptors, these controls act as silent or unreachable traps for non-mouse users.
+
+📸 Before/After:
+Before: `<a>` tags and `<i>` tags with click listeners served as primary action triggers.
+After: Wrappers are converted to explicit `<button>`s containing `aria-label` attributes describing their functions, while inner icons remain visually identical but hidden from the accessibility tree.
+
+♿ Accessibility:
+Dramatically improves tab flow, screen-reader discoverability, and native interactive behavior for critical controls (Options gear, Profile Delete, Dashboard button, Chrome Extension link, Toggle buttons, Undo/Redo actions).

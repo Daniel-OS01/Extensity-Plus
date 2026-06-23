@@ -1,0 +1,4 @@
+💡 **What:** Added `aria-hidden="true"` to the decorative search icon, and added a `placeholder` and `aria-label` to the search `<input>` in `index.html`.
+🎯 **Why:** The search box previously lacked any visual indicator of its purpose before typing, and it lacked an accessible name for screen readers, meaning blind users would just hear "edit" without knowing it was a search field. The adjacent search icon was also visible to screen readers but provided no actionable value.
+📸 **Before/After:** The search box now visually displays "Search extensions" when empty, and screen readers will announce it as "Search extensions" while skipping the redundant decorative icon.
+♿ **Accessibility:** This resolves a WCAG violation for missing form labels (SC 3.3.2) and improves semantic markup by hiding decorative elements (SC 1.1.1).

@@ -88,18 +88,25 @@ importScripts(
   }
 
   function cloneRuleEntries(entries) {
-    return (Array.isArray(entries) ? entries : []).map(function(entry) {
-      return {
-        enabled: !!entry.enabled,
-        id: entry.id || entry.extensionId,
-        ruleId: entry.ruleId || null,
-        ruleName: entry.ruleName || null,
-        tabId: entry.tabId != null ? entry.tabId : null,
-        url: entry.url || ""
-      };
-    }).filter(function(entry) {
-      return !!entry.id;
-    });
+    var rawEntries = Array.isArray(entries) ? entries : [];
+    // Performance optimization: Combine array transformation and filtering
+    // into a single pass to avoid intermediate array allocations.
+    var result = [];
+    for (var i = 0; i < rawEntries.length; i++) {
+      var entry = rawEntries[i];
+      var id = entry.id || entry.extensionId;
+      if (id) {
+        result.push({
+          enabled: !!entry.enabled,
+          id: id,
+          ruleId: entry.ruleId || null,
+          ruleName: entry.ruleName || null,
+          tabId: entry.tabId != null ? entry.tabId : null,
+          url: entry.url || ""
+        });
+      }
+    }
+    return result;
   }
 
   function buildRuleApplication(entries, url, tabId) {
@@ -1089,6 +1096,18 @@ importScripts(
     var toolbarPins = state.localState.toolbarPins || [];
     var installFirstSeenAt = state.localState.installFirstSeenAt || {};
 
+    // Performance optimization: Pre-compute Sets and Maps for O(1) lookups
+    // instead of O(N) Array.prototype.indexOf calls inside the map loop.
+    var alwaysOnSet = new Set(alwaysOn);
+    var favoritesSet = new Set(favorites);
+    var toolbarPinsSet = new Set(toolbarPins);
+    var recentIndexMap = new Map();
+    for (var i = 0; i < recentList.length; i++) {
+      if (!recentIndexMap.has(recentList[i])) {
+        recentIndexMap.set(recentList[i], i);
+      }
+    }
+
     return items.slice().sort(function(left, right) {
       return left.name.toUpperCase().localeCompare(right.name.toUpperCase());
     }).map(function(item) {
@@ -1106,16 +1125,17 @@ importScripts(
         ? normalizeCategoryText(cachedMetadata.category)
         : fallbackMetadata.category;
       var normalizedStoreUrl = normalizeStoreUrl(cachedMetadata.storeUrl) || fallbackMetadata.storeUrl;
+      var recentIndex = recentIndexMap.has(item.id) ? recentIndexMap.get(item.id) : -1;
 
       return {
         alias: aliases[item.id] || "",
-        alwaysOn: alwaysOn.indexOf(item.id) !== -1,
+        alwaysOn: alwaysOnSet.has(item.id),
         category: normalizedCategory,
         description: item.description || "",
         descriptionLine: cachedMetadata.descriptionLine || fallbackMetadata.descriptionLine,
         displayName: aliases[item.id] || item.name,
         enabled: !!item.enabled,
-        favorite: favorites.indexOf(item.id) !== -1,
+        favorite: favoritesSet.has(item.id),
         groupBadges: extensionGroups,
         groupIds: groupLookup[item.id] || [],
         homepageUrl: item.homepageUrl || "",
@@ -1124,14 +1144,14 @@ importScripts(
         installType: item.installType,
         isApp: isAppType(item.type),
         installedAt: installFirstSeenAt[item.id] || 0,
-        lastUsed: recentList.indexOf(item.id) === -1 ? 0 : (recentList.length - recentList.indexOf(item.id)),
+        lastUsed: recentIndex === -1 ? 0 : (recentList.length - recentIndex),
         mayDisable: !!item.mayDisable,
         metadataFetchedAt: cachedMetadata.fetchedAt || fallbackMetadata.fetchedAt,
         metadataSource: cachedMetadata.source || fallbackMetadata.source,
         name: item.name,
         optionsUrl: item.optionsUrl || "",
         storeUrl: normalizedStoreUrl,
-        toolbarPinned: toolbarPins.indexOf(item.id) !== -1,
+        toolbarPinned: toolbarPinsSet.has(item.id),
         type: item.type,
         usageCount: counters[item.id] || 0,
         version: item.version || ""

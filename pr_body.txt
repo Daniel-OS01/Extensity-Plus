@@ -1,0 +1,14 @@
+💡 **What:**
+Wrapped interactive icon-only elements (the "Options" gear icon in `index.html` and the "Delete" trash icon in `profiles.html`) in `<button>` tags with `aria-label` attributes.
+
+🎯 **Why:**
+Previously, these icons were just `<i>` tags relying on visually-communicated context and JavaScript `click` events to function. Screen reader users would have difficulty interpreting these non-semantic elements. Using semantic `<button>` wrappers provides native keyboard focusability (Tab support), `Enter`/`Space` activation, and correct screen reader announcements via the `aria-label`.
+
+📸 **Before/After:**
+Visually, the UI remains identical, thanks to the inline CSS reset (`style="background:none; border:none; padding:0; cursor:pointer;"`) applied to the new `<button>` tags, and inheriting existing styling for the `<i>` tags.
+
+♿ **Accessibility:**
+- Added `<button>` elements to properly communicate interactivity.
+- Added `aria-label` to provide explicit names for screen readers (e.g., "Options", "Delete this profile").
+- Added `aria-hidden="true"` to the decorative inner FontAwesome `<i>` elements to prevent screen readers from redundantly announcing them.
+- Ensure correct keyboard navigation using native button behaviors.

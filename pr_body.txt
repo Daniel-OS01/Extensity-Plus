@@ -1,0 +1,10 @@
+💡 **What:** Replaced non-semantic `<i>` tags used for clickable icon-only buttons (like the options gear and delete trash can) with proper semantic `<button type="button">` wrappers across `index.html` and `profiles.html`.
+
+🎯 **Why:** To significantly improve keyboard accessibility and screen reader support. Native `<button>` elements are focusable via keyboard (`Tab`) and actionable via `Enter` or `Space`, which `<i>` tags lack out of the box.
+
+📸 **Before/After:** No visual changes were introduced. Inline style resets (`style="background:none; border:none; padding:0; cursor:pointer;"`) were carefully applied to the wrapper buttons to ensure they inherit existing layout and hover states smoothly.
+
+♿ **Accessibility:**
+-   Wrapped decorative icons inside semantic buttons.
+-   Added descriptive `aria-label` attributes to the buttons (e.g., "Options", "Delete this profile").
+-   Added `aria-hidden="true"` to the inner `<i>` tags to hide the decorative font icons from screen readers, preventing redundant or confusing announcements.

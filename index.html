@@ -142,7 +142,7 @@
       <span class="badge profile-badge" data-sbind="text: name, css: colorClass, attr:{style: badgeStyle, title: title}"></span>
       <!-- /ko -->
       <i class="fa fa-flask" title="Development" data-sbind="visible: is_development()"></i>
-      <i class="fa fa-gear" title="Options" data-sbind="visible: showOptionsButton, click: launchOptionsAction, clickBubble: false"></i>
+      <button type="button" aria-label="Options" title="Options" data-sbind="visible: showOptionsButton, click: launchOptionsAction, clickBubble: false" style="background:none; border:none; padding:0; cursor:pointer; color:inherit;"><i class="fa fa-gear" aria-hidden="true"></i></button>
     </div>
   </li>
   <!-- /ko -->
@@ -152,7 +152,7 @@
       <img class="extension-icon" data-sbind="attr:{src:icon}" />
       <div class="table-row-labels">
         <div class="table-row-title">
-          <span class="name" data-sbind="text: short_name, click: toggleCompactAction, clickBubble: false"></span>
+          <button type="button" class="name" data-sbind="text: short_name, click: toggleCompactAction, clickBubble: false" style="background:none; border:none; padding:0; cursor:pointer; color:inherit; text-align:left;"></button>
           <span class="version-chip" data-sbind="visible: showVersionChip, text: version"></span>
           <span class="extension-subtitle" data-sbind="visible: showCategorySubtitle, text: category"></span>
           <i class="fa fa-flask" title="Development" data-sbind="visible: is_development()"></i>
@@ -199,7 +199,7 @@
       <img class="extension-icon" data-sbind="attr:{src:icon}" />
       <div class="compact-row-labels">
         <div class="compact-row-title">
-          <span class="name" data-sbind="text: short_name, click: toggleCompactAction, clickBubble: false"></span>
+          <button type="button" class="name" data-sbind="text: short_name, click: toggleCompactAction, clickBubble: false" style="background:none; border:none; padding:0; cursor:pointer; color:inherit; text-align:left;"></button>
           <span class="version-chip" data-sbind="visible: showVersionChip, text: version"></span>
           <i class="fa fa-flask" title="Development" data-sbind="visible: is_development()"></i>
         </div>
@@ -251,7 +251,7 @@
     </div>
     <div class="item-actions">
       <i class="fa fa-flask" title="Development" data-sbind="visible: is_development()"></i>
-      <i class="fa fa-gear" title="Options" data-sbind="visible: showOptionsButton, click: launchOptionsAction, clickBubble: false"></i>
+      <button type="button" aria-label="Options" title="Options" data-sbind="visible: showOptionsButton, click: launchOptionsAction, clickBubble: false" style="background:none; border:none; padding:0; cursor:pointer; color:inherit;"><i class="fa fa-gear" aria-hidden="true"></i></button>
     </div>
   </li>
   <!-- /ko -->

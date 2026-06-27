@@ -1,0 +1,12 @@
+💡 **What:**
+Added a `placeholder` attribute to the search input, an `aria-label` attribute to the same input, and `aria-hidden="true"` to the adjacent decorative FontAwesome search icon.
+
+🎯 **Why:**
+To improve visual affordance for sighted users by providing context inside the text box, and to ensure screen reader compatibility by explicitly labeling the standalone input and hiding the redundant decorative icon.
+
+📸 **Before/After:**
+The input now displays "Search..." instead of being a blank text box, making its purpose immediately clear.
+
+♿ **Accessibility:**
+- Added `aria-label="Search"` to the `<input>`, addressing the lack of a semantic label.
+- Added `aria-hidden="true"` to the decorative `<i class="fa fa-search">` element to prevent unnecessary screen reader announcements.

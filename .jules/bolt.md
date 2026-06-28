@@ -12,3 +12,7 @@
 
 **Learning:** Replacing O(N) `Array.prototype.indexOf()` lookups with O(1) `Set.prototype.has()` or `Map.prototype.get()` checks inside `.map()` or `.filter()` loops significantly reduces total execution time (from O(n * m) to O(n + m)). A micro-benchmark showed execution time dropped from ~500ms to ~150ms for 10,000 iterations over a 100-item array.
 **Action:** When filtering or mapping arrays based on membership in another array, pre-compute a `Set` (or a `Map` if order/index matters) outside the loop instead of using `indexOf()` repeatedly within it.
+## 2024-05-24 - Pre-computing Sets for Array Filtering Performance
+
+**Learning:** Replacing O(N) `Array.prototype.indexOf()` lookups with O(1) `Set.prototype.has()` or `Map.prototype.get()` checks inside `.map()` or `.filter()` loops significantly reduces total execution time (from O(n * m) to O(n + m)). A micro-benchmark showed execution time dropped from ~500ms to ~150ms for 10,000 iterations over a 100-item array.
+**Action:** When filtering or mapping arrays based on membership in another array, pre-compute a `Set` (or a `Map` if order/index matters) outside the loop instead of using `indexOf()` repeatedly within it.

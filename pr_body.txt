@@ -1,0 +1,11 @@
+**💡 What:** Replaced non-semantic `<i>` tag icons functioning as interactive controls with semantic `<button type="button">` wrappers across the popup (`index.html`) and profiles (`profiles.html`) interfaces. Added `aria-label`s to the new buttons and `aria-hidden="true"` to the inner decorative icons while explicitly retaining native tooltips (`title`).
+
+**🎯 Why:** Users relying on screen readers or keyboard navigation struggled with interactive icons that lacked accessible names, focus states, and standard keyboard event handling (`Enter`/`Space`). Replacing `<i>` tags with `<button>` elements naturally resolves these accessibility and interaction gaps without complex event workarounds.
+
+**📸 Before/After:** Visually identical. Under the hood, a decorative layout has become a semantically correct and functional UI.
+
+**♿ Accessibility:**
+* Added explicit button roles via `<button type="button">` semantic wrappers.
+* Added accessible names for screen readers (`aria-label`).
+* Removed decorative content from the accessibility tree (`aria-hidden="true"` on the icon itself).
+* Ensured keyboard focusability and native click emulation for keyboard users.

@@ -1,3 +1,7 @@
 ## 2024-04-20 - Icon-Only Button Accessibility Pattern Verification
 **Learning:** Adding `aria-label` to the interactive `<button>` wrappers and explicit `aria-hidden="true"` to the inner decorative FontAwesome `<i>` tags is a clean, non-disruptive accessibility enhancement for this codebase. It perfectly avoids layout shifts or CSS selector breakage (like accidentally triggering hover/active states that rely on direct parent-child relationships) that might occur if we changed the DOM structure itself.
 **Action:** Always prefer this two-step attribute injection pattern for icon-only components in `index.html` to maintain CSS and logic parity while maximizing screen reader compatibility.
+
+## 2024-05-18 - Semantic button wrappers for interactive icons
+**Learning:** Replaced `<i>` tags featuring Knockout `click:` bindings with semantic `<button>` wrappers. By retaining `data-sbind` bindings on the wrapper, injecting `aria-label` for screen reader affordance, hiding the inner `<i>` tag with `aria-hidden="true"`, and applying a CSS reset (`background:none; border:none; padding:0; cursor:pointer; color:inherit;`), we achieve immediate, non-disruptive accessibility improvements without layout breakage.
+**Action:** When migrating interactive icon components, always favor wrapping with standard `<button>` tags and a minimal inline CSS reset instead of applying `.button` classes if existing styling paradigms tightly couple icon layout to its container structure. Update any corresponding CSS selectors (e.g. `:hover`) to target the wrapper.

@@ -1084,10 +1084,18 @@ importScripts(
     var groups = state.localState.groups || {};
     var groupLookup = buildGroupLookup(groups);
     var metadataCache = state.localState.webStoreMetadata || {};
-    var alwaysOn = state.profiles.map.__always_on || [];
-    var favorites = state.profiles.map.__favorites || [];
-    var toolbarPins = state.localState.toolbarPins || [];
     var installFirstSeenAt = state.localState.installFirstSeenAt || {};
+
+    // Performance: Pre-compute Sets and Maps for O(1) lookups in the loop below
+    var alwaysOnSet = new Set(state.profiles.map.__always_on || []);
+    var favoritesSet = new Set(state.profiles.map.__favorites || []);
+    var toolbarPinsSet = new Set(state.localState.toolbarPins || []);
+    var recentListMap = new Map();
+    recentList.forEach(function(id, index) {
+      if (!recentListMap.has(id)) {
+        recentListMap.set(id, index);
+      }
+    });
 
     return items.slice().sort(function(left, right) {
       return left.name.toUpperCase().localeCompare(right.name.toUpperCase());
@@ -1107,15 +1115,16 @@ importScripts(
         : fallbackMetadata.category;
       var normalizedStoreUrl = normalizeStoreUrl(cachedMetadata.storeUrl) || fallbackMetadata.storeUrl;
 
+      var recentIndex = recentListMap.has(item.id) ? recentListMap.get(item.id) : -1;
       return {
         alias: aliases[item.id] || "",
-        alwaysOn: alwaysOn.indexOf(item.id) !== -1,
+        alwaysOn: alwaysOnSet.has(item.id),
         category: normalizedCategory,
         description: item.description || "",
         descriptionLine: cachedMetadata.descriptionLine || fallbackMetadata.descriptionLine,
         displayName: aliases[item.id] || item.name,
         enabled: !!item.enabled,
-        favorite: favorites.indexOf(item.id) !== -1,
+        favorite: favoritesSet.has(item.id),
         groupBadges: extensionGroups,
         groupIds: groupLookup[item.id] || [],
         homepageUrl: item.homepageUrl || "",
@@ -1124,14 +1133,14 @@ importScripts(
         installType: item.installType,
         isApp: isAppType(item.type),
         installedAt: installFirstSeenAt[item.id] || 0,
-        lastUsed: recentList.indexOf(item.id) === -1 ? 0 : (recentList.length - recentList.indexOf(item.id)),
+        lastUsed: recentIndex === -1 ? 0 : (recentList.length - recentIndex),
         mayDisable: !!item.mayDisable,
         metadataFetchedAt: cachedMetadata.fetchedAt || fallbackMetadata.fetchedAt,
         metadataSource: cachedMetadata.source || fallbackMetadata.source,
         name: item.name,
         optionsUrl: item.optionsUrl || "",
         storeUrl: normalizedStoreUrl,
-        toolbarPinned: toolbarPins.indexOf(item.id) !== -1,
+        toolbarPinned: toolbarPinsSet.has(item.id),
         type: item.type,
         usageCount: counters[item.id] || 0,
         version: item.version || ""
@@ -1282,11 +1291,13 @@ importScripts(
       return item.id;
     });
 
+    // Performance: Pre-compute Set for O(1) lookups in the loop below
+    var alwaysOnSet = new Set(alwaysOn);
     var disableIds = enabledIds.filter(function(extensionId) {
       if (!current.options.keepAlwaysOn) {
         return true;
       }
-      return alwaysOn.indexOf(extensionId) === -1;
+      return !alwaysOnSet.has(extensionId);
     });
 
     return applyExtensionChanges(
@@ -1312,11 +1323,13 @@ importScripts(
 
     var alwaysOn = current.profiles.map.__always_on || [];
     var desiredIds = storage.uniqueArray(targetProfile.concat(alwaysOn));
+    // Performance: Pre-compute Set for O(1) lookups in the loop below
+    var desiredIdsSet = new Set(desiredIds);
     var changes = current.items.filter(function(item) {
       return item.type === "extension" && item.mayDisable;
     }).map(function(item) {
       return {
-        enabled: desiredIds.indexOf(item.id) !== -1,
+        enabled: desiredIdsSet.has(item.id),
         id: item.id,
         profileId: profileName
       };

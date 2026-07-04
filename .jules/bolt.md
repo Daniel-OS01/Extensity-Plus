@@ -8,3 +8,9 @@
 ## 2024-05-24 - Parallelized Chrome Alarm Clearing
 **Learning:** Sequential `await` statements inside `for` loops used for Chrome API calls (like `chrome.alarms.clear`) represent a hidden I/O bottleneck in the background service worker, particularly when tearing down or rebuilding rule states.
 **Action:** Always look for loops awaiting independent Chrome extension API calls and refactor them to use `Promise.all` with `Array.prototype.map()` for concurrent execution, which drastically cuts down total execution time.
+## 2026-07-04 - Optimize O(N) Array Lookups in Iteration Blocks
+**Learning:** Repeatedly using `Array.prototype.indexOf()` on configuration arrays (like `alwaysOn`, `favorites`, `recentList`) inside a `.map()` or `.filter()` loop scaling with the total number of extensions creates an O(N * M) complexity bottleneck.
+**Action:** Pre-compute ES6 `Set` and `Map` objects from these arrays before iteration blocks to upgrade O(N) lookups to O(1), ensuring `Map` logic accurately mirrors `indexOf` by strictly recording the first occurrence.
+## 2026-07-04 - CI Environment Variables in Workflows
+**Learning:** CI workflows utilizing `make dist` and `npm run bundle:chrome-store` fail immediately if the `EXTENSITY_DRIVE_CLIENT_ID` and `EXTENSITY_DRIVE_WEB_CLIENT_ID` environment variables are not supplied, even in smoke tests where dummy values are acceptable.
+**Action:** Ensure both variables are explicitly declared in the `env` blocks for these build steps in all relevant GitHub Actions workflows (`codex-build-and-bundle-smoke.yml`, `release-chrome-web-store.yml`).

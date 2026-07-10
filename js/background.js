@@ -1089,9 +1089,22 @@ importScripts(
     var toolbarPins = state.localState.toolbarPins || [];
     var installFirstSeenAt = state.localState.installFirstSeenAt || {};
 
+    // ⚡ Bolt: Performance optimization
+    // Replace O(N) indexOf lookups with O(1) Set and Map lookups to improve normalizeExtensions mapping iteration time.
+    var alwaysOnSet = new Set(alwaysOn);
+    var favoritesSet = new Set(favorites);
+    var toolbarPinsSet = new Set(toolbarPins);
+    var recentMap = new Map();
+    recentList.forEach(function(id, index) {
+      if (!recentMap.has(id)) {
+        recentMap.set(id, index);
+      }
+    });
+
     return items.slice().sort(function(left, right) {
       return left.name.toUpperCase().localeCompare(right.name.toUpperCase());
     }).map(function(item) {
+      var recentIndex = recentMap.has(item.id) ? recentMap.get(item.id) : -1;
       var extensionGroups = (groupLookup[item.id] || []).map(function(groupId) {
         var group = groups[groupId];
         return {
@@ -1109,13 +1122,13 @@ importScripts(
 
       return {
         alias: aliases[item.id] || "",
-        alwaysOn: alwaysOn.indexOf(item.id) !== -1,
+        alwaysOn: alwaysOnSet.has(item.id),
         category: normalizedCategory,
         description: item.description || "",
         descriptionLine: cachedMetadata.descriptionLine || fallbackMetadata.descriptionLine,
         displayName: aliases[item.id] || item.name,
         enabled: !!item.enabled,
-        favorite: favorites.indexOf(item.id) !== -1,
+        favorite: favoritesSet.has(item.id),
         groupBadges: extensionGroups,
         groupIds: groupLookup[item.id] || [],
         homepageUrl: item.homepageUrl || "",
@@ -1124,14 +1137,14 @@ importScripts(
         installType: item.installType,
         isApp: isAppType(item.type),
         installedAt: installFirstSeenAt[item.id] || 0,
-        lastUsed: recentList.indexOf(item.id) === -1 ? 0 : (recentList.length - recentList.indexOf(item.id)),
+        lastUsed: recentIndex === -1 ? 0 : (recentList.length - recentIndex),
         mayDisable: !!item.mayDisable,
         metadataFetchedAt: cachedMetadata.fetchedAt || fallbackMetadata.fetchedAt,
         metadataSource: cachedMetadata.source || fallbackMetadata.source,
         name: item.name,
         optionsUrl: item.optionsUrl || "",
         storeUrl: normalizedStoreUrl,
-        toolbarPinned: toolbarPins.indexOf(item.id) !== -1,
+        toolbarPinned: toolbarPinsSet.has(item.id),
         type: item.type,
         usageCount: counters[item.id] || 0,
         version: item.version || ""
@@ -1312,11 +1325,15 @@ importScripts(
 
     var alwaysOn = current.profiles.map.__always_on || [];
     var desiredIds = storage.uniqueArray(targetProfile.concat(alwaysOn));
+    // ⚡ Bolt: Performance optimization
+    // Pre-compute Set for O(1) desiredIds lookup
+    var desiredIdsSet = new Set(desiredIds);
+
     var changes = current.items.filter(function(item) {
       return item.type === "extension" && item.mayDisable;
     }).map(function(item) {
       return {
-        enabled: desiredIds.indexOf(item.id) !== -1,
+        enabled: desiredIdsSet.has(item.id),
         id: item.id,
         profileId: profileName
       };

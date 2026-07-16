@@ -1,3 +1,6 @@
+## 2026-07-16 - O(1) Lookups in Large Mapping Loops
+**Learning:** Using `Array.prototype.indexOf()` on configuration arrays (like `alwaysOn`, `favorites`, `toolbarPins`) inside an O(M) mapping loop over all extensions creates an O(N*M) performance penalty, which degrades background script execution time on systems with many extensions.
+**Action:** Always pre-compute ES6 `Set` and `Map` structures outside of large iterative loops (like `normalizeExtensions`) when frequent membership checks or index lookups are required, reducing complexity to O(N+M).
 ## 2024-05-24 - Deduplication Array Filter Objects
 
 **Learning:** When using plain objects `{}` to deduplicate array values by keys (`seen[item]`), it not only incurs the overhead of callback functions inside `.filter()` but is also susceptible to prototype collision (e.g. `__proto__` or `constructor` strings) which can create bugs or silent data drops in deduplication logic.

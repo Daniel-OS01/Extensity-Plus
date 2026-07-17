@@ -57,16 +57,16 @@ jobs:
 
       - name: Build distributable extension
         env:
-          EXTENSITY_DRIVE_CLIENT_ID: "REPLACE_WITH_OAUTH_CLIENT_ID.apps.googleusercontent.com"
-          EXTENSITY_DRIVE_WEB_CLIENT_ID: "REPLACE_WITH_DRIVE_WEB_CLIENT_ID.apps.googleusercontent.com"
+          EXTENSITY_DRIVE_CLIENT_ID: "123-abc.apps.googleusercontent.com"
+          EXTENSITY_DRIVE_WEB_CLIENT_ID: "123-abc.apps.googleusercontent.com"
         run: make dist
 
       - name: Build Chrome Web Store submission bundle
         id: bundle_cws
         continue-on-error: true
         env:
-          EXTENSITY_DRIVE_CLIENT_ID: "REPLACE_WITH_OAUTH_CLIENT_ID.apps.googleusercontent.com"
-          EXTENSITY_DRIVE_WEB_CLIENT_ID: "REPLACE_WITH_DRIVE_WEB_CLIENT_ID.apps.googleusercontent.com"
+          EXTENSITY_DRIVE_CLIENT_ID: "123-abc.apps.googleusercontent.com"
+          EXTENSITY_DRIVE_WEB_CLIENT_ID: "123-abc.apps.googleusercontent.com"
         run: pnpm run bundle:chrome-store
 
       - name: Upload distribution artifact
@@ -151,16 +151,16 @@ jobs:
 
       - name: Build distributable extension
         env:
-          EXTENSITY_DRIVE_CLIENT_ID: "REPLACE_WITH_OAUTH_CLIENT_ID.apps.googleusercontent.com"
-          EXTENSITY_DRIVE_WEB_CLIENT_ID: "REPLACE_WITH_DRIVE_WEB_CLIENT_ID.apps.googleusercontent.com"
+          EXTENSITY_DRIVE_CLIENT_ID: "123-abc.apps.googleusercontent.com"
+          EXTENSITY_DRIVE_WEB_CLIENT_ID: "123-abc.apps.googleusercontent.com"
         run: make dist
 
       - name: Build Chrome Web Store submission bundle
         id: bundle_cws
         continue-on-error: true
         env:
-          EXTENSITY_DRIVE_CLIENT_ID: "REPLACE_WITH_OAUTH_CLIENT_ID.apps.googleusercontent.com"
-          EXTENSITY_DRIVE_WEB_CLIENT_ID: "REPLACE_WITH_DRIVE_WEB_CLIENT_ID.apps.googleusercontent.com"
+          EXTENSITY_DRIVE_CLIENT_ID: "123-abc.apps.googleusercontent.com"
+          EXTENSITY_DRIVE_WEB_CLIENT_ID: "123-abc.apps.googleusercontent.com"
         run: pnpm run bundle:chrome-store
 
       - name: Verify extension build
@@ -234,8 +234,8 @@ jobs:
         id: bundle_cws
         continue-on-error: true
         env:
-          EXTENSITY_DRIVE_CLIENT_ID: "REPLACE_WITH_OAUTH_CLIENT_ID.apps.googleusercontent.com"
-          EXTENSITY_DRIVE_WEB_CLIENT_ID: "REPLACE_WITH_DRIVE_WEB_CLIENT_ID.apps.googleusercontent.com"
+          EXTENSITY_DRIVE_CLIENT_ID: "123-abc.apps.googleusercontent.com"
+          EXTENSITY_DRIVE_WEB_CLIENT_ID: "123-abc.apps.googleusercontent.com"
         run: |
           if pnpm run bundle:chrome-store; then
             cp "artifacts/chrome-web-store/${{ steps.bump.outputs.package_name }}-v${{ steps.bump.outputs.version }}.zip" \
@@ -319,8 +319,8 @@ jobs:
         id: bundle_cws
         continue-on-error: true
         env:
-          EXTENSITY_DRIVE_CLIENT_ID: "REPLACE_WITH_OAUTH_CLIENT_ID.apps.googleusercontent.com"
-          EXTENSITY_DRIVE_WEB_CLIENT_ID: "REPLACE_WITH_DRIVE_WEB_CLIENT_ID.apps.googleusercontent.com"
+          EXTENSITY_DRIVE_CLIENT_ID: "123-abc.apps.googleusercontent.com"
+          EXTENSITY_DRIVE_WEB_CLIENT_ID: "123-abc.apps.googleusercontent.com"
         run: |
           if pnpm run bundle:chrome-store; then
             cp "artifacts/chrome-web-store/${{ steps.version.outputs.package_name }}-v${{ steps.version.outputs.version }}.zip" \

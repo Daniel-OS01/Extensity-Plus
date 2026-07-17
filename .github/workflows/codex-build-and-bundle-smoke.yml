@@ -27,14 +27,14 @@ jobs:
 
       - name: Build distributable extension
         env:
-          EXTENSITY_DRIVE_CLIENT_ID: "REPLACE_WITH_OAUTH_CLIENT_ID.apps.googleusercontent.com"
-          EXTENSITY_DRIVE_WEB_CLIENT_ID: "REPLACE_WITH_DRIVE_WEB_CLIENT_ID.apps.googleusercontent.com"
+          EXTENSITY_DRIVE_CLIENT_ID: "123-abc.apps.googleusercontent.com"
+          EXTENSITY_DRIVE_WEB_CLIENT_ID: "123-abc.apps.googleusercontent.com"
         run: make dist
 
       - name: Build Chrome Web Store submission bundle
         env:
-          EXTENSITY_DRIVE_CLIENT_ID: "REPLACE_WITH_OAUTH_CLIENT_ID.apps.googleusercontent.com"
-          EXTENSITY_DRIVE_WEB_CLIENT_ID: "REPLACE_WITH_DRIVE_WEB_CLIENT_ID.apps.googleusercontent.com"
+          EXTENSITY_DRIVE_CLIENT_ID: "123-abc.apps.googleusercontent.com"
+          EXTENSITY_DRIVE_WEB_CLIENT_ID: "123-abc.apps.googleusercontent.com"
         run: npm run bundle:chrome-store
 
       - name: Verify expected build outputs exist

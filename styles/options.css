@@ -463,6 +463,9 @@ body.profiles-portrait #profiles {
   color: var(--muted);
 }
 
+#profiles .sidebar button.remove-profile:hover {
+  color: var(--danger) !important;
+}
 #profiles .sidebar .remove-profile:hover {
   color: var(--danger);
 }

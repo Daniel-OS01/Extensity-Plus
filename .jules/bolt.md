@@ -8,3 +8,6 @@
 ## 2024-05-24 - Parallelized Chrome Alarm Clearing
 **Learning:** Sequential `await` statements inside `for` loops used for Chrome API calls (like `chrome.alarms.clear`) represent a hidden I/O bottleneck in the background service worker, particularly when tearing down or rebuilding rule states.
 **Action:** Always look for loops awaiting independent Chrome extension API calls and refactor them to use `Promise.all` with `Array.prototype.map()` for concurrent execution, which drastically cuts down total execution time.
+## 2024-05-24 - Pre-compute Lookups in Array Iterations
+**Learning:** O(N) operations like `Array.prototype.indexOf()` inside a `.map()` callback create an O(N * M) time complexity. In `background.js` when mapping extensions, this approach creates substantial delays, especially for lists involving thousands of items or numerous `indexOf` lookups per item.
+**Action:** Replace `indexOf` lookups inside `.map()` with pre-computed `Set` and `Map` collections prior to the mapping loop. Use `Map` specifically when array positions (indices) need to be preserved to mimic the original `indexOf` behavior while guaranteeing O(1) checks during the mapping phase.

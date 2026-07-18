@@ -712,6 +712,7 @@
     isObject: isObject,
     mergeDefaults: mergeDefaults,
     mergeProfileMaps: mergeProfileMaps,
+    mergeProfileMetaMaps: mergeProfileMetaMaps,
     normalizeProfileMap: normalizeProfileMap,
     normalizeSyncMode: normalizeSyncMode,
     pickNewerTimestamp: pickNewerTimestamp,

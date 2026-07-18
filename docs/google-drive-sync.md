@@ -76,8 +76,8 @@ Open **Options → Google Drive Sync**:
 - **Enable automatic Google Drive sync** — background sync on a timer (minimum 15 minutes).
 - The Google Drive Sync section shows the current extension ID and whether the build is local or store.
 - Choose categories: Options, Profiles, Aliases, Groups, URL rules, History.
-- **Sync now** — merge with Drive when possible; prompts if both sides changed.
-- **Push to Drive** / **Pull from Drive** — force one direction.
+- **Sync now** — performs an item-level merge with Drive. Groups, URL rules, aliases, profiles, history, and options are combined and de-duplicated across both sides, so items that exist only locally or only on Drive are preserved rather than overwritten. Where the same item changed on both sides, the more recently updated side wins (ties keep the local value).
+- **Push to Drive** / **Pull from Drive** — force one direction. These are explicit whole-category overwrites: **Push** replaces the Drive copy with local data, **Pull** replaces local data with the Drive copy. Use them when you deliberately want one side to win.
 
 The Dashboard **Import / Export** tab exposes the same sync actions.
 
@@ -85,10 +85,12 @@ The Dashboard **Sync Status** tab now also includes a Drive sync card with the c
 
 ## Conflicts
 
-If the same category changed locally and on Drive since the last successful merge, sync stops and asks you to:
+Automatic **Sync now** no longer stops on divergence. When the same category changed on both the local device and Drive since the last successful merge, sync merges the two sides item by item — combining and de-duplicating groups, rules, aliases, profiles, history, and options — so no side's unique items are lost. For an individual item that changed on both sides, the more recently updated side wins (ties keep the local value).
 
-- **Keep this device** — upload local data to Drive.
-- **Use Drive copy** — overwrite local data for selected categories.
+If you want one side to overwrite the other outright, use the explicit whole-category overrides instead of the automatic merge:
+
+- **Push to Drive** / **Keep this device** — replace the Drive copy with local data.
+- **Pull from Drive** / **Use Drive copy** — replace local data with the Drive copy.
 - **Cancel** — no changes.
 
 ## Storage details
@@ -106,7 +108,7 @@ If the same category changed locally and on Drive since the last successful merg
 | “Custom URI scheme is not supported on Chrome apps” in Brave | Configure the **Web application** OAuth fallback and add the two `chromiumapp.org/drive` redirect URIs. |
 | Sign-in loop / 401 | Remove the extension from [Google Account permissions](https://myaccount.google.com/permissions) and sync again. |
 | Auto-sync fails with auth-needed status | Click **Sync now** once to complete interactive sign-in; background auto-sync then resumes. |
-| Sync always conflicts | Run **Push** or **Pull**, or resolve the conflict panel once. |
+| Want one side to win outright | Automatic **Sync now** always merges. Use **Push** or **Pull** to force a whole-category overwrite. |
 | History sync is slow/large | Leave **History** unchecked (default). |
 
 ## Security policy

@@ -35,6 +35,13 @@
   var DRIVE_MAX_RETRIES = 3;
   var DRIVE_RETRY_BASE_DELAY_MS = 1000;
 
+  // Mirrors js/history-logger.js maxRecords so merged history truncation matches append truncation.
+  var HISTORY_MAX_RECORDS = 500;
+
+  function getStorage() {
+    return root.ExtensityStorage || {};
+  }
+
   function isObject(value) {
     return !!value && Object.prototype.toString.call(value) === "[object Object]";
   }
@@ -168,6 +175,226 @@
     throw new Error("Unknown Drive sync category: " + categoryId);
   }
 
+  function remoteIsNewer(localUpdatedAt, remoteUpdatedAt) {
+    var localAt = typeof localUpdatedAt === "number" ? localUpdatedAt : 0;
+    var remoteAt = typeof remoteUpdatedAt === "number" ? remoteUpdatedAt : 0;
+    return remoteAt > localAt;
+  }
+
+  function mergeAliases(localData, remoteData, localUpdatedAt, remoteUpdatedAt) {
+    var local = isObject(localData) ? localData : {};
+    var remote = isObject(remoteData) ? remoteData : {};
+    // Union all keys; shared keys resolve to the newer side (tie -> local).
+    if (remoteIsNewer(localUpdatedAt, remoteUpdatedAt)) {
+      return Object.assign({}, local, remote);
+    }
+    return Object.assign({}, remote, local);
+  }
+
+  function mergeUrlRules(localData, remoteData, localUpdatedAt, remoteUpdatedAt) {
+    var local = Array.isArray(localData) ? localData : [];
+    var remote = Array.isArray(remoteData) ? remoteData : [];
+    var remoteNewer = remoteIsNewer(localUpdatedAt, remoteUpdatedAt);
+    var remoteById = {};
+    remote.forEach(function(rule) {
+      if (rule && rule.id) {
+        remoteById[rule.id] = rule;
+      }
+    });
+    var localIds = {};
+    var merged = [];
+    // Local order first; shared ids resolve to the newer side.
+    local.forEach(function(rule) {
+      if (!rule || !rule.id) {
+        return;
+      }
+      localIds[rule.id] = true;
+      var counterpart = remoteById[rule.id];
+      if (counterpart && remoteNewer) {
+        merged.push(clone(counterpart));
+      } else {
+        merged.push(clone(rule));
+      }
+    });
+    // Remote-only rules appended, preserving remote order.
+    remote.forEach(function(rule) {
+      if (rule && rule.id && !localIds[rule.id]) {
+        merged.push(clone(rule));
+      }
+    });
+    return merged;
+  }
+
+  function mergeGroups(localData, remoteData, localUpdatedAt, remoteUpdatedAt) {
+    var storage = getStorage();
+    var local = isObject(localData) ? localData : {};
+    var remote = isObject(remoteData) ? remoteData : {};
+    var localGroups = isObject(local.groups) ? local.groups : {};
+    var remoteGroups = isObject(remote.groups) ? remote.groups : {};
+    var localOrder = Array.isArray(local.groupOrder) ? local.groupOrder : [];
+    var remoteOrder = Array.isArray(remote.groupOrder) ? remote.groupOrder : [];
+    var remoteNewer = remoteIsNewer(localUpdatedAt, remoteUpdatedAt);
+    var mergedGroups = {};
+
+    Object.keys(localGroups).forEach(function(groupId) {
+      mergedGroups[groupId] = clone(localGroups[groupId]);
+    });
+    Object.keys(remoteGroups).forEach(function(groupId) {
+      var remoteGroup = remoteGroups[groupId];
+      if (!mergedGroups[groupId]) {
+        mergedGroups[groupId] = clone(remoteGroup);
+        return;
+      }
+      // Shared group: union extensionIds, take newer side's scalar fields.
+      var base = remoteNewer ? clone(remoteGroup) : clone(mergedGroups[groupId]);
+      base.extensionIds = storage.uniqueArray(
+        [].concat(
+          Array.isArray(mergedGroups[groupId].extensionIds) ? mergedGroups[groupId].extensionIds : [],
+          Array.isArray(remoteGroup.extensionIds) ? remoteGroup.extensionIds : []
+        )
+      );
+      mergedGroups[groupId] = base;
+    });
+
+    var groupOrder = [];
+    var seenOrder = {};
+    localOrder.forEach(function(groupId) {
+      if (mergedGroups[groupId] && !seenOrder[groupId]) {
+        seenOrder[groupId] = true;
+        groupOrder.push(groupId);
+      }
+    });
+    remoteOrder.forEach(function(groupId) {
+      if (mergedGroups[groupId] && !seenOrder[groupId]) {
+        seenOrder[groupId] = true;
+        groupOrder.push(groupId);
+      }
+    });
+    // Include any merged group ids missing from both order lists.
+    Object.keys(mergedGroups).forEach(function(groupId) {
+      if (!seenOrder[groupId]) {
+        seenOrder[groupId] = true;
+        groupOrder.push(groupId);
+      }
+    });
+
+    return {
+      groupOrder: groupOrder,
+      groups: mergedGroups
+    };
+  }
+
+  function mergeHistory(localData, remoteData) {
+    var local = Array.isArray(localData) ? localData : [];
+    var remote = Array.isArray(remoteData) ? remoteData : [];
+    var byId = {};
+    var order = [];
+    [].concat(local, remote).forEach(function(entry) {
+      if (!entry || !entry.id) {
+        return;
+      }
+      if (!byId[entry.id]) {
+        order.push(entry.id);
+      }
+      byId[entry.id] = entry;
+    });
+    var merged = order.map(function(id) {
+      return clone(byId[id]);
+    });
+    merged.sort(function(left, right) {
+      var leftTs = typeof left.timestamp === "number" ? left.timestamp : 0;
+      var rightTs = typeof right.timestamp === "number" ? right.timestamp : 0;
+      return leftTs - rightTs;
+    });
+    // Keep the most recent records, mirroring history-logger.js truncation.
+    return merged.slice(-HISTORY_MAX_RECORDS);
+  }
+
+  function mergeProfileMembership(localMap, remoteMap) {
+    var storage = getStorage();
+    var local = isObject(localMap) ? localMap : {};
+    var remote = isObject(remoteMap) ? remoteMap : {};
+    var merged = {};
+    // Union membership arrays for every profile so no one-sided members are dropped.
+    Object.keys(local).forEach(function(name) {
+      merged[name] = storage.uniqueArray(local[name]);
+    });
+    Object.keys(remote).forEach(function(name) {
+      if (merged[name]) {
+        merged[name] = storage.uniqueArray([].concat(merged[name], remote[name] || []));
+      } else {
+        merged[name] = storage.uniqueArray(remote[name]);
+      }
+    });
+    return merged;
+  }
+
+  function mergeProfiles(localData, remoteData, localUpdatedAt, remoteUpdatedAt) {
+    var storage = getStorage();
+    var local = isObject(localData) ? localData : {};
+    var remote = isObject(remoteData) ? remoteData : {};
+    var remoteNewer = remoteIsNewer(localUpdatedAt, remoteUpdatedAt);
+    var localMeta = isObject(local.meta) ? local.meta : {};
+    var remoteMeta = isObject(remote.meta) ? remote.meta : {};
+    var unionedMap = mergeProfileMembership(local.map, remote.map);
+    var mergedMeta;
+    // Select metadata by category timestamp: newer side wins scalar conflicts (tie -> local).
+    // mergeProfileMetaMaps(a, b) deep-merges with b winning, so put the losing side first.
+    if (typeof storage.mergeProfileMetaMaps === "function") {
+      mergedMeta = remoteNewer
+        ? storage.mergeProfileMetaMaps(localMeta, remoteMeta)
+        : storage.mergeProfileMetaMaps(remoteMeta, localMeta);
+    } else {
+      mergedMeta = remoteNewer
+        ? Object.assign({}, localMeta, remoteMeta)
+        : Object.assign({}, remoteMeta, localMeta);
+    }
+    return {
+      map: typeof storage.mergeProfileMaps === "function"
+        ? storage.mergeProfileMaps(unionedMap, {})
+        : unionedMap,
+      meta: mergedMeta
+    };
+  }
+
+  function mergeOptions(localData, remoteData, localUpdatedAt, remoteUpdatedAt) {
+    var storage = getStorage();
+    var local = isObject(localData) ? localData : {};
+    var remote = isObject(remoteData) ? remoteData : {};
+    var remoteNewer = remoteIsNewer(localUpdatedAt, remoteUpdatedAt);
+    // Deep merge; the newer side wins scalar conflicts (tie -> local).
+    if (typeof storage.mergeDefaults === "function") {
+      return remoteNewer
+        ? storage.mergeDefaults(local, remote)
+        : storage.mergeDefaults(remote, local);
+    }
+    return remoteNewer
+      ? Object.assign({}, local, remote)
+      : Object.assign({}, remote, local);
+  }
+
+  function mergeCategoryData(categoryId, localData, remoteData, localUpdatedAt, remoteUpdatedAt) {
+    if (categoryId === "aliases") {
+      return mergeAliases(localData, remoteData, localUpdatedAt, remoteUpdatedAt);
+    }
+    if (categoryId === "urlRules") {
+      return mergeUrlRules(localData, remoteData, localUpdatedAt, remoteUpdatedAt);
+    }
+    if (categoryId === "groups") {
+      return mergeGroups(localData, remoteData, localUpdatedAt, remoteUpdatedAt);
+    }
+    if (categoryId === "history") {
+      return mergeHistory(localData, remoteData);
+    }
+    if (categoryId === "profiles") {
+      return mergeProfiles(localData, remoteData, localUpdatedAt, remoteUpdatedAt);
+    }
+    if (categoryId === "options") {
+      return mergeOptions(localData, remoteData, localUpdatedAt, remoteUpdatedAt);
+    }
+    throw new Error("Unknown Drive sync category: " + categoryId);
+  }
+
   function buildEnvelope(context, categoryFlags, writerId) {
     var enabled = enabledCategoryList(categoryFlags);
     var meta = normalizeDriveMeta(context.driveSyncMeta);
@@ -277,6 +504,63 @@
 
   function buildPatchesFromLocal(context, categoryFlags) {
     return buildPatchesFromEnvelope(buildEnvelope(context, categoryFlags, ""), categoryFlags);
+  }
+
+  function mergedDataDiffers(mergedEnvelope, referenceEnvelope, categoryFlags) {
+    var enabled = enabledCategoryList(categoryFlags);
+    var mergedCategories = mergedEnvelope && isObject(mergedEnvelope.categories) ? mergedEnvelope.categories : {};
+    var refCategories = referenceEnvelope && isObject(referenceEnvelope.categories) ? referenceEnvelope.categories : {};
+    return enabled.some(function(categoryId) {
+      var mergedCategory = mergedCategories[categoryId];
+      var refCategory = refCategories[categoryId];
+      var mergedValue = mergedCategory ? mergedCategory.data : undefined;
+      var refValue = refCategory ? refCategory.data : undefined;
+      return !dataEqual(mergedValue, refValue);
+    });
+  }
+
+  function buildMergedEnvelope(localEnvelope, remoteEnvelope, categoryFlags, writerId) {
+    var enabled = enabledCategoryList(categoryFlags);
+    var localCategories = localEnvelope && isObject(localEnvelope.categories) ? localEnvelope.categories : {};
+    var remoteCategories = remoteEnvelope && isObject(remoteEnvelope.categories) ? remoteEnvelope.categories : {};
+    var categories = {};
+
+    enabled.forEach(function(categoryId) {
+      var localCategory = localCategories[categoryId];
+      var remoteCategory = remoteCategories[categoryId];
+      var localUpdatedAt = localCategory && typeof localCategory.updatedAt === "number" ? localCategory.updatedAt : 0;
+      var remoteUpdatedAt = remoteCategory && typeof remoteCategory.updatedAt === "number" ? remoteCategory.updatedAt : 0;
+
+      if (!remoteCategory && !localCategory) {
+        return;
+      }
+      if (!remoteCategory) {
+        categories[categoryId] = {
+          data: clone(localCategory.data),
+          updatedAt: localUpdatedAt || nowMs()
+        };
+        return;
+      }
+      if (!localCategory) {
+        categories[categoryId] = {
+          data: clone(remoteCategory.data),
+          updatedAt: remoteUpdatedAt || nowMs()
+        };
+        return;
+      }
+
+      categories[categoryId] = {
+        data: mergeCategoryData(categoryId, localCategory.data, remoteCategory.data, localUpdatedAt, remoteUpdatedAt),
+        updatedAt: Math.max(localUpdatedAt, remoteUpdatedAt) || nowMs()
+      };
+    });
+
+    return {
+      categories: categories,
+      exportedAt: nowMs(),
+      version: ENVELOPE_VERSION,
+      writerId: writerId || ""
+    };
   }
 
   function mergeEnvelopeAfterSync(localMeta, envelope, categoryFlags) {
@@ -833,12 +1117,6 @@
     return createDriveFile(requestDriveApi, serialized);
   }
 
-  function summarizeConflicts(conflicts) {
-    return conflicts.map(function(entry) {
-      return entry.label;
-    }).join(", ");
-  }
-
   function buildSyncResult(status, details) {
     return Object.assign({
       status: status,
@@ -1083,21 +1361,6 @@
       }
 
       var conflicts = detectConflicts(driveMeta, remoteEnvelope, categoryFlags);
-      if (conflicts.length && !resolution) {
-        await saveSyncOptions({
-          drivePendingConflict: {
-            at: nowMs(),
-            categories: conflicts,
-            localEnvelope: localEnvelope,
-            remoteEnvelope: remoteEnvelope
-          },
-          lastDriveSyncError: null
-        });
-        return buildSyncResult("conflict", {
-          conflicts: conflicts,
-          message: "Conflicts in: " + summarizeConflicts(conflicts)
-        });
-      }
 
       if (conflicts.length && resolution === "cancel") {
         return buildSyncResult("cancelled", { conflicts: conflicts });
@@ -1128,65 +1391,42 @@
         return buildSyncResult("resolved_remote", { conflicts: conflicts });
       }
 
-      var remotePatchesAuto = buildPatchesFromEnvelope(remoteEnvelope, categoryFlags);
-      var pullNeeded = false;
-      var pushNeeded = false;
-      enabledCategoryList(categoryFlags).forEach(function(categoryId) {
-        var remoteCategory = remoteEnvelope.categories[categoryId];
-        var localCategory = localEnvelope.categories[categoryId];
-        if (!remoteCategory) {
-          pushNeeded = true;
-          return;
-        }
-        if (!localCategory) {
-          pullNeeded = true;
-          return;
-        }
-        if (!dataEqual(remoteCategory.data, localCategory.data)) {
-          var localUpdatedAt = localCategory.updatedAt || 0;
-          var remoteUpdatedAt = remoteCategory.updatedAt || 0;
-          if (remoteUpdatedAt > localUpdatedAt) {
-            pullNeeded = true;
-          } else if (localUpdatedAt > remoteUpdatedAt) {
-            pushNeeded = true;
-          } else {
-            pushNeeded = true;
-          }
-        }
-      });
+      // Automatic sync: merge every enabled category into a superset so no one-sided
+      // items are discarded. Divergent categories (including detectConflicts hits) all
+      // flow through the same item-level merge instead of a whole-category overwrite.
+      var mergedEnvelope = buildMergedEnvelope(
+        localEnvelope,
+        remoteEnvelope,
+        categoryFlags,
+        syncOptions.syncWriterId || ""
+      );
+      var remoteDiffers = mergedDataDiffers(mergedEnvelope, remoteEnvelope, categoryFlags);
+      var localDiffers = mergedDataDiffers(mergedEnvelope, localEnvelope, categoryFlags);
 
-      if (pullNeeded && !pushNeeded) {
-        await savePatches(remotePatchesAuto, { source: "drive", direction: "pull" });
-        driveMeta = mergeEnvelopeAfterSync(driveMeta, remoteEnvelope, categoryFlags);
-        await saveDriveMeta(driveMeta);
-        await saveSyncOptions({
-          drivePendingConflict: null,
-          lastDriveSync: nowMs(),
-          lastDriveSyncError: null
-        });
-        return buildSyncResult("pulled", { fileId: driveMeta.fileId });
+      if (remoteDiffers) {
+        var mergedFileId = await writeRemoteEnvelope(requestDriveApi, driveMeta.fileId, mergedEnvelope);
+        driveMeta.fileId = mergedFileId || driveMeta.fileId;
+      }
+      if (localDiffers) {
+        var mergedPatches = buildPatchesFromEnvelope(mergedEnvelope, categoryFlags);
+        await savePatches(mergedPatches, { source: "drive", direction: "merge" });
       }
 
-      if (pushNeeded) {
-        await writeRemoteEnvelope(requestDriveApi, driveMeta.fileId, localEnvelope);
-        driveMeta = mergeEnvelopeAfterSync(driveMeta, localEnvelope, categoryFlags);
-        await saveDriveMeta(driveMeta);
-        await saveSyncOptions({
-          drivePendingConflict: null,
-          lastDriveSync: nowMs(),
-          lastDriveSyncError: null
-        });
-        return buildSyncResult("pushed", { fileId: driveMeta.fileId });
-      }
-
-      driveMeta = mergeEnvelopeAfterSync(driveMeta, remoteEnvelope, categoryFlags);
+      driveMeta = mergeEnvelopeAfterSync(driveMeta, mergedEnvelope, categoryFlags);
       await saveDriveMeta(driveMeta);
       await saveSyncOptions({
         drivePendingConflict: null,
         lastDriveSync: nowMs(),
         lastDriveSyncError: null
       });
-      return buildSyncResult("noop", { fileId: driveMeta.fileId });
+
+      if (!remoteDiffers && !localDiffers) {
+        return buildSyncResult("noop", { fileId: driveMeta.fileId });
+      }
+      return buildSyncResult("merged", {
+        conflicts: conflicts,
+        fileId: driveMeta.fileId
+      });
     } catch (error) {
       if (error && error.code === "auth" && token) {
         await clearDriveAuthToken(token, authProvider);
@@ -1231,6 +1471,7 @@
     buildEnvelope: buildEnvelope,
     buildPatchesFromEnvelope: buildPatchesFromEnvelope,
     bumpCategoryTimestamp: bumpCategoryTimestamp,
+    mergeCategoryData: mergeCategoryData,
     detectConflicts: detectConflicts,
     detectBraveBrowser: detectBraveBrowser,
     enabledCategoryList: enabledCategoryList,

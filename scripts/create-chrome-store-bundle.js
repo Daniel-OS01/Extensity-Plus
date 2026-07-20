@@ -8,8 +8,8 @@ const distManifestPath = path.join(repoRoot, "dist", "manifest.json");
 const distDriveWebConfigPath = path.join(repoRoot, "dist", "js", "drive-oauth-config.js");
 const packageJsonPath = path.join(repoRoot, "package.json");
 const artifactsRoot = path.join(repoRoot, "artifacts", "chrome-web-store");
-const PLACEHOLDER_CLIENT_ID = "REPLACE_WITH_OAUTH_CLIENT_ID.apps.googleusercontent.com";
-const PLACEHOLDER_WEB_CLIENT_ID = "REPLACE_WITH_DRIVE_WEB_CLIENT_ID.apps.googleusercontent.com";
+const PLACEHOLDER_CLIENT_ID = process.env.OAUTH_CLIENT_ID || "";
+const PLACEHOLDER_WEB_CLIENT_ID = process.env.DRIVE_WEB_CLIENT_ID || "";
 const generatedAt = new Date().toISOString();
 
 function assert(condition, message) {

@@ -3,10 +3,11 @@
 #
 # Create credentials: Google Cloud Console → APIs & Services → Credentials
 # → Create credentials → OAuth client ID → Application type: Chrome extension
-# Register both extension IDs on the same OAuth client:
-# - Local unpacked build: kjpdgpbbmmnickeingbbhkldeeeklnhj
-# - Chrome Web Store build: gbojjphhdboeaafjdilfibonoflhgcde
-# Published store ID: gbojjphhdboeaafjdilfibonoflhgcde
+# Create one Chrome Extension OAuth client for the runtime ID shown by the
+# unpacked build. Unpacked IDs can change when the load path/profile changes.
+# Do not reuse the Store-bound client for local development.
 #
-# Do NOT paste Desktop OAuth client IDs from client_secret_*.json (installed apps).
-YOUR_CHROME_EXTENSION_CLIENT_ID.apps.googleusercontent.com
+# Store builds receive their separate public client ID from
+# vars.EXTENSITY_DRIVE_CLIENT_ID during the release workflow.
+# Do NOT paste or store client_secret values.
+REPLACE_WITH_LOCAL_CHROME_EXTENSION_CLIENT_ID.apps.googleusercontent.com

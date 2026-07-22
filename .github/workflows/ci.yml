@@ -30,6 +30,8 @@ jobs:
       (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
       github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    env:
+      EXTENSITY_DRIVE_CLIENT_ID: 123456789012-cibuildsmoke.apps.googleusercontent.com
 
     steps:
       - name: Check out repository
@@ -55,8 +57,8 @@ jobs:
       - name: Validate manifest contract
         run: pnpm run check:manifest
 
-      - name: Build distributable extension
-        run: make dist
+      - name: Build and validate distributable extension
+        run: pnpm run drive:validate
 
       - name: Build Chrome Web Store submission bundle
         id: bundle_cws

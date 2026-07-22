@@ -4,6 +4,7 @@ const vm = require("node:vm");
 function loadBrowserScript(filePath, globals = {}) {
   const code = fs.readFileSync(filePath, "utf8");
   const sandbox = {
+    AbortController,
     URL,
     URLSearchParams,
     console,

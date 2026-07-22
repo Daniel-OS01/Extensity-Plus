@@ -20,8 +20,7 @@ test("extractWebClientIdFromJsonFile accepts Web application OAuth JSON", () => 
     const jsonPath = path.join(dir, "web.json");
     fs.writeFileSync(jsonPath, JSON.stringify({
       web: {
-        client_id: "12345-web.apps.googleusercontent.com",
-        client_secret: "not-used-by-extension"
+        client_id: "12345-web.apps.googleusercontent.com"
       }
     }));
 
@@ -32,7 +31,7 @@ test("extractWebClientIdFromJsonFile accepts Web application OAuth JSON", () => 
   });
 });
 
-test("extractWebClientIdFromJsonFile rejects Desktop OAuth JSON", () => {
+test("extractWebClientIdFromJsonFile rejects client_secret at any depth", () => {
   withTempDir((dir) => {
     const jsonPath = path.join(dir, "desktop.json");
     fs.writeFileSync(jsonPath, JSON.stringify({
@@ -44,7 +43,7 @@ test("extractWebClientIdFromJsonFile rejects Desktop OAuth JSON", () => {
 
     assert.throws(
       () => script.extractWebClientIdFromJsonFile(jsonPath),
-      /Desktop OAuth credentials/
+      /contains client_secret/
     );
   });
 });

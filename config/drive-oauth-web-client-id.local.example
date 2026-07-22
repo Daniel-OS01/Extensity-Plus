@@ -3,12 +3,8 @@
 #
 # Google Cloud Console → APIs & Services → Credentials
 # → Create credentials → OAuth client ID → Application type: Web application
-# Or use the existing Web application client in this project:
-#   775277874801-b0imosndrdirkc8n27nho7af3s16q1lv.apps.googleusercontent.com
+# Add the exact chrome.identity.getRedirectURL("drive") URI shown for each
+# runtime that intentionally enables Brave fallback.
 #
-# Add these Authorized redirect URIs to that Web client:
-# - https://kjpdgpbbmmnickeingbbhkldeeeklnhj.chromiumapp.org/drive
-# - https://gbojjphhdboeaafjdilfibonoflhgcde.chromiumapp.org/drive
-#
-# Do NOT paste Desktop OAuth client IDs from client_secret_*.json (installed apps).
-YOUR_WEB_APPLICATION_CLIENT_ID.apps.googleusercontent.com
+# Do NOT paste or store client_secret values.
+REPLACE_WITH_OPTIONAL_WEB_APPLICATION_CLIENT_ID.apps.googleusercontent.com

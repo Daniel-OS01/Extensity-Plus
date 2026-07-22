@@ -1,8 +1,0 @@
-# Registered extension IDs for the Google Drive Chrome extension OAuth client.
-# Copy this file to config/drive-extension-ids.local (gitignored) and keep both IDs below.
-#
-# Local unpacked build:
-kjpdgpbbmmnickeingbbhkldeeeklnhj
-#
-# Chrome Web Store build:
-gbojjphhdboeaafjdilfibonoflhgcde

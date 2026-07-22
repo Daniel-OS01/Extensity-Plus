@@ -1,5 +1,7 @@
 # Findings: Google Drive Sync
 
+> **Superseded:** Credential conclusions in this May 2026 investigation are historical. Current guidance requires one Chrome Extension OAuth client per runtime ID and lives in `docs/google-drive-sync.md`.
+
 ## OAuth Client Files Provided
 
 | File | client_id | Has client_secret? | Type |

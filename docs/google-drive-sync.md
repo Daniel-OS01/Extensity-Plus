@@ -2,72 +2,69 @@
 
 Extensity-Plus can back up and restore selected extension data to your Google account using the Drive **appDataFolder** scope. This is separate from Chrome `storage.sync` (browser sync).
 
-## Setup (developers)
+## Credential model
 
-1. Open [Google Cloud Console](https://console.cloud.google.com/) (this project uses the `gglcloud` project per `docs/release-automation.md`).
-2. Enable the **Google Drive API**.
-3. Create an OAuth client of type **Chrome extension** (not Desktop app).
-4. Register both extension IDs on the same client:
-   - Local unpacked build: `kjpdgpbbmmnickeingbbhkldeeeklnhj`
-   - Chrome Web Store build: `gbojjphhdboeaafjdilfibonoflhgcde`
-5. Set the client ID in `manifest.json`:
+Google binds a **Chrome Extension** OAuth client to one extension runtime ID. Use separate public client IDs for:
 
-```json
-"oauth2": {
-  "client_id": "YOUR_CLIENT_ID.apps.googleusercontent.com",
-  "scopes": [
-    "https://www.googleapis.com/auth/drive.appdata"
-  ]
-}
+- The unpacked development build's current runtime ID. Unpacked IDs can change with the browser profile or load path. The Dashboard is authoritative; a July 23, 2026 diagnostic showed `cpemjpdfipoemlejopilgllndgfnppjk`, but do not assume it remains stable.
+- The live Chrome Web Store item: `gbojjphhdboeaafjdilfibonoflhgcde`.
+
+Do not add a `key` field to `manifest.json`. The source manifest deliberately keeps a placeholder so a checkout never silently favors one runtime ID. Build-time injection writes only the generated `dist/manifest.json`.
+
+Client IDs are public configuration. A browser extension must never receive, store, log, or commit an OAuth `client_secret`. The scripts accept several secret-free JSON layouts for convenience, but JSON layout can prove only syntax—not Google Cloud client type, runtime-ID binding, consent-screen state, or redirect registration. Confirm those properties live in the `gglcloud` project.
+
+## Local unpacked setup
+
+1. Enable the Google Drive API in the `gglcloud` Google Cloud project.
+2. Run `npm run build` once and load the generated `dist/` directory unpacked.
+3. Open **Dashboard → Sync Status** and record the displayed **Extension ID**.
+4. In Google Cloud, create or select one OAuth client with application type **Chrome Extension**, bound only to that exact runtime ID.
+5. Copy `config/drive-oauth-client-id.local.example` to the gitignored `config/drive-oauth-client-id.local` and place only that public client ID on its first non-comment line.
+6. Run `npm run drive:validate`. This rebuilds `dist/` and strictly validates the packaged Chrome client syntax.
+7. Reload `dist/`, click **Test connection**, authorize interactively if prompted, then run create/read/update smoke tests with **Sync now**, **Pull**, and **Push**.
+
+If the unpacked runtime ID changes, create or select the matching ID-bound client, update the local file, and rebuild. A local text file cannot verify Google Cloud registration, so the removed `--validate-ids` flow is not a substitute for this live check.
+
+## Chrome Web Store release setup
+
+The published Store item is live at `gbojjphhdboeaafjdilfibonoflhgcde`. Create a separate **Chrome Extension** OAuth client bound only to that Store ID.
+
+Configure its public client ID as the GitHub `main` environment variable `vars.EXTENSITY_DRIVE_CLIENT_ID`. The release workflow:
+
+1. Fails if that variable is absent.
+2. Injects it through `EXTENSITY_DRIVE_CLIENT_ID` while building.
+3. Strictly validates `dist/manifest.json`.
+4. Refuses to bundle unless the packaged value exactly matches the supplied variable.
+
+The workflow never prints the value. Existing Chrome Web Store upload credentials such as `CWS_CLIENT_SECRET` and `CWS_REFRESH_TOKEN` are separate and remain GitHub Actions secrets.
+
+For a local packaging rehearsal, provide the intended public Store client without committing it:
+
+```sh
+EXTENSITY_DRIVE_CLIENT_ID='<store-bound-client-id>' npm run build
+EXTENSITY_DRIVE_CLIENT_ID='<store-bound-client-id>' npm run bundle:chrome-store
 ```
 
-6. For Brave, configure a separate OAuth client of type **Web application**. Brave can reject the Chrome extension flow with “Custom URI scheme is not supported on Chrome apps”, so Drive sync falls back to `chrome.identity.launchWebAuthFlow()` with a `chromiumapp.org` redirect.
+## Optional Brave Web fallback
 
-Add these **Authorized redirect URIs** to the Web application client:
+Chrome-only builds and releases leave `js/drive-oauth-config.js` at its placeholder and do not require a Web client. For a Brave-enabled build:
 
-- `https://kjpdgpbbmmnickeingbbhkldeeeklnhj.chromiumapp.org/drive`
-- `https://gbojjphhdboeaafjdilfibonoflhgcde.chromiumapp.org/drive`
+1. Create a **Web application** OAuth client.
+2. Add the exact `chrome.identity.getRedirectURL("drive")` URI shown for each supported runtime.
+3. Put its public client ID in gitignored `config/drive-oauth-web-client-id.local`, or set GitHub environment variable `vars.EXTENSITY_DRIVE_WEB_CLIENT_ID` for release builds.
+4. Run `npm run drive:validate:web` to require both packaged clients.
 
-The Web application client currently used for local Brave fallback is:
+Never download or paste the Web application's `client_secret` into this repository. Chrome-only validation uses `npm run drive:validate`; it must pass while the optional Web value remains a placeholder.
 
-- `775277874801-b0imosndrdirkc8n27nho7af3s16q1lv.apps.googleusercontent.com`
+## Validation commands
 
-Then set the Web client ID in `js/drive-oauth-config.js` using local config:
+- `npm run check:manifest` validates the placeholder-safe source tree.
+- `npm run drive:validate` builds and requires the Chrome client in `dist/`.
+- `npm run drive:validate:web` additionally requires the optional Brave Web client.
+- `node scripts/validate-manifest.js --manifest-path <path> --web-config-path <path> --require-drive-client` validates an explicit build tree.
+- `EXTENSITY_DRIVE_OAUTH_JSON=/path/to/oauth.json npm run check:manifest` compares a secret-free JSON client ID with the manifest. Any root or nested `client_secret` is rejected.
 
-- Copy `config/drive-oauth-web-client-id.local.example` → `config/drive-oauth-web-client-id.local`
-- Paste your **Web application** OAuth client ID (one line)
-- Run `npm run drive:apply-web-local`
-- If you want to force Brave/Web flow for local testing, set `drivePreferWebAuth: true` in `js/drive-oauth-config.js` or in your generated local config.
-
-For local development and release workflows, this repo supports a safe placeholder default plus explicit client-id injection:
-
-- Set a real client id directly:
-  - `npm run drive:set-client-id -- --client-id <chrome-extension-client-id>`
-- Or use a gitignored local file (recommended for dev):
-  - Copy `config/drive-oauth-client-id.local.example` → `config/drive-oauth-client-id.local`
-  - Paste your Chrome extension client ID (one line)
-  - `npm run drive:apply-local`
-- Validate the registered extension IDs:
-  - Copy `config/drive-extension-ids.local.example` → `config/drive-extension-ids.local`
-  - Keep both the local and store extension IDs in that file
-  - `npm run drive:validate`
-- Or reset to repo-safe placeholder:
-  - `npm run drive:set-client-id -- --reset`
-- `make dist` will automatically use `config/drive-oauth-client-id.local` and `config/drive-oauth-web-client-id.local` when they exist and patch the build copy in `dist/`.
-- CI/release builds can provide `EXTENSITY_DRIVE_CLIENT_ID` and `EXTENSITY_DRIVE_WEB_CLIENT_ID` instead of local files.
-
-When validating release builds, run strict manifest checks:
-
-- `npm run check:manifest` (dev-friendly; placeholder allowed)
-- `npm run check:manifest:strict-drive` (release-safe; fails on Chrome Extension or Web fallback placeholders)
-- `npm run bundle:chrome-store` fails fast if either Drive OAuth client ID still uses its placeholder.
-
-Optional guard for JSON input:
-
-- `EXTENSITY_DRIVE_OAUTH_JSON=/path/to/oauth.json npm run check:manifest`
-- If the JSON uses an `installed` block (Desktop OAuth), validation fails for Drive sync.
-
-5. Reload the extension. The first sync prompts for Google sign-in.
+These are offline checks only. Final acceptance requires both the unpacked installation and the installed Store item to authorize and complete create/read/update operations against Drive.
 
 ## Using sync (end users)
 
@@ -108,6 +105,7 @@ If you want one side to overwrite the other outright, use the explicit whole-cat
 | “Custom URI scheme is not supported on Chrome apps” in Brave | Configure the **Web application** OAuth fallback and add the two `chromiumapp.org/drive` redirect URIs. |
 | Sign-in loop / 401 | Remove the extension from [Google Account permissions](https://myaccount.google.com/permissions) and sync again. |
 | Auto-sync fails with auth-needed status | Click **Sync now** once to complete interactive sign-in; background auto-sync then resumes. |
+| Multiple same-name sync files exist | **Test connection** reports the duplicate count and selects the newest modification deterministically. It never deletes duplicates automatically. |
 | Want one side to win outright | Automatic **Sync now** always merges. Use **Push** or **Pull** to force a whole-category overwrite. |
 | History sync is slow/large | Leave **History** unchecked (default). |
 
@@ -118,3 +116,4 @@ If you want one side to overwrite the other outright, use the explicit whole-cat
 - Drive sync for Brave fallback uses a Web application client ID + `chrome.identity.launchWebAuthFlow`.
 - The browser extension only needs the Web client ID. Keep the Web client secret out of the repo and do not paste it into `config/drive-oauth-web-client-id.local`.
 - Desktop OAuth credentials are for CWS automation flows only (see `docs/release-automation.md`), not extension Drive sync.
+- Each Drive request has a 15-second attempt timeout and at most three attempts for network failures, HTTP 429, and supported transient 5xx responses. Initial creation reuses one generated Drive file ID so an ambiguous retry cannot create a second file.

@@ -6,16 +6,14 @@ const test = require("node:test");
 
 const script = require("../scripts/set-drive-oauth-client-id.js");
 
-test("parseArgs accepts manifest path and validate ids flags", () => {
+test("parseArgs accepts manifest path and local source", () => {
   const args = script.parseArgs([
     "--manifest-path",
     "./dist/manifest.json",
-    "--validate-ids",
     "--from-local"
   ]);
 
   assert.equal(args.manifestPath, path.resolve(process.cwd(), "./dist/manifest.json"));
-  assert.equal(args.validateIds, true);
   assert.equal(args.fromLocal, true);
 });
 
@@ -54,7 +52,7 @@ test("extractClientIdFromJsonFile rejects desktop exports that include client_se
 
   assert.throws(
     () => script.extractClientIdFromJsonFile(jsonPath),
-    /Desktop OAuth credentials detected/
+    /contains client_secret/
   );
 });
 
@@ -76,27 +74,4 @@ test("updateManifestClientId rewrites the manifest client_id at the requested pa
 
   const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
   assert.equal(manifest.oauth2.client_id, "12345-new.apps.googleusercontent.com");
-});
-
-test("validateRegisteredExtensionIds requires both extension IDs", () => {
-  const idsPath = path.join(path.resolve(__dirname, ".."), "config", "drive-extension-ids.local");
-  const existed = fs.existsSync(idsPath);
-  const backup = existed ? fs.readFileSync(idsPath, "utf8") : null;
-
-  try {
-    fs.writeFileSync(idsPath, script.EXPECTED_EXTENSION_IDS.join("\n") + "\n", "utf8");
-    assert.deepEqual(script.validateRegisteredExtensionIds(), script.EXPECTED_EXTENSION_IDS);
-
-    fs.writeFileSync(idsPath, script.EXPECTED_EXTENSION_IDS[0] + "\n", "utf8");
-    assert.throws(
-      () => script.validateRegisteredExtensionIds(),
-      /missing required IDs/
-    );
-  } finally {
-    if (existed) {
-      fs.writeFileSync(idsPath, backup, "utf8");
-    } else {
-      fs.rmSync(idsPath, { force: true });
-    }
-  }
 });

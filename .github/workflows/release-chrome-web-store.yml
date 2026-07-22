@@ -71,6 +71,15 @@ jobs:
       - name: Run unit tests
         run: npm test
 
+      - name: Require Store Drive OAuth configuration
+        env:
+          EXTENSITY_DRIVE_CLIENT_ID: ${{ vars.EXTENSITY_DRIVE_CLIENT_ID }}
+        run: |
+          if [ -z "$EXTENSITY_DRIVE_CLIENT_ID" ]; then
+            echo "GitHub environment variable EXTENSITY_DRIVE_CLIENT_ID is required."
+            exit 1
+          fi
+
       - name: Audit declared permissions are used in code
         run: |
           node - <<'EOF'
@@ -126,10 +135,26 @@ jobs:
 
       - name: Build distributable extension
         env:
-          EXTENSITY_DRIVE_WEB_CLIENT_ID: ${{ secrets.EXTENSITY_DRIVE_WEB_CLIENT_ID }}
-        run: make dist
+          EXTENSITY_DRIVE_CLIENT_ID: ${{ vars.EXTENSITY_DRIVE_CLIENT_ID }}
+          EXTENSITY_DRIVE_WEB_CLIENT_ID: ${{ vars.EXTENSITY_DRIVE_WEB_CLIENT_ID }}
+        run: |
+          make dist
+          node scripts/validate-manifest.js \
+            --manifest-path dist/manifest.json \
+            --web-config-path dist/js/drive-oauth-config.js \
+            --require-drive-client
+          if [ -n "$EXTENSITY_DRIVE_WEB_CLIENT_ID" ]; then
+            node scripts/validate-manifest.js \
+              --manifest-path dist/manifest.json \
+              --web-config-path dist/js/drive-oauth-config.js \
+              --require-drive-client \
+              --require-web-client
+          fi
 
       - name: Build Chrome Web Store submission bundle
+        env:
+          EXTENSITY_DRIVE_CLIENT_ID: ${{ vars.EXTENSITY_DRIVE_CLIENT_ID }}
+          EXTENSITY_DRIVE_WEB_CLIENT_ID: ${{ vars.EXTENSITY_DRIVE_WEB_CLIENT_ID }}
         run: npm run bundle:chrome-store
 
       - name: Resolve submission zip path

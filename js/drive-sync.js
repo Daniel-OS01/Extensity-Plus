@@ -34,6 +34,8 @@
   ];
   var DRIVE_MAX_RETRIES = 3;
   var DRIVE_RETRY_BASE_DELAY_MS = 1000;
+  var DRIVE_REQUEST_TIMEOUT_MS = 15000;
+  var DRIVE_RETRYABLE_HTTP_STATUSES = [429, 500, 502, 503, 504];
 
   // Mirrors js/history-logger.js maxRecords so merged history truncation matches append truncation.
   var HISTORY_MAX_RECORDS = 500;
@@ -934,16 +936,72 @@
     await storageLocalRemove(DRIVE_WEB_AUTH_CACHE_KEY);
   }
 
+  function parseRetryAfterMs(value) {
+    var normalized = String(value || "").trim();
+    if (!normalized) {
+      return 0;
+    }
+    var seconds = Number(normalized);
+    if (Number.isFinite(seconds) && seconds >= 0) {
+      return Math.round(seconds * 1000);
+    }
+    var retryAt = Date.parse(normalized);
+    return Number.isFinite(retryAt) ? Math.max(0, retryAt - nowMs()) : 0;
+  }
+
+  function logDriveRetry(operation, attempt, delayMs, error) {
+    var payload = {
+      attempt: attempt,
+      delayMs: delayMs,
+      errorCode: error && error.code ? error.code : "network",
+      httpStatus: error && typeof error.httpStatus === "number" ? error.httpStatus : null,
+      operation: operation || "drive_request"
+    };
+    if (root.ExtensityLogger && typeof root.ExtensityLogger.warn === "function") {
+      root.ExtensityLogger.warn("drive_api_retry", payload);
+      return;
+    }
+    if (typeof console !== "undefined" && typeof console.warn === "function") {
+      console.warn("drive_api_retry", payload);
+    }
+  }
+
   async function driveApiRequest(token, path, options) {
     var config = options || {};
     var headers = Object.assign({
       Authorization: "Bearer " + token
     }, config.headers || {});
-    var response = await fetch("https://www.googleapis.com" + path, {
-      body: config.body,
-      headers: headers,
-      method: config.method || "GET"
-    });
+    var AbortControllerClass = root.AbortController
+      || (typeof AbortController !== "undefined" ? AbortController : null);
+    var controller = AbortControllerClass ? new AbortControllerClass() : null;
+    var timeoutMs = typeof config.timeoutMs === "number" ? config.timeoutMs : DRIVE_REQUEST_TIMEOUT_MS;
+    var timeoutId = controller ? setTimeout(function() {
+      controller.abort();
+    }, timeoutMs) : null;
+    var response;
+    try {
+      response = await fetch("https://www.googleapis.com" + path, {
+        body: config.body,
+        headers: headers,
+        method: config.method || "GET",
+        signal: controller ? controller.signal : undefined
+      });
+    } catch (error) {
+      if (controller && controller.signal.aborted) {
+        var timeoutError = createDriveError(
+          "timeout",
+          "Google Drive request timed out. Try again.",
+          "Google Drive request timed out after " + timeoutMs + " ms."
+        );
+        timeoutError.name = "DriveTimeoutError";
+        throw timeoutError;
+      }
+      throw error;
+    } finally {
+      if (timeoutId !== null) {
+        clearTimeout(timeoutId);
+      }
+    }
 
     if (response.status === 401) {
       var authError = createDriveError(
@@ -966,6 +1024,7 @@
         "Drive API error (" + httpStatus + "): " + errorText
       );
       apiError.httpStatus = httpStatus;
+      apiError.retryAfterMs = parseRetryAfterMs(response.headers.get("retry-after"));
       throw apiError;
     }
 
@@ -987,13 +1046,17 @@
 
   function isRetryableDriveError(error) {
     var httpStatus = error && typeof error.httpStatus === "number" ? error.httpStatus : 0;
-    return httpStatus >= 500 || error instanceof TypeError || (error && error.name === "TypeError");
+    return DRIVE_RETRYABLE_HTTP_STATUSES.indexOf(httpStatus) !== -1
+      || error instanceof TypeError
+      || (error && (error.name === "TypeError" || error.code === "timeout"));
   }
 
   async function retryDriveApiRequest(token, path, options) {
     var config = options || {};
     var currentToken = token;
     var attempt = 0;
+    var tokenRefreshed = false;
+    var operation = config.operation || "drive_request";
 
     while (attempt < DRIVE_MAX_RETRIES) {
       try {
@@ -1002,12 +1065,13 @@
         var isAuthError = error && error.code === "auth";
         var canRetry = attempt < DRIVE_MAX_RETRIES - 1;
 
-        if (isAuthError && canRetry) {
+        if (isAuthError && canRetry && !tokenRefreshed) {
           await clearDriveAuthToken(currentToken);
           var nextTokenResult = typeof config.getFreshToken === "function"
             ? normalizeTokenResult(await config.getFreshToken())
             : normalizeTokenResult(await chromeIdentityGetToken(!!config.interactive));
           currentToken = nextTokenResult.token;
+          tokenRefreshed = true;
           if (typeof config.onTokenRefresh === "function") {
             config.onTokenRefresh(currentToken, nextTokenResult.authProvider);
           }
@@ -1016,9 +1080,21 @@
         }
 
         if (isRetryableDriveError(error) && canRetry) {
-          await sleep(DRIVE_RETRY_BASE_DELAY_MS * Math.pow(2, attempt));
+          var exponentialDelay = DRIVE_RETRY_BASE_DELAY_MS * Math.pow(2, attempt);
+          var delayMs = Math.max(exponentialDelay, Number(error.retryAfterMs) || 0);
+          logDriveRetry(operation, attempt + 1, delayMs, error);
+          if (typeof config.sleep === "function") {
+            await config.sleep(delayMs);
+          } else {
+            await sleep(delayMs);
+          }
           attempt += 1;
           continue;
+        }
+
+        if (isRetryableDriveError(error) && !canRetry) {
+          error.message = String(error.message || "Google Drive request failed.")
+            + " Failed after " + DRIVE_MAX_RETRIES + " attempts.";
         }
 
         throw error;
@@ -1028,19 +1104,39 @@
     throw createDriveError("sync_failed", "Google Drive request failed.");
   }
 
+  function selectNewestDriveFile(files) {
+    var matches = (Array.isArray(files) ? files : []).filter(function(file) {
+      return file && file.name === DRIVE_FILE_NAME && file.id;
+    }).slice();
+    matches.sort(function(left, right) {
+      var modifiedOrder = String(right.modifiedTime || "").localeCompare(String(left.modifiedTime || ""));
+      if (modifiedOrder !== 0) {
+        return modifiedOrder;
+      }
+      return String(left.id).localeCompare(String(right.id));
+    });
+    if (!matches.length) {
+      return null;
+    }
+    return Object.assign({}, matches[0], {
+      duplicateCount: Math.max(0, matches.length - 1)
+    });
+  }
+
   async function findDriveFile(requestDriveApi) {
     var query = "name='" + DRIVE_FILE_NAME.replace(/'/g, "\\'") + "' and trashed=false";
     var result = await requestDriveApi(
-      "/drive/v3/files?spaces=appDataFolder&fields=files(id,name,modifiedTime)&q=" + encodeURIComponent(query)
+      "/drive/v3/files?spaces=appDataFolder&pageSize=100&fields=files(id,name,modifiedTime)&q=" + encodeURIComponent(query),
+      { operation: "find_sync_file" }
     );
     var files = result && Array.isArray(result.files) ? result.files : [];
-    return files.length ? files[0] : null;
+    return selectNewestDriveFile(files);
   }
 
   async function downloadDriveFile(requestDriveApi, fileId) {
     var raw = await requestDriveApi(
       "/drive/v3/files/" + encodeURIComponent(fileId) + "?alt=media",
-      { responseType: "text" }
+      { operation: "download_sync_file", responseType: "text" }
     );
     if (!raw) {
       return null;
@@ -1053,7 +1149,19 @@
   }
 
   async function createDriveFile(requestDriveApi, content) {
+    var generated = await requestDriveApi(
+      "/drive/v3/files/generateIds?count=1&space=appDataFolder&fields=ids",
+      { operation: "generate_sync_file_id" }
+    );
+    var generatedId = generated && Array.isArray(generated.ids) ? generated.ids[0] : "";
+    if (!generatedId) {
+      throw createDriveError(
+        "drive_api",
+        "Google Drive did not provide an ID for the sync file."
+      );
+    }
     var metadata = {
+      id: generatedId,
       mimeType: "application/json",
       name: DRIVE_FILE_NAME,
       parents: ["appDataFolder"]
@@ -1068,14 +1176,35 @@
       content + "\r\n" +
       "--" + boundary + "--";
 
-    var created = await requestDriveApi("/upload/drive/v3/files?uploadType=multipart&fields=id", {
-      body: body,
-      headers: {
-        "Content-Type": "multipart/related; boundary=" + boundary
-      },
-      method: "POST"
-    });
-    return created && created.id ? created.id : null;
+    try {
+      var created = await requestDriveApi("/upload/drive/v3/files?uploadType=multipart&fields=id", {
+        body: body,
+        headers: {
+          "Content-Type": "multipart/related; boundary=" + boundary
+        },
+        method: "POST",
+        operation: "create_sync_file"
+      });
+      return created && created.id ? created.id : generatedId;
+    } catch (error) {
+      if (!error || error.httpStatus !== 409) {
+        throw error;
+      }
+      var existing = await downloadDriveFile(requestDriveApi, generatedId);
+      var expected;
+      try {
+        expected = JSON.parse(content);
+      } catch (parseError) {
+        throw createDriveError("drive_create_conflict", "Drive sync file creation conflicted with different content.");
+      }
+      if (dataEqual(existing, expected)) {
+        return generatedId;
+      }
+      throw createDriveError(
+        "drive_create_conflict",
+        "Drive sync file creation conflicted with different content. No duplicate was created."
+      );
+    }
   }
 
   async function updateDriveFile(requestDriveApi, fileId, content) {
@@ -1086,7 +1215,8 @@
         headers: {
           "Content-Type": "application/json"
         },
-        method: "PATCH"
+        method: "PATCH",
+        operation: "update_sync_file"
       }
     );
   }
@@ -1163,7 +1293,7 @@
     }
 
     try {
-      var tokenResult = await acquireDriveToken(false);
+      var tokenResult = await acquireDriveToken(true);
       token = tokenResult.token;
       authProvider = tokenResult.authProvider;
       step("auth", "ok", "Token acquired via " + authProvider + ".");
@@ -1172,18 +1302,42 @@
       return report;
     }
 
+    function requestTestDriveApi(path, requestOptions) {
+      return retryDriveApiRequest(token, path, Object.assign({}, requestOptions || {}, {
+        getFreshToken: function() {
+          return acquireDriveToken(true);
+        },
+        interactive: true,
+        onTokenRefresh: function(nextToken, nextAuthProvider) {
+          token = nextToken;
+          authProvider = nextAuthProvider || authProvider;
+        },
+        sleep: config.sleep
+      }));
+    }
+
     try {
-      var listResult = await driveApiRequest(token, "/drive/v3/files?spaces=appDataFolder&fields=files(id,name,size,modifiedTime)&pageSize=10");
+      var listResult = await requestTestDriveApi(
+        "/drive/v3/files?spaces=appDataFolder&fields=files(id,name,size,modifiedTime)&pageSize=100",
+        { operation: "test_connection_list" }
+      );
       var files = listResult && Array.isArray(listResult.files) ? listResult.files : [];
       step("drive_list", "ok", "Drive appDataFolder reachable. " + files.length + " file(s) found.");
 
-      var syncEntry = files.find(function(f) { return f.name === DRIVE_FILE_NAME; });
+      var syncEntry = selectNewestDriveFile(files);
       if (syncEntry) {
         fileId = syncEntry.id;
         var sizeKb = syncEntry.size
           ? (Math.round(Number(syncEntry.size) / 102.4) / 10) + " KB"
           : "unknown size";
-        step("sync_file", "ok", "Sync file found. ID: " + fileId + ". Size: " + sizeKb + ". Modified: " + (syncEntry.modifiedTime || "unknown") + ".");
+        step(
+          "sync_file",
+          "ok",
+          "Sync file found. ID: " + fileId
+            + ". Size: " + sizeKb
+            + ". Modified: " + (syncEntry.modifiedTime || "unknown")
+            + ". Duplicate count: " + syncEntry.duplicateCount + "."
+        );
       } else {
         step("sync_file", "info", "Sync file not found. First sync will create it.");
       }
@@ -1194,9 +1348,7 @@
 
     if (fileId) {
       try {
-        remoteEnvelope = await downloadDriveFile(function(path, opts) {
-          return driveApiRequest(token, path, opts);
-        }, fileId);
+        remoteEnvelope = await downloadDriveFile(requestTestDriveApi, fileId);
         if (remoteEnvelope) {
           var cats = remoteEnvelope.categories ? Object.keys(remoteEnvelope.categories) : [];
           step("dry_run_read", "ok", "Remote envelope parsed. Categories: " + (cats.join(", ") || "none") + ". Version: " + (remoteEnvelope.version || "unknown") + ".");
@@ -1471,6 +1623,7 @@
     buildEnvelope: buildEnvelope,
     buildPatchesFromEnvelope: buildPatchesFromEnvelope,
     bumpCategoryTimestamp: bumpCategoryTimestamp,
+    createDriveFile: createDriveFile,
     mergeCategoryData: mergeCategoryData,
     detectConflicts: detectConflicts,
     detectBraveBrowser: detectBraveBrowser,
@@ -1485,6 +1638,7 @@
     normalizeCategoryFlags: normalizeCategoryFlags,
     normalizeDriveMeta: normalizeDriveMeta,
     retryDriveApiRequest: retryDriveApiRequest,
+    selectNewestDriveFile: selectNewestDriveFile,
     setWebClientId: setWebClientId,
     syncDrive: syncDrive,
     testDriveConnection: testDriveConnection

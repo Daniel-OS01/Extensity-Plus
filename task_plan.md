@@ -1,5 +1,7 @@
 # Task Plan: Robust Google Drive Sync
 
+> **Superseded:** This earlier plan's “one client for both IDs” assumption is no longer valid. The active remediation uses separate local- and Store-bound Chrome Extension OAuth clients; see `docs/google-drive-sync.md`.
+
 ## Goal
 
 Make Drive sync work reliably from both the local unpacked extension and the Chrome Web Store version, with automatic extension-ID detection, retry/fallback robustness, and correct OAuth client wiring.

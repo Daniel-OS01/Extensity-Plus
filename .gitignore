@@ -15,4 +15,3 @@ yarn-error.log*
 .claude/worktrees/
 config/drive-oauth-client-id.local
 config/drive-oauth-web-client-id.local
-config/drive-extension-ids.local

@@ -163,13 +163,24 @@ function sampleContext() {
   };
 }
 
-function jsonResponse(status, body) {
+function responseHeaders(contentType, values) {
+  const normalized = {};
+  Object.entries(values || {}).forEach(([key, value]) => {
+    normalized[key.toLowerCase()] = value;
+  });
   return {
-    headers: {
-      get() {
-        return "application/json";
+    get(name) {
+      if (String(name).toLowerCase() === "content-type") {
+        return contentType;
       }
-    },
+      return normalized[String(name).toLowerCase()] || null;
+    }
+  };
+}
+
+function jsonResponse(status, body, headers) {
+  return {
+    headers: responseHeaders("application/json", headers),
     json: async function() {
       return body;
     },
@@ -181,13 +192,9 @@ function jsonResponse(status, body) {
   };
 }
 
-function textResponse(status, body) {
+function textResponse(status, body, headers) {
   return {
-    headers: {
-      get() {
-        return "text/plain";
-      }
-    },
+    headers: responseHeaders("text/plain", headers),
     ok: status >= 200 && status < 300,
     status: status,
     text: async function() {
@@ -307,15 +314,14 @@ test("retryDriveApiRequest retries transient 5xx failures with exponential backo
         return textResponse(503, "unavailable");
       }
       return jsonResponse(200, { ok: true });
-    },
-    setTimeout: function(callback, delay) {
-      delays.push(delay);
-      callback();
-      return 1;
     }
   });
 
-  const result = await root.ExtensityDriveSync.retryDriveApiRequest("token-1", "/drive/v3/files", {});
+  const result = await root.ExtensityDriveSync.retryDriveApiRequest("token-1", "/drive/v3/files", {
+    sleep: async function(delay) {
+      delays.push(delay);
+    }
+  });
 
   assert.deepEqual(result, { ok: true });
   assert.equal(fetchCalls, 3);
@@ -332,19 +338,131 @@ test("retryDriveApiRequest retries network TypeError failures", async () => {
         throw new TypeError("Network error");
       }
       return jsonResponse(200, { network: true });
-    },
-    setTimeout: function(callback, delay) {
-      delays.push(delay);
-      callback();
-      return 1;
     }
   });
 
-  const result = await root.ExtensityDriveSync.retryDriveApiRequest("token-1", "/drive/v3/files", {});
+  const result = await root.ExtensityDriveSync.retryDriveApiRequest("token-1", "/drive/v3/files", {
+    sleep: async function(delay) {
+      delays.push(delay);
+    }
+  });
 
   assert.deepEqual(result, { network: true });
   assert.equal(fetchCalls, 2);
   assert.deepEqual(delays, [1000]);
+});
+
+test("retryDriveApiRequest retries every supported transient HTTP status", async (t) => {
+  for (const status of [429, 500, 502, 503, 504]) {
+    await t.test(String(status), async () => {
+      let fetchCalls = 0;
+      const root = loadDriveSync({
+        fetch: async function() {
+          fetchCalls += 1;
+          return fetchCalls === 1
+            ? textResponse(status, "temporary")
+            : jsonResponse(200, { recovered: status });
+        }
+      });
+
+      const result = await root.ExtensityDriveSync.retryDriveApiRequest("token", "/drive/v3/files", {
+        operation: "test_transient_status",
+        sleep: async function() {}
+      });
+
+      assert.equal(result.recovered, status);
+      assert.equal(fetchCalls, 2);
+    });
+  }
+});
+
+test("retryDriveApiRequest respects Retry-After when it exceeds exponential delay", async () => {
+  const delays = [];
+  let fetchCalls = 0;
+  const root = loadDriveSync({
+    fetch: async function() {
+      fetchCalls += 1;
+      return fetchCalls === 1
+        ? textResponse(429, "rate limited", { "retry-after": "3" })
+        : jsonResponse(200, { ok: true });
+    }
+  });
+
+  await root.ExtensityDriveSync.retryDriveApiRequest("token", "/drive/v3/files", {
+    operation: "test_retry_after",
+    sleep: async function(delay) {
+      delays.push(delay);
+    }
+  });
+
+  assert.deepEqual(delays, [3000]);
+});
+
+test("retryDriveApiRequest times out each attempt and stops after three attempts", async () => {
+  let fetchCalls = 0;
+  const root = loadDriveSync({
+    fetch: async function(url, options) {
+      fetchCalls += 1;
+      return new Promise(function(resolve, reject) {
+        options.signal.addEventListener("abort", function() {
+          const error = new Error("aborted");
+          error.name = "AbortError";
+          reject(error);
+        });
+      });
+    }
+  });
+
+  await assert.rejects(
+    root.ExtensityDriveSync.retryDriveApiRequest("token", "/drive/v3/files", {
+      operation: "test_timeout",
+      sleep: async function() {},
+      timeoutMs: 5
+    }),
+    (error) => error.code === "timeout" && /3 attempts/.test(error.message)
+  );
+  assert.equal(fetchCalls, 3);
+});
+
+test("drive_api_retry warnings contain structured metadata but no request secrets", async () => {
+  const warnings = [];
+  let fetchCalls = 0;
+  const root = loadDriveSync({
+    self: {
+      ExtensityLogger: {
+        warn(event, data) {
+          warnings.push({ event, data });
+        }
+      }
+    },
+    fetch: async function() {
+      fetchCalls += 1;
+      return fetchCalls === 1
+        ? textResponse(503, "sensitive response body")
+        : jsonResponse(200, { ok: true });
+    }
+  });
+
+  await root.ExtensityDriveSync.retryDriveApiRequest(
+    "secret-token",
+    "/drive/v3/files/private-file-id",
+    {
+      body: "secret-body",
+      operation: "safe_operation",
+      sleep: async function() {}
+    }
+  );
+
+  assert.equal(warnings.length, 1);
+  assert.equal(warnings[0].event, "drive_api_retry");
+  assert.deepEqual(Object.keys(warnings[0].data).sort(), [
+    "attempt",
+    "delayMs",
+    "errorCode",
+    "httpStatus",
+    "operation"
+  ]);
+  assert.doesNotMatch(JSON.stringify(warnings), /secret|private-file-id|client/i);
 });
 
 test("retryDriveApiRequest does not retry client errors", async () => {
@@ -361,6 +479,26 @@ test("retryDriveApiRequest does not retry client errors", async () => {
     /Drive API error \(400\): bad request/
   );
   assert.equal(fetchCalls, 1);
+});
+
+test("retryDriveApiRequest does not retry 403 or 404 responses", async (t) => {
+  for (const status of [403, 404]) {
+    await t.test(String(status), async () => {
+      let fetchCalls = 0;
+      const root = loadDriveSync({
+        fetch: async function() {
+          fetchCalls += 1;
+          return textResponse(status, "permanent");
+        }
+      });
+      await assert.rejects(
+        root.ExtensityDriveSync.retryDriveApiRequest("token", "/drive/v3/files", {
+          operation: "test_permanent_status"
+        })
+      );
+      assert.equal(fetchCalls, 1);
+    });
+  }
 });
 
 test("retryDriveApiRequest refreshes the token after a 401 response", async () => {
@@ -830,6 +968,122 @@ test("getDriveSyncStatus reports Brave web auth preference when detected", async
   assert.equal(status.webFallbackConfigured, true);
   assert.equal(status.webAuthPreferred, true);
   assert.equal(status.authProvider, "web_fallback");
+});
+
+test("selectNewestDriveFile chooses deterministically and reports duplicates", () => {
+  const root = loadDriveSync();
+  const selected = root.ExtensityDriveSync.selectNewestDriveFile([
+    { id: "older", name: "extensity-plus-sync.json", modifiedTime: "2026-01-01T00:00:00Z" },
+    { id: "other", name: "other.json", modifiedTime: "2027-01-01T00:00:00Z" },
+    { id: "newer", name: "extensity-plus-sync.json", modifiedTime: "2026-02-01T00:00:00Z" }
+  ]);
+
+  assert.equal(selected.id, "newer");
+  assert.equal(selected.duplicateCount, 1);
+});
+
+test("createDriveFile reuses a generated ID and accepts a matching 409 result", async () => {
+  const content = JSON.stringify({ categories: { options: { data: { theme: "dark" } } } });
+  const createBodies = [];
+  let createCalls = 0;
+  const root = loadDriveSync({
+    fetch: async function(url, options) {
+      if (url.includes("/drive/v3/files/generateIds")) {
+        return jsonResponse(200, { ids: ["generated-file-id"] });
+      }
+      if (url.includes("/upload/drive/v3/files") && options.method === "POST") {
+        createCalls += 1;
+        createBodies.push(options.body);
+        return createCalls === 1
+          ? textResponse(503, "ambiguous create")
+          : textResponse(409, "already exists");
+      }
+      if (url.includes("/drive/v3/files/generated-file-id?alt=media")) {
+        return textResponse(200, content);
+      }
+      throw new Error("Unexpected request: " + url);
+    }
+  });
+  const requestDriveApi = function(path, options) {
+    return root.ExtensityDriveSync.retryDriveApiRequest("token", path, {
+      ...(options || {}),
+      sleep: async function() {}
+    });
+  };
+
+  const fileId = await root.ExtensityDriveSync.createDriveFile(requestDriveApi, content);
+
+  assert.equal(fileId, "generated-file-id");
+  assert.equal(createBodies.length, 2);
+  assert.equal(createBodies[0], createBodies[1]);
+  assert.match(createBodies[0], /"id":"generated-file-id"/);
+});
+
+test("createDriveFile raises a typed conflict when a 409 contains different data", async () => {
+  const root = loadDriveSync();
+  const requestDriveApi = async function(path) {
+    if (path.includes("generateIds")) {
+      return { ids: ["generated-file-id"] };
+    }
+    if (path.includes("upload")) {
+      const error = new Error("conflict");
+      error.httpStatus = 409;
+      throw error;
+    }
+    if (path.includes("alt=media")) {
+      return JSON.stringify({ different: true });
+    }
+    throw new Error("Unexpected request: " + path);
+  };
+
+  await assert.rejects(
+    root.ExtensityDriveSync.createDriveFile(requestDriveApi, JSON.stringify({ expected: true })),
+    (error) => error.code === "drive_create_conflict"
+  );
+});
+
+test("testDriveConnection uses interactive auth, common retries, and duplicate diagnostics", async () => {
+  let interactiveValue = null;
+  let listCalls = 0;
+  const root = loadDriveSync({
+    chrome: {
+      identity: {
+        getAuthToken(options, callback) {
+          interactiveValue = options.interactive;
+          callback("test-token");
+        }
+      }
+    },
+    fetch: async function(url) {
+      if (url.includes("spaces=appDataFolder")) {
+        listCalls += 1;
+        if (listCalls === 1) {
+          return textResponse(503, "temporary");
+        }
+        return jsonResponse(200, {
+          files: [
+            { id: "old", name: "extensity-plus-sync.json", modifiedTime: "2026-01-01T00:00:00Z" },
+            { id: "new", name: "extensity-plus-sync.json", modifiedTime: "2026-02-01T00:00:00Z" }
+          ]
+        });
+      }
+      if (url.includes("/drive/v3/files/new?alt=media")) {
+        return textResponse(200, JSON.stringify({ categories: {}, version: "1.0.0" }));
+      }
+      throw new Error("Unexpected request: " + url);
+    }
+  });
+
+  const report = await root.ExtensityDriveSync.testDriveConnection({
+    sleep: async function() {}
+  });
+
+  assert.equal(report.success, true);
+  assert.equal(interactiveValue, true);
+  assert.equal(listCalls, 2);
+  const syncFileStep = report.steps.find((step) => step.name === "sync_file");
+  assert.match(syncFileStep.detail, /ID: new/);
+  assert.match(syncFileStep.detail, /Duplicate count: 1/);
 });
 
 test("mergeCategoryData urlRules unions and de-dups by id preserving order", () => {

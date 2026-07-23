@@ -87,11 +87,13 @@ The Dashboard **Sync Status** tab now also includes a Drive sync card with the c
 
 ## Conflicts and recovery
 
-When the same item changes differently on this device and Drive, including edit-versus-delete, synchronization pauses without writing either side. **Keep this device** or **Use Drive copy** applies only to conflicting items; compatible changes remain merged. **Cancel** performs no write and leaves synchronization paused.
+When the same item changes differently on this device and Drive, including edit-versus-delete, synchronization pauses without writing either side. **Keep this device** or **Use Drive copy** applies only to this item-level (divergence) conflict case; compatible changes remain merged. **Cancel** always performs no write and immediately clears the pause, regardless of conflict type.
 
-Multiple matching app-data files also pause sync and every candidate is reported; duplicates are never silently deleted. The UI does not yet expose a control to pick a canonical file among duplicates — the **Keep this device** / **Use Drive copy** / **Cancel** buttons resolve only item-level conflicts, not this case. Drive `version` is checked immediately before upload, and uploaded content is downloaded and verified before local state or the merge baseline advances. A version race is re-read and recomputed up to three times for merge runs. A verification or partial-write failure retains the transaction journal; startup restores the saved local snapshot and leaves a recovery notice before another automatic run.
+Multiple matching app-data files also pause sync and every candidate is reported; duplicates are never silently deleted. The UI does not expose a control to pick a canonical file among duplicates — **Keep this device** and **Use Drive copy** are hidden for this case (only **Cancel** is offered); remove the extra file(s) from the Drive app data folder, then Cancel and retry. Drive `version` is checked immediately before upload, and uploaded content is downloaded and verified before local state or the merge baseline advances. A version race is re-read and recomputed up to three times for merge runs. A verification or partial-write failure retains the transaction journal; startup restores the saved local snapshot and leaves a recovery notice before another automatic run.
 
-Legacy v1 files remain readable and the first successful write snapshots data before producing v2. If a device that has written v2 later sees a v1 file, synchronization pauses as a schema regression rather than discarding deletion history.
+Legacy v1 files remain readable and the first successful write snapshots data before producing v2. If a device that has written v2 later sees a v1 file, synchronization pauses as a schema regression rather than discarding deletion history; as with duplicate files, **Keep this device** / **Use Drive copy** are hidden here — verify the account/file, then Cancel and retry.
+
+When a change would delete or replace an unusually large share of a category (the destructive-change failsafe), synchronization also pauses. **Keep this device** / **Use Drive copy** are hidden for this case too, since the pause isn't tied to a specific conflicting item — review the change, adjust "Protect destructive changes" in Settings if it's intentional, then Cancel and retry.
 
 ## Storage details
 
@@ -110,7 +112,7 @@ Legacy v1 files remain readable and the first successful write snapshots data be
 | Sign-in loop / 401 | Remove the extension from [Google Account permissions](https://myaccount.google.com/permissions) and sync again. |
 | Auto-sync fails with auth-needed status | Click **Sync now** once to complete interactive sign-in; background auto-sync then resumes. |
 | Multiple same-name sync files exist | Sync pauses and reports every candidate; there is no in-UI way to pick a canonical file yet. Remove the extra file(s) from the Drive app data folder via the Drive API. |
-| `preview_stale` | Local data or the Drive version changed after preview. Refresh and confirm again. |
+| `preview_stale` | Local data or the Drive version changed after preview. Extensity Plus retries the resolve action once automatically; if it still fails, click the resolve button again. |
 | `drive_verification_failed` | The downloaded post-write content did not match. The recovery journal is retained; do not clear it manually. |
 | Want one side to win outright | Select an overwrite strategy or use **Push**/**Pull**; backups, preview confirmation, verification, and failsafes still apply. |
 | History sync is slow/large | Leave **History** unchecked (default). |

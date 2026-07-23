@@ -2469,7 +2469,7 @@ importScripts(
           direction: "sync",
           interactive: false,
           overrideFailsafe: !!message.overrideFailsafe,
-          requireConfirmation: true,
+          requireConfirmation: message.resolution !== "cancel",
           resolution: message.resolution
         });
       case "SYNC_DRIVE":
@@ -2644,6 +2644,7 @@ importScripts(
       sendResponse({ ok: true, payload: payload });
     }).catch(function(error) {
       sendResponse({
+        code: (error && error.code) || null,
         error: error.message,
         ok: false
       });

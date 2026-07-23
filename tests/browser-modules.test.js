@@ -725,6 +725,41 @@ test("ExtensityApi profile assignment methods emit expected chrome messages", as
   ]);
 });
 
+test("ExtensityApi.resolveDriveConflict skips the preview handshake for cancel but not for keep_local", async () => {
+  const sentMessages = [];
+  const windowRoot = {};
+
+  loadBrowserScript(path.join(repoRoot, "js/engine.js"), {
+    chrome: {
+      runtime: {
+        lastError: null,
+        sendMessage(message, callback) {
+          sentMessages.push(normalize(message));
+          if (message.type === "PREVIEW_DRIVE_SYNC") {
+            callback({ ok: true, payload: { preview: { confirmationToken: "token-123" } } });
+            return;
+          }
+          callback({ ok: true, payload: { result: { status: message.resolution === "cancel" ? "cancelled" : "resolved_local" } } });
+        }
+      }
+    },
+    ko: { extenders: {} },
+    window: windowRoot
+  });
+
+  await windowRoot.ExtensityApi.resolveDriveConflict("cancel");
+  assert.deepEqual(sentMessages, [
+    { resolution: "cancel", type: "RESOLVE_DRIVE_CONFLICT" }
+  ]);
+
+  sentMessages.length = 0;
+  await windowRoot.ExtensityApi.resolveDriveConflict("keep_local");
+  assert.deepEqual(sentMessages, [
+    { direction: "sync", resolution: "keep_local", type: "PREVIEW_DRIVE_SYNC" },
+    { confirmationToken: "token-123", overrideFailsafe: false, resolution: "keep_local", type: "RESOLVE_DRIVE_CONFLICT" }
+  ]);
+});
+
 test("extension profile summary uses em dash separator and omits empty values", () => {
   function observable(initial) {
     let value = initial;
@@ -1577,6 +1612,201 @@ test("options none preset keeps font size and zeroes spacing options", async () 
   assert.equal(capturedVm.options.itemSpacingPx(), 0);
   assert.equal(capturedVm.options.popupListStyle(), "table");
   assert.equal(saveOptionsCalls, 1);
+});
+
+function buildDriveSyncOptionsHarness(extensityApiOverrides) {
+  function observable(initialValue) {
+    let value = initialValue;
+    const obs = function(nextValue) {
+      if (arguments.length > 0) {
+        value = nextValue;
+        return obs;
+      }
+      return value;
+    };
+    return obs;
+  }
+
+  function OptionsCollection() {
+    this.fontSizePx = observable(16);
+    this.itemPaddingPx = observable(10);
+    this.itemPaddingXPx = observable(12);
+    this.itemNameGapPx = observable(10);
+    this.itemSpacingPx = observable(8);
+    this.popupListStyle = observable("card");
+    this.lastDriveSync = observable(null);
+    this.drivePendingConflict = observable(null);
+    this.apply = function() {};
+    this.toJS = function() {
+      return { fontSizePx: this.fontSizePx() };
+    };
+  }
+
+  let domReady = null;
+  let initDeferred = null;
+  let capturedVm = null;
+
+  loadBrowserScript(path.join(repoRoot, "js/options.js"), {
+    OptionsCollection,
+    ExtensityApi: Object.assign({
+      getState() {
+        return Promise.resolve({ state: { options: { colorScheme: "light" } } });
+      },
+      saveOptions() {
+        return Promise.resolve({});
+      }
+    }, extensityApiOverrides || {}),
+    ExtensityDriveSync: {
+      describeDrivePendingConflict(conflict) {
+        return conflict ? "stub-summary:" + (conflict.reason || "divergence") : "";
+      },
+      isDriveConflictResolvable(conflict) {
+        return !!conflict && (conflict.reason || "divergence") === "divergence";
+      }
+    },
+    ExtensityIO: {},
+    ExtensityUtils: { applyThemeClasses: function() {} },
+    ExtensityImportExport: {},
+    _: {
+      defer(fn) {
+        initDeferred = fn;
+      }
+    },
+    ko: {
+      observable,
+      pureComputed(fn) {
+        return fn;
+      },
+      secureBindingsProvider: function() {},
+      bindingProvider: {},
+      applyBindings(vm) {
+        capturedVm = vm;
+      }
+    },
+    chrome: {
+      permissions: {
+        contains(descriptor, callback) {
+          callback(true);
+        },
+        request(descriptor, callback) {
+          callback(false);
+        }
+      },
+      tabs: {
+        create() {}
+      }
+    },
+    window: {
+      close() {}
+    },
+    fadeOutMessage() {},
+    document: {
+      addEventListener(event, cb) {
+        if (event === "DOMContentLoaded") {
+          domReady = cb;
+        }
+      },
+      body: {
+        classList: {
+          toggle() {}
+        }
+      },
+      documentElement: {
+        style: {
+          setProperty() {}
+        }
+      },
+      getElementById() {
+        return {};
+      }
+    }
+  });
+
+  domReady();
+  initDeferred();
+  return capturedVm;
+}
+
+test("driveConflictSummary and driveConflictResolvable delegate to ExtensityDriveSync", () => {
+  const vm = buildDriveSyncOptionsHarness();
+
+  assert.equal(vm.driveConflictSummary(), "");
+  assert.equal(vm.driveConflictResolvable(), false);
+
+  vm.options.drivePendingConflict({ reason: "divergence" });
+  assert.equal(vm.driveConflictSummary(), "stub-summary:divergence");
+  assert.equal(vm.driveConflictResolvable(), true);
+
+  vm.options.drivePendingConflict({ reason: "failsafe" });
+  assert.equal(vm.driveConflictSummary(), "stub-summary:failsafe");
+  assert.equal(vm.driveConflictResolvable(), false);
+});
+
+test("runDriveSyncRequest defers the Drive API call until save() resolves", async () => {
+  const order = [];
+  let resolveSaveOptions;
+  const vm = buildDriveSyncOptionsHarness({
+    saveOptions() {
+      order.push("saveOptions:called");
+      return new Promise(function(resolve) {
+        resolveSaveOptions = resolve;
+      }).then(function() {
+        order.push("saveOptions:resolved");
+        return {};
+      });
+    },
+    resolveDriveConflict(resolution) {
+      order.push("resolveDriveConflict:called:" + resolution);
+      return Promise.resolve({ result: { status: "resolved_local" } });
+    }
+  });
+
+  const pending = vm.driveResolveKeepLocal();
+  // Under the old eager-evaluation bug, resolveDriveConflict was invoked here,
+  // synchronously, before saveOptions even started.
+  assert.deepEqual(order, ["saveOptions:called"]);
+
+  resolveSaveOptions();
+  await pending;
+
+  assert.deepEqual(order, ["saveOptions:called", "saveOptions:resolved", "resolveDriveConflict:called:keep_local"]);
+});
+
+test("runDriveSyncRequest retries once on preview_stale then succeeds", async () => {
+  let resolveCalls = 0;
+  const vm = buildDriveSyncOptionsHarness({
+    resolveDriveConflict() {
+      resolveCalls += 1;
+      if (resolveCalls === 1) {
+        const err = new Error("Drive data changed after preview.");
+        err.code = "preview_stale";
+        return Promise.reject(err);
+      }
+      return Promise.resolve({ result: { status: "resolved_local" } });
+    }
+  });
+
+  await vm.driveResolveKeepLocal();
+
+  assert.equal(resolveCalls, 2);
+  assert.equal(vm.driveError(), "");
+});
+
+test("runDriveSyncRequest gives up after a second consecutive preview_stale and surfaces the error", async () => {
+  let resolveCalls = 0;
+  const vm = buildDriveSyncOptionsHarness({
+    resolveDriveConflict() {
+      resolveCalls += 1;
+      const err = new Error("Drive data changed after preview.");
+      err.code = "preview_stale";
+      return Promise.reject(err);
+    }
+  });
+
+  await vm.driveResolveKeepLocal();
+
+  assert.equal(resolveCalls, 2);
+  assert.equal(vm.driveError(), "Drive data changed after preview.");
 });
 
 test("profiles add decorates custom profiles without parent-context bindings", async () => {

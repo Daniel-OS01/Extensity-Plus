@@ -338,13 +338,18 @@ document.addEventListener("DOMContentLoaded", function() {
     });
     self.driveConflictSummary = ko.pureComputed(function() {
       var conflict = self.options.drivePendingConflict();
-      if (!conflict || !Array.isArray(conflict.categories)) {
+      if (!conflict) {
         return "";
       }
-      var labels = conflict.categories.map(function(entry) {
-        return entry.label || entry.categoryId;
-      });
-      return "Sync conflict in: " + labels.join(", ") + ". Choose which copy to keep.";
+      try {
+        return ExtensityDriveSync.describeDrivePendingConflict(conflict);
+      } catch (err) {
+        return "Drive sync conflict" + (conflict.reason ? " (" + conflict.reason + ")" : "") +
+          ". Click Cancel or check for an extension update.";
+      }
+    });
+    self.driveConflictResolvable = ko.pureComputed(function() {
+      return ExtensityDriveSync.isDriveConflictResolvable(self.options.drivePendingConflict());
     });
     self.lastDriveSyncErrorLabel = ko.pureComputed(function() {
       var error = self.options.lastDriveSyncError();
@@ -453,7 +458,7 @@ document.addEventListener("DOMContentLoaded", function() {
 
     function handleDriveSyncResult(payload) {
       var result = payload && payload.result ? payload.result : {};
-      if (result.status === "conflict") {
+      if (result.status === "conflict" || result.status === "failsafe") {
         self.message(result.message || "Drive sync needs your input.");
         self.driveMessage(result.message || "Drive sync needs your input.");
         return;
@@ -468,30 +473,37 @@ document.addEventListener("DOMContentLoaded", function() {
       self.driveMessage(msg);
     }
 
-    function runDriveSyncRequest(request) {
+    function runDriveSyncRequest(requestFactory) {
       clearDriveFeedback();
-      return self.save().then(function() {
-        return self.performAction(request);
-      }).then(function(payload) {
-        handleDriveSyncResult(payload);
-        return payload;
-      }).catch(function(err) {
-        var msg = (err && err.message) || "Drive sync failed.";
-        self.driveError(msg);
-        self.error(msg);
-      });
+      function attempt(retriesLeft) {
+        return self.save().then(function() {
+          return self.performAction(requestFactory());
+        }).then(function(payload) {
+          handleDriveSyncResult(payload);
+          return payload;
+        }).catch(function(err) {
+          if (err && err.code === "preview_stale" && retriesLeft > 0) {
+            return attempt(retriesLeft - 1);
+          }
+          var msg = (err && err.message) || "Drive sync failed.";
+          self.driveError(msg);
+          self.error(msg);
+          return self.refresh().catch(function() {});
+        });
+      }
+      return attempt(1);
     }
 
     self.driveSyncNow = function() {
-      return runDriveSyncRequest(ExtensityApi.syncDrive({ direction: "sync" }));
+      return runDriveSyncRequest(function() { return ExtensityApi.syncDrive({ direction: "sync" }); });
     };
 
     self.drivePush = function() {
-      return runDriveSyncRequest(ExtensityApi.syncDrive({ direction: "push" }));
+      return runDriveSyncRequest(function() { return ExtensityApi.syncDrive({ direction: "push" }); });
     };
 
     self.drivePull = function() {
-      return runDriveSyncRequest(ExtensityApi.syncDrive({ direction: "pull" }));
+      return runDriveSyncRequest(function() { return ExtensityApi.syncDrive({ direction: "pull" }); });
     };
 
     self.driveConnectionReport = ko.observable(null);
@@ -528,15 +540,15 @@ document.addEventListener("DOMContentLoaded", function() {
     };
 
     self.driveResolveKeepLocal = function() {
-      return runDriveSyncRequest(ExtensityApi.resolveDriveConflict("keep_local"));
+      return runDriveSyncRequest(function() { return ExtensityApi.resolveDriveConflict("keep_local"); });
     };
 
     self.driveResolveKeepRemote = function() {
-      return runDriveSyncRequest(ExtensityApi.resolveDriveConflict("keep_remote"));
+      return runDriveSyncRequest(function() { return ExtensityApi.resolveDriveConflict("keep_remote"); });
     };
 
     self.driveResolveCancel = function() {
-      return runDriveSyncRequest(ExtensityApi.resolveDriveConflict("cancel"));
+      return runDriveSyncRequest(function() { return ExtensityApi.resolveDriveConflict("cancel"); });
     };
 
     self.restoreDriveBackup = function() {

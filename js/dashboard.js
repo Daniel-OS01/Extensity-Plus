@@ -945,12 +945,18 @@ document.addEventListener("DOMContentLoaded", function() {
     });
     self.driveConflictSummary = ko.pureComputed(function() {
       var conflict = self.options.drivePendingConflict();
-      if (!conflict || !Array.isArray(conflict.categories)) {
+      if (!conflict) {
         return "";
       }
-      return "Sync conflict in: " + conflict.categories.map(function(entry) {
-        return entry.label || entry.categoryId;
-      }).join(", ");
+      try {
+        return ExtensityDriveSync.describeDrivePendingConflict(conflict);
+      } catch (err) {
+        return "Drive sync conflict" + (conflict.reason ? " (" + conflict.reason + ")" : "") +
+          ". Click Cancel or check for an extension update.";
+      }
+    });
+    self.driveConflictResolvable = ko.pureComputed(function() {
+      return ExtensityDriveSync.isDriveConflictResolvable(self.options.drivePendingConflict());
     });
     self.driveSyncStatusLabel = ko.pureComputed(function() {
       var authStatus = typeof self.options.driveAuthStatus === "function"
@@ -972,7 +978,7 @@ document.addEventListener("DOMContentLoaded", function() {
 
     function handleDriveSyncResult(payload) {
       var result = payload && payload.result ? payload.result : {};
-      if (result.status === "conflict") {
+      if (result.status === "conflict" || result.status === "failsafe") {
         self.message(result.message || "Drive sync needs your input.");
         self.refreshDriveSyncStatus();
         return;
@@ -986,28 +992,33 @@ document.addEventListener("DOMContentLoaded", function() {
       self.refreshDriveSyncStatus();
     }
 
+    function handleDriveSyncError(err) {
+      self.error((err && err.message) || "Drive sync failed.");
+      return self.refresh().catch(function() {});
+    }
+
     self.driveSyncNow = function() {
-      self.performAction(ExtensityApi.syncDrive({ direction: "sync" })).then(handleDriveSyncResult);
+      return self.performAction(ExtensityApi.syncDrive({ direction: "sync" })).then(handleDriveSyncResult).catch(handleDriveSyncError);
     };
 
     self.drivePush = function() {
-      self.performAction(ExtensityApi.syncDrive({ direction: "push" })).then(handleDriveSyncResult);
+      return self.performAction(ExtensityApi.syncDrive({ direction: "push" })).then(handleDriveSyncResult).catch(handleDriveSyncError);
     };
 
     self.drivePull = function() {
-      self.performAction(ExtensityApi.syncDrive({ direction: "pull" })).then(handleDriveSyncResult);
+      return self.performAction(ExtensityApi.syncDrive({ direction: "pull" })).then(handleDriveSyncResult).catch(handleDriveSyncError);
     };
 
     self.driveResolveKeepLocal = function() {
-      self.performAction(ExtensityApi.resolveDriveConflict("keep_local")).then(handleDriveSyncResult);
+      return self.performAction(ExtensityApi.resolveDriveConflict("keep_local")).then(handleDriveSyncResult).catch(handleDriveSyncError);
     };
 
     self.driveResolveKeepRemote = function() {
-      self.performAction(ExtensityApi.resolveDriveConflict("keep_remote")).then(handleDriveSyncResult);
+      return self.performAction(ExtensityApi.resolveDriveConflict("keep_remote")).then(handleDriveSyncResult).catch(handleDriveSyncError);
     };
 
     self.driveResolveCancel = function() {
-      self.performAction(ExtensityApi.resolveDriveConflict("cancel")).then(handleDriveSyncResult);
+      return self.performAction(ExtensityApi.resolveDriveConflict("cancel")).then(handleDriveSyncResult).catch(handleDriveSyncError);
     };
 
     self.saveDriveSettings = function() {

@@ -1659,6 +1659,7 @@ test("syncDrive keep_local preserves compatible remote additions", async () => {
     profiles: { map: { __always_on: [], __base: [], __favorites: [] }, meta: {} }
   };
 
+  const savedConflicts = [];
   const result = await root.ExtensityDriveSync.syncDrive({
     direction: "sync",
     resolution: "keep_local",
@@ -1667,13 +1668,16 @@ test("syncDrive keep_local preserves compatible remote additions", async () => {
     loadContext: async function() { return context; },
     savePatches: async function(patches) { captured.patches.push(patches); },
     saveDriveMeta: async function() {},
-    saveSyncOptions: async function() {}
+    saveSyncOptions: async function() {},
+    savePendingConflict: async function(conflict) { savedConflicts.push(conflict); }
   });
 
   assert.equal(result.status, "merged");
   const uploadedRuleIds = captured.uploads[0].categories.urlRules.data.map((rule) => rule.id).sort();
   assert.deepEqual(uploadedRuleIds, ["r-local", "r-remote"]);
   assert.equal(captured.patches.length, 1);
+  // A successful resolution must clear any previously pending conflict banner.
+  assert.deepEqual(savedConflicts, [null]);
 });
 
 test("syncDrive keep_remote preserves compatible local additions", async () => {
@@ -1704,6 +1708,7 @@ test("syncDrive keep_remote preserves compatible local additions", async () => {
     profiles: { map: { __always_on: [], __base: [], __favorites: [] }, meta: {} }
   };
 
+  const savedConflicts = [];
   const result = await root.ExtensityDriveSync.syncDrive({
     direction: "sync",
     resolution: "keep_remote",
@@ -1712,13 +1717,16 @@ test("syncDrive keep_remote preserves compatible local additions", async () => {
     loadContext: async function() { return context; },
     savePatches: async function(patches) { captured.patches.push(patches); },
     saveDriveMeta: async function() {},
-    saveSyncOptions: async function() {}
+    saveSyncOptions: async function() {},
+    savePendingConflict: async function(conflict) { savedConflicts.push(conflict); }
   });
 
   assert.equal(result.status, "merged");
   assert.equal(captured.uploads.length, 1);
   const localRuleIds = captured.patches[0].localState.urlRules.map((rule) => rule.id).sort();
   assert.deepEqual(localRuleIds, ["r-local", "r-remote"]);
+  // A successful resolution must clear any previously pending conflict banner.
+  assert.deepEqual(savedConflicts, [null]);
 });
 
 function successfulSyncConfig(overrides = {}) {
@@ -1804,5 +1812,187 @@ test("syncDrive rejects an otherwise successful sync when saveSyncOptions is omi
   await assert.rejects(
     root.ExtensityDriveSync.syncDrive(successfulSyncConfig({ saveSyncOptions: undefined })),
     /Drive sync requires loadContext, savePatches, saveDriveMeta, and saveSyncOptions callbacks\./
+  );
+});
+
+test("describeDrivePendingConflict returns non-blank, reason-specific text for every conflict reason", () => {
+  const root = loadDriveSync();
+  const describe = root.ExtensityDriveSync.describeDrivePendingConflict;
+
+  assert.equal(describe(null), "");
+
+  const divergenceText = describe({
+    reason: "divergence",
+    categories: [{ categoryId: "aliases", itemId: "ext1", label: "Aliases / ext1" }]
+  });
+  assert.match(divergenceText, /Sync conflict in: Aliases \/ ext1/);
+  assert.doesNotMatch(divergenceText, /Sync conflict in: \./);
+
+  // Anomalous case: divergence reason but no per-category entries. Must still be non-blank.
+  const divergenceEmptyText = describe({ reason: "divergence", categories: [] });
+  assert.notEqual(divergenceEmptyText, "");
+  assert.doesNotMatch(divergenceEmptyText, /Sync conflict in: \./);
+
+  const duplicateText = describe({
+    reason: "duplicate_remote_files",
+    duplicateFiles: [{ id: "a" }, { id: "b" }]
+  });
+  assert.notEqual(duplicateText, "");
+  assert.match(duplicateText, /2/);
+  assert.match(duplicateText, /Keep this device \/ Use Drive copy can't resolve this/);
+
+  const schemaText = describe({ reason: "schema_regression" });
+  assert.notEqual(schemaText, "");
+  assert.match(schemaText, /older data format/);
+
+  const failsafeText = describe({
+    reason: "failsafe",
+    failsafe: { deleted: 9, beforeCount: 10, deletionPercent: 90, thresholdPercent: 20, label: "Aliases" }
+  });
+  assert.notEqual(failsafeText, "");
+  assert.match(failsafeText, /9 of 10 items in Aliases/);
+  assert.match(failsafeText, /90%, threshold 20%/);
+
+  assert.throws(() => describe({ reason: "not_a_real_reason" }), /Unhandled Drive conflict reason/);
+});
+
+test("isDriveConflictResolvable is true only for divergence conflicts", () => {
+  const root = loadDriveSync();
+  const resolvable = root.ExtensityDriveSync.isDriveConflictResolvable;
+
+  assert.equal(resolvable(null), false);
+  assert.equal(resolvable({ reason: "divergence" }), true);
+  assert.equal(resolvable({ reason: "duplicate_remote_files" }), false);
+  assert.equal(resolvable({ reason: "schema_regression" }), false);
+  assert.equal(resolvable({ reason: "failsafe" }), false);
+});
+
+test("syncDrive cancel clears the pending conflict without any Drive API calls", async () => {
+  const root = loadDriveSync({
+    fetch: async function(url) {
+      throw new Error("Unexpected fetch during cancel: " + url);
+    },
+    chrome: {
+      identity: {
+        getAuthToken() {
+          throw new Error("Unexpected token acquisition during cancel.");
+        }
+      }
+    }
+  });
+
+  const context = sampleContext();
+  context.localState.drivePendingConflict = { reason: "failsafe", detectedAt: 1 };
+
+  const savedConflicts = [];
+  const appended = [];
+  const result = await root.ExtensityDriveSync.syncDrive({
+    direction: "sync",
+    resolution: "cancel",
+    loadContext: async function() { return context; },
+    savePatches: async function() {},
+    saveDriveMeta: async function() {},
+    saveSyncOptions: async function() {},
+    savePendingConflict: async function(conflict) { savedConflicts.push(conflict); },
+    appendAudit: async function(entry) { appended.push(entry); }
+  });
+
+  assert.equal(result.status, "cancelled");
+  assert.deepEqual(savedConflicts, [null]);
+  assert.equal(appended.length, 1);
+  assert.equal(appended[0].status, "cancelled");
+});
+
+test("syncDrive rejects keep_local/keep_remote with unsupported_resolution when duplicate Drive files exist", async () => {
+  const fetchImpl = async function(url, options) {
+    const method = (options && options.method) || "GET";
+    if (url.indexOf("/drive/v3/files?spaces=appDataFolder") !== -1 && method === "GET") {
+      return jsonResponse(200, {
+        files: [
+          { id: "file-1", modifiedTime: "2026-07-23T10:00:00.000Z", name: "extensity-plus-sync.json", size: "10", version: "1" },
+          { id: "file-2", modifiedTime: "2026-07-20T10:00:00.000Z", name: "extensity-plus-sync.json", size: "10", version: "1" }
+        ]
+      });
+    }
+    throw new Error("Unexpected fetch: " + method + " " + url);
+  };
+  const root = loadDriveSync({ fetch: fetchImpl, chrome: { identity: tokenIdentityOverrides() } });
+  const context = sampleContext();
+
+  await assert.rejects(
+    root.ExtensityDriveSync.syncDrive({
+      direction: "sync",
+      resolution: "keep_local",
+      loadContext: async function() { return context; },
+      savePatches: async function() {},
+      saveDriveMeta: async function() {},
+      saveSyncOptions: async function() {}
+    }),
+    (err) => {
+      assert.equal(err.code, "unsupported_resolution");
+      return true;
+    }
+  );
+});
+
+test("syncDrive rejects keep_remote with unsupported_resolution on schema regression", async () => {
+  const remoteEnvelope = {
+    version: "1.0.0",
+    categories: { aliases: { updatedAt: 500, data: { a: "A" } } }
+  };
+  const { fetchImpl } = driveSyncFetchHarness(remoteEnvelope);
+  const root = loadDriveSync({ fetch: fetchImpl, chrome: { identity: tokenIdentityOverrides() } });
+
+  const context = sampleContext();
+  context.localState.driveSyncMeta = { envelopeVersion: "2.0.0", fileId: "file-1" };
+
+  await assert.rejects(
+    root.ExtensityDriveSync.syncDrive({
+      direction: "sync",
+      resolution: "keep_remote",
+      loadContext: async function() { return context; },
+      savePatches: async function() {},
+      saveDriveMeta: async function() {},
+      saveSyncOptions: async function() {}
+    }),
+    (err) => {
+      assert.equal(err.code, "unsupported_resolution");
+      return true;
+    }
+  );
+});
+
+test("syncDrive rejects keep_local with unsupported_resolution when a failsafe threshold is tripped", async () => {
+  const baselineAliases = { a: "A", b: "B", c: "C", d: "D", e: "E", f: "F" };
+  const remoteEnvelope = {
+    version: "1.0.0",
+    categories: { aliases: { updatedAt: 500, data: { a: "A" } } }
+  };
+  const { fetchImpl } = driveSyncFetchHarness(remoteEnvelope);
+  const root = loadDriveSync({ fetch: fetchImpl, chrome: { identity: tokenIdentityOverrides() } });
+
+  const context = sampleContext();
+  context.localState.aliases = { ...baselineAliases };
+  context.localState.driveSyncMeta = {
+    baselineCategories: { aliases: { ...baselineAliases } },
+    fileId: "file-1"
+  };
+  context.options.driveSyncCategories = {
+    aliases: true, groups: false, history: false, options: false, profiles: false, urlRules: false
+  };
+
+  await assert.rejects(
+    root.ExtensityDriveSync.syncDrive({
+      direction: "sync",
+      resolution: "keep_local",
+      loadContext: async function() { return context; },
+      savePatches: async function() {},
+      saveDriveMeta: async function() {},
+      saveSyncOptions: async function() {}
+    }),
+    (err) => {
+      assert.equal(err.code, "unsupported_resolution");
+      return true;
+    }
   );
 });

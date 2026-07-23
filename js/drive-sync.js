@@ -870,6 +870,52 @@
   }
 
   /**
+   * Produces a human-readable, reason-specific description of a pending Drive sync conflict.
+   * @param {Object|null} conflict - The pending conflict record, or null/undefined.
+   * @return {string} A non-blank message describing the conflict, or an empty string when there is no conflict.
+   */
+  function describeDrivePendingConflict(conflict) {
+    if (!conflict) {
+      return "";
+    }
+    var reason = conflict.reason || "divergence";
+    switch (reason) {
+      case "divergence": {
+        var labels = (Array.isArray(conflict.categories) ? conflict.categories : []).map(function(entry) {
+          return entry.label || entry.categoryId;
+        });
+        return labels.length
+          ? "Sync conflict in: " + labels.join(", ") + ". Choose which copy to keep."
+          : "Sync conflict detected, but no changed items were reported. Choose which copy to keep, or Cancel.";
+      }
+      case "duplicate_remote_files": {
+        var count = Array.isArray(conflict.duplicateFiles) ? conflict.duplicateFiles.length : 0;
+        return "Found " + count + " Google Drive sync file(s) instead of one. Remove the extra file(s) from the Drive app data folder, then click Cancel and try Sync again. Keep this device / Use Drive copy can't resolve this.";
+      }
+      case "schema_regression":
+        return "The Google Drive copy uses an older data format than this device. Verify this is the correct Drive account and file, then click Cancel and try again. Keep this device / Use Drive copy can't resolve this automatically.";
+      case "failsafe": {
+        var failsafe = conflict.failsafe || {};
+        return "Sync paused: this change would delete or replace " + (failsafe.deleted || 0) + " of " +
+          (failsafe.beforeCount || 0) + " items in " + (failsafe.label || failsafe.categoryId || "a category") +
+          " (" + (failsafe.deletionPercent || 0) + "%, threshold " + (failsafe.thresholdPercent || 0) +
+          "%). Adjust \"Protect destructive changes\" in Settings if this is intentional, then Cancel and retry.";
+      }
+      default:
+        throw new Error("Unhandled Drive conflict reason: " + reason);
+    }
+  }
+
+  /**
+   * Determines whether a pending Drive sync conflict can be resolved via Keep this device / Use Drive copy.
+   * @param {Object|null} conflict - The pending conflict record, or null/undefined.
+   * @return {boolean} True only for item-level (`"divergence"`) conflicts.
+   */
+  function isDriveConflictResolvable(conflict) {
+    return !!conflict && (conflict.reason || "divergence") === "divergence";
+  }
+
+  /**
    * Identifies enabled categories changed locally and remotely since the last merge.
    * @param {Object} localMeta - Local Drive sync metadata containing category timestamps and merge timestamps.
    * @param {Object} remoteEnvelope - Remote sync envelope containing category update timestamps.
@@ -2121,6 +2167,16 @@
     var trigger = config.trigger || (config.interactive === false ? "automatic" : "manual");
     var interactive = config.interactive !== false && (config.interactive === true || direction !== "auto");
 
+    if (resolution === "cancel") {
+      if (typeof savePendingConflict === "function") {
+        await savePendingConflict(null);
+      }
+      if (typeof appendAudit === "function") {
+        await appendAudit({ direction: direction, status: "cancelled", trigger: trigger });
+      }
+      return buildSyncResult("cancelled", { pendingConflict: null });
+    }
+
     var token;
     var authProvider = "chrome_identity";
     try {
@@ -2162,6 +2218,12 @@
         && discoveredFile.duplicates.length
         && !config.selectedFileId
       ) {
+        if (resolution === "keep_local" || resolution === "keep_remote") {
+          throw createDriveError(
+            "unsupported_resolution",
+            "Multiple Google Drive sync files were found. Remove the extra file(s) before choosing a side."
+          );
+        }
         var duplicateCandidates = [discoveredFile].concat(discoveredFile.duplicates).map(function(file) {
           return {
             id: file.id,
@@ -2206,6 +2268,12 @@
         && String(driveMeta.envelopeVersion).indexOf("2.") === 0
         && String(remoteEnvelope.version || "").indexOf("1.") === 0
       ) {
+        if (resolution === "keep_local" || resolution === "keep_remote") {
+          throw createDriveError(
+            "unsupported_resolution",
+            "The Google Drive copy uses an older data format. Verify the account/file before retrying."
+          );
+        }
         var schemaPending = buildPendingConflict([], remoteFile, localEnvelope, "schema_regression", trigger);
         if (typeof savePendingConflict === "function") {
           await savePendingConflict(schemaPending);
@@ -2237,10 +2305,6 @@
           pendingConflict: pending
         });
       }
-      if (direction === "sync" && conflicts.length && resolution === "cancel") {
-        return buildSyncResult("cancelled", { conflicts: conflicts, pendingConflict: context.localState.drivePendingConflict || null });
-      }
-
       var resultEnvelope;
       var status;
       var reason = null;
@@ -2302,6 +2366,12 @@
         await consumePreviewConfirmation(config.confirmationToken, confirmationDetails);
       }
       if (failsafe && !config.overrideFailsafe) {
+        if (resolution === "keep_local" || resolution === "keep_remote") {
+          throw createDriveError(
+            "unsupported_resolution",
+            "This change was paused by the destructive-change safeguard. Adjust \"Protect destructive changes\" in Settings or Cancel."
+          );
+        }
         var failsafePending = buildPendingConflict(
           [],
           remoteFile,
@@ -2510,6 +2580,7 @@
     bumpCategoryTimestamp: bumpCategoryTimestamp,
     createDriveFile: createDriveFile,
     mergeCategoryData: mergeCategoryData,
+    describeDrivePendingConflict: describeDrivePendingConflict,
     detectConflicts: detectConflicts,
     detectBraveBrowser: detectBraveBrowser,
     enabledCategoryList: enabledCategoryList,
@@ -2517,6 +2588,7 @@
     getExtensionEnvironment: getExtensionEnvironment,
     getDriveSyncStatus: getDriveSyncStatus,
     findFailsafeViolation: findFailsafeViolation,
+    isDriveConflictResolvable: isDriveConflictResolvable,
     isDriveWebOAuthConfigured: isDriveWebOAuthConfigured,
     isOAuthConfigured: isOAuthConfigured,
     isGoogleClientIdFormat: isGoogleClientIdFormat,

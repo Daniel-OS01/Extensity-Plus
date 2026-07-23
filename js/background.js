@@ -1143,6 +1143,11 @@ importScripts(
     });
   }
 
+  /**
+   * Creates the local state exposed to other extension components.
+   * @param {Object} localState - The local state to sanitize.
+   * @return {Object} A cloned state object without Web Store metadata.
+   */
   function buildPublicLocalState(localState) {
     var nextState = storage.clone(localState || {});
     delete nextState.webStoreMetadata;
@@ -1343,6 +1348,10 @@ importScripts(
     );
   }
 
+  /**
+   * Restores extension states from the most recent undo entry.
+   * @return {Object} The updated extension state.
+   */
   async function runUndo() {
     var localState = await storage.loadLocalState();
     var undoStack = Array.isArray(localState.undoStack) ? localState.undoStack.slice() : [];
@@ -1639,8 +1648,7 @@ importScripts(
   }
 
   /**
-   * Schedules a debounced automatic Drive sync after relevant changes.
-   * @return {Promise<void>} Resolves after the change-sync timer and alarm are scheduled, or immediately when automatic sync is unavailable.
+   * Schedules a debounced automatic Drive sync for change-triggered updates when enabled.
    */
   async function scheduleDriveChangeSync() {
     var options = await canRunAutomaticDriveSync("change");
@@ -1676,7 +1684,7 @@ importScripts(
   /**
    * Runs a background Drive synchronization when automatic synchronization is enabled.
    * @param {string} [trigger="periodic"] - The event that initiated synchronization.
-   * @return {Object|undefined} The synchronization result, a cancellation status when automatic sync is paused, or `undefined` when synchronization fails.
+   * @return {Object|undefined} The synchronization result, a cancellation status when automatic synchronization is paused, or `undefined` when synchronization fails.
    */
   async function runAutoDriveSync(trigger) {
     var source = trigger || "periodic";
@@ -2012,13 +2020,18 @@ importScripts(
     return buildState();
   }
 
+  /**
+   * Uninstall an extension and return the updated application state.
+   * @param {string} extensionId - The ID of the extension to uninstall.
+   * @return {Promise<Object>} The updated application state.
+   */
   async function runUninstallExtension(extensionId) {
     await uninstallExtension(extensionId);
     return buildState();
   }
 
   /**
-   * Runs a Drive synchronization and returns the resulting synchronization state.
+   * Runs a Drive synchronization and returns the synchronization result with updated application state.
    * @param {Object} [message] - Synchronization options, including direction, conflict resolution, selected file, and confirmation settings.
    * @returns {Promise<Object>} An object containing the synchronization result and updated application state.
    * @throws {Error} Re-throws synchronization errors after recording the failure status.
@@ -2087,9 +2100,10 @@ importScripts(
   }
 
   /**
-   * Restores a saved Drive sync backup and clears pending recovery state.
-   * @param {Object} message - Optional request containing the backup identifier to restore.
-   * @returns {Object} The restored backup identifier, restoration timestamp, and application state.
+   * Restores a saved Drive synchronization backup and clears pending recovery data.
+   * @param {Object} [message] - Optional request containing the backup identifier to restore.
+   * @returns {Object} The restored backup ID, restoration timestamp, and resulting application state.
+   * @throws {Error} If the requested or latest backup is unavailable.
    */
   async function restoreDriveSyncBackup(message) {
     var localState = await storage.loadLocalState();
@@ -2335,6 +2349,11 @@ importScripts(
     );
   }
 
+  /**
+   * Schedules URL rule evaluation for a tab after a short debounce period.
+   * @param {number} tabId - The tab whose URL rules should be evaluated.
+   * @param {string} url - The tab URL to evaluate.
+   */
   function scheduleRuleEvaluation(tabId, url) {
     if (urlEvaluationTimers[tabId]) {
       clearTimeout(urlEvaluationTimers[tabId]);

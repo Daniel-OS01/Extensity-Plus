@@ -348,6 +348,11 @@ document.addEventListener("DOMContentLoaded", function() {
     return formatDateTime(status.lastDriveSync);
   }
 
+  /**
+   * Formats the most recent Drive sync error for display.
+   * @param {Object|null|undefined} status - Drive sync status data.
+   * @returns {string} The error message, or `"None"` when no error is recorded.
+   */
   function formatDriveLastError(status) {
     if (!status || !status.lastDriveSyncError) {
       return "None";
@@ -362,7 +367,7 @@ document.addEventListener("DOMContentLoaded", function() {
   }
 
   /**
-   * Builds display-ready rows summarizing Google Drive synchronization status.
+   * Builds display-ready rows summarizing Google Drive synchronization status, including remote file, local payload, recovery, and backup details.
    * @param {Object|null|undefined} status - Drive synchronization status data.
    * @return {Array<Object>} Rows containing labels and formatted status values.
    */
@@ -411,6 +416,11 @@ document.addEventListener("DOMContentLoaded", function() {
     return "Drive sync is ready.";
   }
 
+  /**
+   * Describes the active Google Drive authentication path and fallback configuration.
+   * @param {Object|null|undefined} status - Drive authentication status information.
+   * @return {string} A human-readable description of the authentication path.
+   */
   function buildDriveStatusDetails(status) {
     if (!status) {
       return "Google Drive status is unavailable.";

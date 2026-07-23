@@ -139,6 +139,12 @@
     });
   }
 
+  /**
+   * Manages dismissed item identifiers and persists dismissal changes.
+   *
+   * Loads previously dismissed identifiers on construction and exposes observable
+   * state with methods for adding and checking dismissals.
+   */
   function DismissalsCollection() {
     var self = this;
     self.dismissals = ko.observableArray([]);

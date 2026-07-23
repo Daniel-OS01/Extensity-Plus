@@ -79,6 +79,11 @@ document.addEventListener("DOMContentLoaded", function() {
     return reserved[name] || String(name || "");
   }
 
+  /**
+   * Builds selectable options for the available profiles.
+   * @param {Array<Object>} profileItems - Profiles whose names should be included as options.
+   * @return {Array<Object>} An array beginning with a "None" option, followed by labeled profile options.
+   */
   function buildActiveProfileOptions(profileItems) {
     var items = Array.isArray(profileItems) ? profileItems : [];
     return [{ label: "None", value: null }].concat(items.filter(function(profile) {
@@ -283,6 +288,11 @@ document.addEventListener("DOMContentLoaded", function() {
 
   }
 
+  /**
+   * Creates Knockout bindings for toggling Drive sync categories.
+   * @param {Object} self - The view model containing Drive sync category options.
+   * @return {Object} Bindings keyed by Drive category ID.
+   */
   function buildDriveCategoryChecked(self) {
     var bindings = {};
     if (typeof ExtensityDriveSync === "undefined" || !Array.isArray(ExtensityDriveSync.CATEGORY_IDS)) {

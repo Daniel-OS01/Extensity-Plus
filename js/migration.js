@@ -63,6 +63,11 @@
     return true;
   }
 
+  /**
+   * Migrates selected settings from sync storage to local state and records completion of the 2.0.0 migration.
+   * Existing local bulk-toggle restoration data takes precedence over migrated toggle data.
+   * @return {Promise<boolean>} `true` after the migration completes.
+   */
   async function migrateTo2_0_0() {
     await storage.ensureSyncDefaults();
     await storage.ensureLocalDefaults();
@@ -184,7 +189,7 @@
   }
 
   /**
-   * Migrates Drive Sync metadata and pending conflict state to the current storage format.
+   * Migrates Drive Sync metadata and pending conflict state to local storage.
    * @return {boolean} `true` if the migration ran, `false` if it was already completed.
    */
   async function migrateDriveSyncRemediation() {

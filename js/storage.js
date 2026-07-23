@@ -149,6 +149,11 @@
     return result;
   }
 
+  /**
+   * Estimates the serialized storage size of a normalized profile membership map.
+   * @param {Object} profileMap - Profile names mapped to arrays of item identifiers.
+   * @return {number} The estimated payload size in bytes.
+   */
   function estimateProfilesPayloadBytes(profileMap) {
     return estimateStorageEntryBytes("profiles", normalizeProfileMap(profileMap));
   }

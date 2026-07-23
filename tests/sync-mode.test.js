@@ -70,3 +70,20 @@ test("mergeProfileMaps overlays sync reserved data onto local custom profiles", 
   assert.equal(JSON.stringify(merged.Work), JSON.stringify(["local-only"]));
   assert.equal(JSON.stringify(merged.__favorites), JSON.stringify(["synced"]));
 });
+
+test("mergeProfileMaps preserves local reserved data when sync keys are absent", () => {
+  const root = loadStorage();
+  const merged = root.ExtensityStorage.mergeProfileMaps(
+    {
+      Work: ["local-only"],
+      __always_on: ["always-local"],
+      __base: ["base-local"],
+      __favorites: ["favorite-local"]
+    },
+    {}
+  );
+
+  assert.equal(JSON.stringify(merged.__always_on), JSON.stringify(["always-local"]));
+  assert.equal(JSON.stringify(merged.__base), JSON.stringify(["base-local"]));
+  assert.equal(JSON.stringify(merged.__favorites), JSON.stringify(["favorite-local"]));
+});

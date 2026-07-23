@@ -7,7 +7,6 @@
     "bundle:chrome-store": "node scripts/create-chrome-store-bundle.js",
     "cws:bootstrap": "node scripts/cws-bootstrap-refresh-token.js",
     "check:manifest": "node scripts/validate-manifest.js",
-    "check:manifest:strict-drive": "node scripts/validate-manifest.js --require-drive-client",
     "drive:validate": "npm run build && node scripts/validate-manifest.js --manifest-path dist/manifest.json --web-config-path dist/js/drive-oauth-config.js --require-drive-client",
     "drive:validate:web": "npm run build && node scripts/validate-manifest.js --manifest-path dist/manifest.json --web-config-path dist/js/drive-oauth-config.js --require-drive-client --require-web-client",
     "drive:set-client-id": "node scripts/set-drive-oauth-client-id.js",

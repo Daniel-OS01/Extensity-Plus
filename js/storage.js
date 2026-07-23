@@ -173,9 +173,12 @@
 
   function mergeProfileMaps(localMap, syncMap) {
     var merged = normalizeProfileMap(localMap);
-    var syncNormalized = normalizeProfileMap(syncMap);
-    Object.keys(syncNormalized).forEach(function(name) {
-      merged[name] = uniqueArray(syncNormalized[name]);
+    var syncSource = isObject(syncMap) ? syncMap : {};
+    Object.keys(syncSource).forEach(function(name) {
+      if (!name) {
+        return;
+      }
+      merged[name] = uniqueArray(syncSource[name]);
     });
     return merged;
   }

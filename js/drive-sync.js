@@ -352,8 +352,8 @@
         : Object.assign({}, remoteMeta, localMeta);
     }
     return {
-      map: typeof storage.mergeProfileMaps === "function"
-        ? storage.mergeProfileMaps(unionedMap, {})
+      map: typeof storage.normalizeProfileMap === "function"
+        ? storage.normalizeProfileMap(unionedMap)
         : unionedMap,
       meta: mergedMeta
     };
@@ -608,6 +608,16 @@
   function isDriveWebOAuthConfigured() {
     var clientId = getDriveWebClientId();
     return !!clientId && clientId !== PLACEHOLDER_WEB_CLIENT_ID && isGoogleClientIdFormat(clientId);
+  }
+
+  function isDriveAuthConfigured(manifest, authProvider) {
+    if (authProvider === "web_fallback") {
+      return isDriveWebOAuthConfigured();
+    }
+    if (authProvider === "chrome_identity") {
+      return isOAuthConfigured(manifest);
+    }
+    throw new Error("Unsupported Drive authentication provider: " + authProvider);
   }
 
   async function detectBraveBrowser() {
@@ -1271,11 +1281,24 @@
     }
 
     var manifest = chrome.runtime.getManifest();
-    if (!isOAuthConfigured(manifest)) {
-      step("oauth_config", "fail", "No valid OAuth client ID in manifest.json. Drive sync is not configured.");
+    var preferredAuthProvider = await shouldPreferWebAuth() ? "web_fallback" : "chrome_identity";
+    if (!isDriveAuthConfigured(manifest, preferredAuthProvider)) {
+      step(
+        "oauth_config",
+        "fail",
+        preferredAuthProvider === "web_fallback"
+          ? "No valid Brave Web OAuth client ID is configured."
+          : "No valid OAuth client ID in manifest.json. Drive sync is not configured."
+      );
       return report;
     }
-    step("oauth_config", "ok", "OAuth client ID: " + (manifest.oauth2 && manifest.oauth2.client_id || ""));
+    step(
+      "oauth_config",
+      "ok",
+      preferredAuthProvider === "web_fallback"
+        ? "Brave Web OAuth client ID is configured."
+        : "OAuth client ID: " + (manifest.oauth2 && manifest.oauth2.client_id || "")
+    );
 
     var env;
     try {
@@ -1404,14 +1427,19 @@
   async function syncDrive(options) {
     var config = options || {};
     var manifest = chrome.runtime.getManifest();
-    if (!isOAuthConfigured(manifest)) {
+    var preferredAuthProvider = await shouldPreferWebAuth() ? "web_fallback" : "chrome_identity";
+    if (!isDriveAuthConfigured(manifest, preferredAuthProvider)) {
       throw createDriveError(
         "not_configured",
-        "Drive sync is not configured for this build. Add a Chrome extension OAuth client ID to manifest.json (see docs/google-drive-sync.md).",
-        "Drive sync is not configured for this build. Add a Google Cloud OAuth client ID to manifest.json (see docs/google-drive-sync.md)."
+        preferredAuthProvider === "web_fallback"
+          ? "Drive sync is not configured. Add the Brave Web OAuth client ID in Dashboard → Sync Status."
+          : "Drive sync is not configured for this build. Add a Chrome extension OAuth client ID to manifest.json (see docs/google-drive-sync.md)."
       );
     }
-    if (!isGoogleClientIdFormat(manifest.oauth2 && manifest.oauth2.client_id)) {
+    if (
+      preferredAuthProvider === "chrome_identity"
+      && !isGoogleClientIdFormat(manifest.oauth2 && manifest.oauth2.client_id)
+    ) {
       throw createDriveError(
         "invalid_client_id",
         "oauth2.client_id in manifest.json is not a valid Google OAuth client ID."
@@ -1432,7 +1460,6 @@
     var direction = config.direction || "sync";
     var resolution = config.resolution || null;
     var interactive = config.interactive !== false && (config.interactive === true || direction !== "auto");
-    var webAuthPreferred = await shouldPreferWebAuth();
 
     var token;
     var authProvider = "chrome_identity";
@@ -1594,10 +1621,11 @@
     var environment = context.extensionEnvironment || await getExtensionEnvironment();
     var driveMeta = normalizeDriveMeta(context.driveSyncMeta || context.localState && context.localState.driveSyncMeta);
     var webAuthPreferred = await shouldPreferWebAuth();
+    var preferredAuthProvider = webAuthPreferred ? "web_fallback" : "chrome_identity";
     return {
       categories: normalizeCategoryFlags(context.options.driveSyncCategories),
-      authProvider: webAuthPreferred ? "web_fallback" : "chrome_identity",
-      configured: isOAuthConfigured(manifest),
+      authProvider: preferredAuthProvider,
+      configured: isDriveAuthConfigured(manifest, preferredAuthProvider),
       driveAuthStatus: context.options.driveAuthStatus || "unknown",
       driveSync: !!context.options.driveSync,
       extensionId: context.extensionId || environment.extensionId || "",

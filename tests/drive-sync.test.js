@@ -970,6 +970,39 @@ test("getDriveSyncStatus reports Brave web auth preference when detected", async
   assert.equal(status.authProvider, "web_fallback");
 });
 
+test("getDriveSyncStatus accepts Brave web fallback when manifest OAuth is a placeholder", async () => {
+  const root = loadDriveSync({
+    chrome: {
+      runtime: {
+        getManifest() {
+          return {
+            oauth2: {
+              client_id: "REPLACE_WITH_OAUTH_CLIENT_ID.apps.googleusercontent.com",
+              scopes: ["https://www.googleapis.com/auth/drive.appdata"]
+            }
+          };
+        }
+      }
+    },
+    driveConfig: {
+      driveWebClientId: "775277874801-webclient.apps.googleusercontent.com"
+    },
+    navigator: {
+      brave: {
+        isBrave() {
+          return Promise.resolve(true);
+        }
+      }
+    }
+  });
+
+  const status = await root.ExtensityDriveSync.getDriveSyncStatus();
+
+  assert.equal(status.configured, true);
+  assert.equal(status.authProvider, "web_fallback");
+  assert.equal(status.webFallbackConfigured, true);
+});
+
 test("selectNewestDriveFile chooses deterministically and reports duplicates", () => {
   const root = loadDriveSync();
   const selected = root.ExtensityDriveSync.selectNewestDriveFile([
@@ -1084,6 +1117,110 @@ test("testDriveConnection uses interactive auth, common retries, and duplicate d
   const syncFileStep = report.steps.find((step) => step.name === "sync_file");
   assert.match(syncFileStep.detail, /ID: new/);
   assert.match(syncFileStep.detail, /Duplicate count: 1/);
+});
+
+test("Brave connection test uses Web OAuth when manifest OAuth is a placeholder", async () => {
+  const root = loadDriveSync({
+    chrome: {
+      identity: {
+        launchWebAuthFlow(details, callback) {
+          const state = new URL(details.url).searchParams.get("state");
+          callback(
+            "https://runtime-extension.chromiumapp.org/drive"
+              + "#access_token=web-token&expires_in=3600&state=" + encodeURIComponent(state)
+          );
+        }
+      },
+      runtime: {
+        getManifest() {
+          return {
+            oauth2: {
+              client_id: "REPLACE_WITH_OAUTH_CLIENT_ID.apps.googleusercontent.com",
+              scopes: ["https://www.googleapis.com/auth/drive.appdata"]
+            }
+          };
+        }
+      }
+    },
+    driveConfig: {
+      driveWebClientId: "775277874801-webclient.apps.googleusercontent.com"
+    },
+    fetch: async function(url) {
+      if (url.includes("spaces=appDataFolder")) {
+        return jsonResponse(200, { files: [] });
+      }
+      throw new Error("Unexpected request: " + url);
+    },
+    navigator: {
+      brave: {
+        isBrave() {
+          return Promise.resolve(true);
+        }
+      }
+    }
+  });
+
+  const report = await root.ExtensityDriveSync.testDriveConnection();
+
+  assert.equal(report.success, true);
+  assert.equal(report.steps.find((step) => step.name === "oauth_config").status, "ok");
+  assert.match(report.steps.find((step) => step.name === "auth").detail, /web_fallback/);
+});
+
+test("syncDrive uses Brave Web OAuth when manifest OAuth is a placeholder", async () => {
+  const root = loadDriveSync({
+    chrome: {
+      identity: {
+        launchWebAuthFlow(details, callback) {
+          const state = new URL(details.url).searchParams.get("state");
+          callback(
+            "https://runtime-extension.chromiumapp.org/drive"
+              + "#access_token=web-token&expires_in=3600&state=" + encodeURIComponent(state)
+          );
+        }
+      },
+      runtime: {
+        getManifest() {
+          return {
+            oauth2: {
+              client_id: "REPLACE_WITH_OAUTH_CLIENT_ID.apps.googleusercontent.com",
+              scopes: ["https://www.googleapis.com/auth/drive.appdata"]
+            }
+          };
+        }
+      }
+    },
+    driveConfig: {
+      driveWebClientId: "775277874801-webclient.apps.googleusercontent.com"
+    },
+    fetch: async function(url) {
+      if (url.includes("spaces=appDataFolder")) {
+        return jsonResponse(200, { files: [] });
+      }
+      throw new Error("Unexpected request: " + url);
+    },
+    navigator: {
+      brave: {
+        isBrave() {
+          return Promise.resolve(true);
+        }
+      }
+    }
+  });
+
+  const result = await root.ExtensityDriveSync.syncDrive({
+    direction: "pull",
+    interactive: true,
+    loadContext: async function() {
+      return sampleContext();
+    },
+    saveDriveMeta: async function() {},
+    savePatches: async function() {},
+    saveSyncOptions: async function() {}
+  });
+
+  assert.equal(result.status, "noop");
+  assert.equal(result.reason, "no_remote_file");
 });
 
 test("mergeCategoryData urlRules unions and de-dups by id preserving order", () => {
@@ -1202,6 +1339,34 @@ test("mergeCategoryData profiles unions membership across both sides", () => {
   assert.deepEqual(merged.map.Play, ["e4"]);
   assert.equal(merged.meta.Work.color, "#111");
   assert.equal(merged.meta.Play.color, "#222");
+});
+
+test("mergeCategoryData profiles preserves reserved memberships when remote lists are empty", () => {
+  const root = loadDriveSync();
+  const local = {
+    map: {
+      Work: ["work-extension"],
+      __always_on: ["always-1", "always-2"],
+      __base: ["base-1", "base-2"],
+      __favorites: ["favorite-1", "favorite-2"]
+    },
+    meta: {}
+  };
+  const remote = {
+    map: {
+      Work: ["work-extension"],
+      __always_on: [],
+      __base: [],
+      __favorites: []
+    },
+    meta: {}
+  };
+
+  const merged = plain(root.ExtensityDriveSync.mergeCategoryData("profiles", local, remote, 100, 200));
+
+  assert.deepEqual(merged.map.__always_on, ["always-1", "always-2"]);
+  assert.deepEqual(merged.map.__base, ["base-1", "base-2"]);
+  assert.deepEqual(merged.map.__favorites, ["favorite-1", "favorite-2"]);
 });
 
 test("mergeCategoryData options deep-merges with newer-side precedence", () => {

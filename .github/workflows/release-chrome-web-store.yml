@@ -77,6 +77,8 @@ jobs:
         run: |
           if [ -z "$EXTENSITY_DRIVE_CLIENT_ID" ]; then
             echo "GitHub environment variable EXTENSITY_DRIVE_CLIENT_ID is required."
+            echo "Set it to a Chrome Extension OAuth client bound to Store item gbojjphhdboeaafjdilfibonoflhgcde."
+            echo "Do not substitute the CWS upload client, Desktop client, or Brave Web client."
             exit 1
           fi
 
@@ -136,7 +138,7 @@ jobs:
       - name: Build distributable extension
         env:
           EXTENSITY_DRIVE_CLIENT_ID: ${{ vars.EXTENSITY_DRIVE_CLIENT_ID }}
-          EXTENSITY_DRIVE_WEB_CLIENT_ID: ${{ secrets.EXTENSITY_DRIVE_WEB_CLIENT_ID }}
+          EXTENSITY_DRIVE_WEB_CLIENT_ID: ${{ vars.EXTENSITY_DRIVE_WEB_CLIENT_ID }}
         run: |
           make dist
           node scripts/validate-manifest.js \
@@ -154,7 +156,7 @@ jobs:
       - name: Build Chrome Web Store submission bundle
         env:
           EXTENSITY_DRIVE_CLIENT_ID: ${{ vars.EXTENSITY_DRIVE_CLIENT_ID }}
-          EXTENSITY_DRIVE_WEB_CLIENT_ID: ${{ secrets.EXTENSITY_DRIVE_WEB_CLIENT_ID }}
+          EXTENSITY_DRIVE_WEB_CLIENT_ID: ${{ vars.EXTENSITY_DRIVE_WEB_CLIENT_ID }}
         run: npm run bundle:chrome-store
 
       - name: Resolve submission zip path

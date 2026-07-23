@@ -56,6 +56,8 @@ Chrome-only builds and releases leave `js/drive-oauth-config.js` at its placehol
 
 Never download or paste the Web application's `client_secret` into this repository. Chrome-only validation uses `npm run drive:validate`; it must pass while the optional Web value remains a placeholder.
 
+When Brave selects the Web fallback, a valid Web client saved in **Dashboard → Sync Status** is sufficient at runtime even if the source manifest still contains the safe Chrome-client placeholder. Chrome continues to require a matching `oauth2.client_id` in its built manifest.
+
 ## Validation commands
 
 - `npm run check:manifest` validates the placeholder-safe source tree.
@@ -100,7 +102,8 @@ If you want one side to overwrite the other outright, use the explicit whole-cat
 
 | Symptom | Action |
 |--------|--------|
-| “Drive sync is not configured” | Set a real `oauth2.client_id` in `manifest.json`. |
+| “Drive sync is not configured” in Chrome | Build with a Chrome Extension client ID that matches the current runtime ID. |
+| “Drive sync is not configured” in Brave even though the Web client is saved | Reload a build containing the Web-fallback configuration fix, then refresh Sync Status. Brave does not require the source manifest's Chrome-client placeholder to be replaced. |
 | “OAuth client rejected / invalid client type” | You likely used Desktop OAuth credentials. Create a **Chrome extension** OAuth client and use its `client_id`. |
 | “Custom URI scheme is not supported on Chrome apps” in Brave | Configure the **Web application** OAuth fallback and add the two `chromiumapp.org/drive` redirect URIs. |
 | Sign-in loop / 401 | Remove the extension from [Google Account permissions](https://myaccount.google.com/permissions) and sync again. |

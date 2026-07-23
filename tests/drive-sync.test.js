@@ -1720,3 +1720,89 @@ test("syncDrive keep_remote preserves compatible local additions", async () => {
   const localRuleIds = captured.patches[0].localState.urlRules.map((rule) => rule.id).sort();
   assert.deepEqual(localRuleIds, ["r-local", "r-remote"]);
 });
+
+function successfulSyncConfig(overrides = {}) {
+  const context = {
+    driveSyncMeta: { categoryTimestamps: { urlRules: 1 }, fileId: "file-1", lastMergedAt: {} },
+    localState: {
+      aliases: {},
+      eventHistory: [],
+      groupOrder: [],
+      groups: {},
+      urlRules: [{ id: "r-local", name: "Local Rule" }],
+      driveSyncMeta: { categoryTimestamps: { urlRules: 1 }, fileId: "file-1", lastMergedAt: {} }
+    },
+    options: {
+      driveSyncCategories: {
+        aliases: false, groups: false, history: false, options: false, profiles: false, urlRules: true
+      }
+    },
+    profiles: { map: { __always_on: [], __base: [], __favorites: [] }, meta: {} }
+  };
+  return {
+    direction: "push",
+    interactive: false,
+    overrideFailsafe: true,
+    loadContext: async function() { return context; },
+    savePatches: async function() {},
+    saveDriveMeta: async function() {},
+    saveSyncOptions: async function() {},
+    ...overrides
+  };
+}
+
+test("syncDrive rejects an otherwise successful sync when loadContext is omitted", async () => {
+  const remoteEnvelope = {
+    version: "1.0.0",
+    categories: { urlRules: { updatedAt: 999, data: [{ id: "r-remote", name: "Remote Rule" }] } }
+  };
+  const { fetchImpl } = driveSyncFetchHarness(remoteEnvelope);
+  const root = loadDriveSync({ fetch: fetchImpl, chrome: { identity: tokenIdentityOverrides() } });
+
+  await assert.rejects(
+    root.ExtensityDriveSync.syncDrive(successfulSyncConfig({ loadContext: undefined })),
+    /Drive sync requires loadContext, savePatches, saveDriveMeta, and saveSyncOptions callbacks\./
+  );
+});
+
+test("syncDrive rejects an otherwise successful sync when savePatches is omitted", async () => {
+  const remoteEnvelope = {
+    version: "1.0.0",
+    categories: { urlRules: { updatedAt: 999, data: [{ id: "r-remote", name: "Remote Rule" }] } }
+  };
+  const { fetchImpl } = driveSyncFetchHarness(remoteEnvelope);
+  const root = loadDriveSync({ fetch: fetchImpl, chrome: { identity: tokenIdentityOverrides() } });
+
+  await assert.rejects(
+    root.ExtensityDriveSync.syncDrive(successfulSyncConfig({ savePatches: undefined })),
+    /Drive sync requires loadContext, savePatches, saveDriveMeta, and saveSyncOptions callbacks\./
+  );
+});
+
+test("syncDrive rejects an otherwise successful sync when saveDriveMeta is omitted", async () => {
+  const remoteEnvelope = {
+    version: "1.0.0",
+    categories: { urlRules: { updatedAt: 999, data: [{ id: "r-remote", name: "Remote Rule" }] } }
+  };
+  const { fetchImpl } = driveSyncFetchHarness(remoteEnvelope);
+  const root = loadDriveSync({ fetch: fetchImpl, chrome: { identity: tokenIdentityOverrides() } });
+
+  await assert.rejects(
+    root.ExtensityDriveSync.syncDrive(successfulSyncConfig({ saveDriveMeta: undefined })),
+    /Drive sync requires loadContext, savePatches, saveDriveMeta, and saveSyncOptions callbacks\./
+  );
+});
+
+test("syncDrive rejects an otherwise successful sync when saveSyncOptions is omitted", async () => {
+  const remoteEnvelope = {
+    version: "1.0.0",
+    categories: { urlRules: { updatedAt: 999, data: [{ id: "r-remote", name: "Remote Rule" }] } }
+  };
+  const { fetchImpl } = driveSyncFetchHarness(remoteEnvelope);
+  const root = loadDriveSync({ fetch: fetchImpl, chrome: { identity: tokenIdentityOverrides() } });
+
+  await assert.rejects(
+    root.ExtensityDriveSync.syncDrive(successfulSyncConfig({ saveSyncOptions: undefined })),
+    /Drive sync requires loadContext, savePatches, saveDriveMeta, and saveSyncOptions callbacks\./
+  );
+});

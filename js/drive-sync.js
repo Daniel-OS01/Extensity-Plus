@@ -2069,7 +2069,7 @@
   /**
    * Synchronize configured extension data with its Google Drive app data file.
    * Supports pull, push, and bidirectional merge flows with conflict detection, previews, failsafe checks, backups, and transaction tracking.
-   * @param {Object} [options] - Synchronization settings, including required `loadContext` and `savePatches` callbacks and optional conflict, backup, transaction, and audit callbacks.
+   * @param {Object} [options] - Synchronization settings, including required `loadContext`, `savePatches`, `saveDriveMeta`, and `saveSyncOptions` callbacks and optional conflict, backup, transaction, and audit callbacks.
    * @return {Object} The synchronization status, changes, conflicts, and associated Drive file ID.
    * @throws {Error} If Drive authentication or configuration is invalid, required callbacks are missing, or synchronization fails.
    */
@@ -2104,8 +2104,13 @@
     var saveTransaction = config.saveTransaction;
     var clearTransaction = config.clearTransaction;
     var appendAudit = config.appendAudit;
-    if (typeof loadContext !== "function" || typeof savePatches !== "function") {
-      throw new Error("Drive sync requires loadContext and savePatches callbacks.");
+    if (
+      typeof loadContext !== "function"
+      || typeof savePatches !== "function"
+      || typeof saveDriveMeta !== "function"
+      || typeof saveSyncOptions !== "function"
+    ) {
+      throw new Error("Drive sync requires loadContext, savePatches, saveDriveMeta, and saveSyncOptions callbacks.");
     }
 
     var context = await loadContext();

@@ -250,8 +250,8 @@
       <div class="field drive-conflict-panel" data-sbind="visible: driveConflictVisible">
         <p class="status error" data-sbind="text: driveConflictSummary"></p>
         <div class="action-row">
-          <button type="button" title="Keep this device's data" data-sbind="click: driveResolveKeepLocal, disable: busy">Keep this device</button>
-          <button type="button" title="Use Google Drive copy" data-sbind="click: driveResolveKeepRemote, disable: busy">Use Drive copy</button>
+          <button type="button" title="Keep this device's data" data-sbind="click: driveResolveKeepLocal, disable: busy, visible: driveConflictResolvable">Keep this device</button>
+          <button type="button" title="Use Google Drive copy" data-sbind="click: driveResolveKeepRemote, disable: busy, visible: driveConflictResolvable">Use Drive copy</button>
           <button type="button" title="Cancel sync" data-sbind="click: driveResolveCancel, disable: busy">Cancel</button>
         </div>
       </div>

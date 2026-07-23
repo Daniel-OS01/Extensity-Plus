@@ -97,7 +97,9 @@
         }
 
         if (!response || !response.ok) {
-          reject(new Error(response && response.error ? response.error : "Unexpected extension response."));
+          var err = new Error(response && response.error ? response.error : "Unexpected extension response.");
+          err.code = (response && response.code) || null;
+          reject(err);
           return;
         }
 
@@ -1008,6 +1010,9 @@
       return chromeMessage({ fileId: fileId, type: "SELECT_DRIVE_SYNC_FILE" });
     },
     resolveDriveConflict: async function(resolution, overrideFailsafe) {
+      if (resolution === "cancel") {
+        return chromeMessage({ resolution: "cancel", type: "RESOLVE_DRIVE_CONFLICT" });
+      }
       var previewPayload = await chromeMessage({
         direction: "sync",
         resolution: resolution,

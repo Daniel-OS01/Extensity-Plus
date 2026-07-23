@@ -205,8 +205,8 @@
         <div class="field drive-conflict-panel" data-sbind="visible: driveConflictVisible">
           <p class="status error" data-sbind="text: driveConflictSummary"></p>
           <div class="action-row">
-            <button type="button" title="Keep this device's data and upload to Drive" data-sbind="click: driveResolveKeepLocal, disable: busy">Keep this device</button>
-            <button type="button" title="Replace local data with Google Drive copy" data-sbind="click: driveResolveKeepRemote, disable: busy">Use Drive copy</button>
+            <button type="button" title="Keep this device's data and upload to Drive" data-sbind="click: driveResolveKeepLocal, disable: busy, visible: driveConflictResolvable">Keep this device</button>
+            <button type="button" title="Replace local data with Google Drive copy" data-sbind="click: driveResolveKeepRemote, disable: busy, visible: driveConflictResolvable">Use Drive copy</button>
             <button type="button" title="Cancel sync without changes" data-sbind="click: driveResolveCancel, disable: busy">Cancel</button>
           </div>
         </div>

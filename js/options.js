@@ -118,6 +118,19 @@ document.addEventListener("DOMContentLoaded", function() {
       ["unknown", "authorized", "needs_interactive_sign_in", "error"],
       "unknown"
     );
+    normalized.driveSyncStrategy = normalizeEnum(
+      normalized.driveSyncStrategy,
+      ["merge", "overwrite_remote", "overwrite_local"],
+      "merge"
+    );
+    normalized.driveSyncOnStartup = normalized.driveSyncOnStartup === true;
+    normalized.driveChangeBasedSync = normalized.driveChangeBasedSync === true;
+    normalized.driveTimeBasedSync = normalized.driveTimeBasedSync !== false;
+    normalized.driveFailsafeEnabled = normalized.driveFailsafeEnabled !== false;
+    normalized.driveFailsafeThresholdPercent = Math.min(
+      100,
+      Math.max(1, parseInt(normalized.driveFailsafeThresholdPercent, 10) || 20)
+    );
     if (typeof ExtensityDriveSync !== "undefined" && typeof ExtensityDriveSync.normalizeCategoryFlags === "function") {
       normalized.driveSyncCategories = ExtensityDriveSync.normalizeCategoryFlags(normalized.driveSyncCategories);
     }
@@ -495,6 +508,15 @@ document.addEventListener("DOMContentLoaded", function() {
 
     self.driveResolveCancel = function() {
       return runDriveSyncRequest(ExtensityApi.resolveDriveConflict("cancel"));
+    };
+
+    self.restoreDriveBackup = function() {
+      clearDriveFeedback();
+      return self.performAction(ExtensityApi.restoreDriveSyncBackup()).then(function() {
+        self.driveMessage("Latest Drive sync backup restored.");
+      }).catch(function(err) {
+        self.driveError((err && err.message) || "Drive backup restore failed.");
+      });
     };
 
     self.refreshDriveSyncStatus = refreshDriveConfiguredLabel;

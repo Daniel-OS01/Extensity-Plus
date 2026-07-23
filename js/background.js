@@ -20,6 +20,10 @@ importScripts(
   var driveSync = root.ExtensityDriveSync;
   var logger = root.ExtensityLogger;
   var driveSyncAlarmName = "extensity-drive-auto-sync";
+  var driveChangeSyncAlarmName = "extensity-drive-change-sync";
+  var driveStartupSyncAlarmName = "extensity-drive-startup-sync";
+  var driveChangeSyncTimer = null;
+  var driveApplyingPatches = false;
   var urlRuleTimeoutAlarmPrefix = "extensity-url-rule-timeout-";
   var urlEvaluationTimers = {};
   var tabRuleApplications = {};
@@ -1147,6 +1151,9 @@ importScripts(
 
   async function buildState() {
     var context = await loadContext();
+    context.options = Object.assign({}, context.options, {
+      drivePendingConflict: context.localState.drivePendingConflict || null
+    });
     return {
       extensions: normalizeExtensions(context.items, context),
       localState: buildPublicLocalState(context.localState),
@@ -1377,6 +1384,9 @@ importScripts(
       meta = driveSync.bumpCategoryTimestamp(meta, categoryId);
     });
     await storage.saveLocalState({ driveSyncMeta: meta });
+    if (!driveApplyingPatches) {
+      await scheduleDriveChangeSync();
+    }
   }
 
   async function loadDriveContext() {
@@ -1402,19 +1412,122 @@ importScripts(
     await storage.saveLocalState({ driveSyncMeta: meta });
   }
 
+  async function saveDrivePendingConflict(conflict) {
+    await storage.saveLocalState({ drivePendingConflict: conflict || null });
+  }
+
+  async function saveDriveBackup(snapshot) {
+    var state = await buildState();
+    var localState = await storage.loadLocalState();
+    var backups = Array.isArray(localState.driveSyncBackups) ? localState.driveSyncBackups.slice() : [];
+    var record = {
+      at: snapshot && snapshot.at || Date.now(),
+      direction: snapshot && snapshot.direction || "sync",
+      id: storage.makeId("drive-backup"),
+      localBackup: importExport.buildBackupEnvelope(state),
+      remoteEnvelope: snapshot && snapshot.remoteEnvelope || null
+    };
+    backups.push(record);
+    backups = backups.slice(-3);
+    if (storage.estimatePayloadBytes(backups) > 8 * 1024 * 1024) {
+      var quotaError = new Error("Drive sync backup would exceed the safe local storage budget.");
+      quotaError.code = "backup_quota";
+      throw quotaError;
+    }
+    await storage.saveLocalState({ driveSyncBackups: backups });
+    return record.id;
+  }
+
+  async function saveDriveTransaction(transaction) {
+    await storage.saveLocalState({ driveSyncTxn: transaction });
+  }
+
+  async function clearDriveTransaction() {
+    await storage.saveLocalState({ driveSyncTxn: null });
+  }
+
+  async function recoverDriveTransaction() {
+    var localState = await storage.loadLocalState();
+    var transaction = localState.driveSyncTxn;
+    if (!transaction) {
+      return false;
+    }
+    var backups = Array.isArray(localState.driveSyncBackups) ? localState.driveSyncBackups : [];
+    var backup = backups.find(function(item) {
+      return item.id === transaction.backupRef;
+    });
+    if (!backup || !backup.localBackup) {
+      await storage.saveLocalState({
+        drivePendingConflict: {
+          at: Date.now(),
+          reason: "transaction_recovery_missing_backup",
+          transaction: transaction,
+          trigger: "recovery"
+        }
+      });
+      return false;
+    }
+    await importBackup({ envelope: backup.localBackup });
+    await storage.saveLocalState({
+      drivePendingConflict: {
+        at: Date.now(),
+        backupId: backup.id,
+        reason: "transaction_recovered",
+        trigger: "recovery"
+      },
+      driveSyncTxn: null
+    });
+    return true;
+  }
+
+  async function appendDriveAudit(payload) {
+    var localState = await storage.loadLocalState();
+    var record = history.createEventRecord({
+      action: "drive_sync",
+      debug: payload,
+      event: payload && payload.status === "conflict" || payload && payload.status === "failsafe" ? "error" : "info",
+      label: payload && payload.status || "sync",
+      result: payload && payload.direction || "sync",
+      triggeredBy: payload && payload.trigger || "drive"
+    });
+    await storage.saveLocalState({
+      eventHistory: history.appendHistory(localState.eventHistory, [record])
+    });
+  }
+
+  function driveSyncCallbacks() {
+    return {
+      appendAudit: appendDriveAudit,
+      clearTransaction: clearDriveTransaction,
+      saveBackup: saveDriveBackup,
+      saveDriveMeta: saveDriveMeta,
+      savePatches: applyDrivePatches,
+      savePendingConflict: saveDrivePendingConflict,
+      saveSyncOptions: function(patch) {
+        return storage.saveSyncOptions(patch);
+      },
+      saveTransaction: saveDriveTransaction
+    };
+  }
+
   async function applyDrivePatches(patches) {
-    if (patches.syncOptions) {
-      await storage.saveSyncOptions(patches.syncOptions);
-      applyCacheOptions(await storage.loadSyncOptions());
+    driveApplyingPatches = true;
+    try {
+      if (patches.syncOptions) {
+        await storage.saveSyncOptions(patches.syncOptions);
+        applyCacheOptions(await storage.loadSyncOptions());
+      }
+      if (patches.profiles) {
+        await storage.saveProfiles(patches.profiles.map, patches.profiles.meta);
+      }
+      if (patches.localState) {
+        var currentLocal = await storage.loadLocalState();
+        await storage.saveLocalState(Object.assign({}, currentLocal, patches.localState));
+      }
+      return buildState();
+    } finally {
+      driveApplyingPatches = false;
     }
-    if (patches.profiles) {
-      await storage.saveProfiles(patches.profiles.map, patches.profiles.meta);
-    }
-    if (patches.localState) {
-      var currentLocal = await storage.loadLocalState();
-      await storage.saveLocalState(Object.assign({}, currentLocal, patches.localState));
-    }
-    return buildState();
   }
 
   async function rescheduleDriveSyncAlarm() {
@@ -1423,29 +1536,90 @@ importScripts(
     }
     await chromeCall(chrome.alarms, "clear", [driveSyncAlarmName]);
     var options = await storage.loadSyncOptions();
-    if (!options.driveSync) {
+    if (!options.driveSync || !options.driveTimeBasedSync) {
       return;
     }
     var minutes = Math.max(15, Number(options.driveAutoSyncIntervalMinutes) || 60);
-    chrome.alarms.create(driveSyncAlarmName, { periodInMinutes: minutes });
+    chrome.alarms.create(driveSyncAlarmName, {
+      delayInMinutes: minutes,
+      periodInMinutes: minutes
+    });
   }
 
-  async function runAutoDriveSync() {
+  function driveDirectionForStrategy(strategy) {
+    if (strategy === "overwrite_remote") {
+      return "push";
+    }
+    if (strategy === "overwrite_local") {
+      return "pull";
+    }
+    return "sync";
+  }
+
+  async function canRunAutomaticDriveSync(trigger) {
+    var options = await storage.loadSyncOptions();
+    var localState = await storage.loadLocalState();
+    if (!options.driveSync || localState.drivePendingConflict || localState.driveSyncTxn) {
+      return null;
+    }
+    if (trigger === "periodic" && !options.driveTimeBasedSync) {
+      return null;
+    }
+    if (trigger === "change" && !options.driveChangeBasedSync) {
+      return null;
+    }
+    if (trigger === "startup" && !options.driveSyncOnStartup) {
+      return null;
+    }
+    return options;
+  }
+
+  async function scheduleDriveChangeSync() {
+    var options = await canRunAutomaticDriveSync("change");
+    if (!options) {
+      return;
+    }
+    if (driveChangeSyncTimer) {
+      clearTimeout(driveChangeSyncTimer);
+    }
+    driveChangeSyncTimer = setTimeout(function() {
+      driveChangeSyncTimer = null;
+      runAutoDriveSync("change").catch(function(error) {
+        logger.error("drive_change_sync_failed", { message: error && error.message });
+      });
+    }, 5000);
+    if (hasChromeMethod(chrome.alarms, "clear") && hasChromeMethod(chrome.alarms, "create")) {
+      await chromeCall(chrome.alarms, "clear", [driveChangeSyncAlarmName]);
+      chrome.alarms.create(driveChangeSyncAlarmName, { delayInMinutes: 0.5 });
+    }
+  }
+
+  async function scheduleDriveStartupSync() {
+    var options = await canRunAutomaticDriveSync("startup");
+    if (!options || !hasChromeMethod(chrome.alarms, "create")) {
+      return;
+    }
+    chrome.alarms.create(driveStartupSyncAlarmName, { delayInMinutes: 0.5 });
+  }
+
+  async function runAutoDriveSync(trigger) {
+    var source = trigger || "periodic";
+    var options = await canRunAutomaticDriveSync(source);
+    if (!options) {
+      return { status: "cancelled", reason: "automatic_sync_paused" };
+    }
     try {
-      await driveSync.syncDrive({
-        direction: "sync",
+      var result = await driveSync.syncDrive(Object.assign({
+        direction: driveDirectionForStrategy(options.driveSyncStrategy),
         interactive: false,
         loadContext: loadDriveContext,
-        saveDriveMeta: saveDriveMeta,
-        savePatches: applyDrivePatches,
-        saveSyncOptions: function(patch) {
-          return storage.saveSyncOptions(patch);
-        }
-      });
+        trigger: source
+      }, driveSyncCallbacks()));
       await storage.saveSyncOptions({
         driveAuthStatus: "authorized",
         lastDriveSyncError: null
       });
+      return result;
     } catch (error) {
       var normalized = driveSync && typeof driveSync.normalizeDriveError === "function"
         ? driveSync.normalizeDriveError(error, "sync_failed")
@@ -1772,17 +1946,17 @@ importScripts(
     var direction = payload.direction || "sync";
     logger.info("drive_sync_started", { direction: direction });
     try {
-      var result = await driveSync.syncDrive({
+      var result = await driveSync.syncDrive(Object.assign({
         direction: direction,
         interactive: payload.interactive !== false,
         loadContext: loadDriveContext,
+        confirmationToken: payload.confirmationToken || null,
+        overrideFailsafe: !!payload.overrideFailsafe,
+        requireConfirmation: !!payload.requireConfirmation,
         resolution: payload.resolution || null,
-        saveDriveMeta: saveDriveMeta,
-        savePatches: applyDrivePatches,
-        saveSyncOptions: function(patch) {
-          return storage.saveSyncOptions(patch);
-        }
-      });
+        selectedFileId: payload.selectedFileId || null,
+        trigger: payload.trigger || "manual"
+      }, driveSyncCallbacks()));
       if (result.status !== "conflict") {
         await rescheduleDriveSyncAlarm();
       }
@@ -1810,6 +1984,52 @@ importScripts(
       logger.error("drive_sync_failed", { direction: direction, code: normalized.code, message: error && error.message });
       throw error;
     }
+  }
+
+  async function previewDriveSync(message) {
+    var payload = message || {};
+    return await driveSync.syncDrive(Object.assign({
+      direction: payload.direction || "sync",
+      interactive: true,
+      loadContext: loadDriveContext,
+      preview: true,
+      resolution: payload.resolution || null,
+      selectedFileId: payload.selectedFileId || null,
+      trigger: "preview"
+    }, driveSyncCallbacks()));
+  }
+
+  async function restoreDriveSyncBackup(message) {
+    var localState = await storage.loadLocalState();
+    var backups = Array.isArray(localState.driveSyncBackups) ? localState.driveSyncBackups : [];
+    var requestedId = message && message.backupId;
+    var backup = requestedId
+      ? backups.find(function(item) { return item.id === requestedId; })
+      : backups[backups.length - 1];
+    if (!backup || !backup.localBackup) {
+      throw new Error("No Drive sync backup is available to restore.");
+    }
+    var restored = await importBackup({ envelope: backup.localBackup });
+    await storage.saveLocalState({ drivePendingConflict: null, driveSyncTxn: null });
+    return {
+      backupId: backup.id,
+      restoredAt: Date.now(),
+      state: restored.state
+    };
+  }
+
+  async function selectDriveSyncFile(message) {
+    if (!message || !message.fileId) {
+      throw new Error("A Drive file ID is required.");
+    }
+    var localState = await storage.loadLocalState();
+    var meta = driveSync.normalizeDriveMeta(localState.driveSyncMeta);
+    meta.fileId = String(message.fileId);
+    meta.fileModifiedTime = null;
+    meta.fileSize = null;
+    meta.fileVersion = null;
+    await storage.saveLocalState({ drivePendingConflict: null, driveSyncMeta: meta });
+    return { fileId: meta.fileId, state: await buildState() };
   }
 
   async function getDriveSyncStatusNow() {
@@ -2073,6 +2293,12 @@ importScripts(
         };
       case "GET_DRIVE_SYNC_STATUS":
         return await getDriveSyncStatusNow();
+      case "PREVIEW_DRIVE_SYNC":
+        return { preview: await previewDriveSync(message) };
+      case "RESTORE_DRIVE_SYNC_BACKUP":
+        return await restoreDriveSyncBackup(message);
+      case "SELECT_DRIVE_SYNC_FILE":
+        return await selectDriveSyncFile(message);
       case "SET_DRIVE_WEB_CLIENT_ID":
         await new Promise(function(resolve) {
           chrome.storage.local.set({ driveWebClientIdOverride: message.clientId || "" }, resolve);
@@ -2083,8 +2309,11 @@ importScripts(
         return { report: await driveSync.testDriveConnection({ loadContext: loadDriveContext }) };
       case "RESOLVE_DRIVE_CONFLICT":
         return await syncDriveNow({
+          confirmationToken: message.confirmationToken,
           direction: "sync",
           interactive: false,
+          overrideFailsafe: !!message.overrideFailsafe,
+          requireConfirmation: true,
           resolution: message.resolution
         });
       case "SYNC_DRIVE":
@@ -2117,16 +2346,23 @@ importScripts(
     if (migrations.migrateSyncModesAndDismissals) {
       await migrations.migrateSyncModesAndDismissals();
     }
+    if (migrations.migrateDriveSyncRemediation) {
+      await migrations.migrateDriveSyncRemediation();
+    }
   }
 
   addChromeListener(chrome.runtime && chrome.runtime.onInstalled, function() {
-    runMigrations().catch(function(error) {
+    runMigrations().then(function() {
+      return scheduleDriveStartupSync();
+    }).catch(function(error) {
       logger.error("migration_failed", { message: error && error.message });
     });
   });
 
   addChromeListener(chrome.runtime && chrome.runtime.onStartup, function() {
-    runMigrations().catch(function(error) {
+    runMigrations().then(function() {
+      return scheduleDriveStartupSync();
+    }).catch(function(error) {
       logger.error("startup_migration_failed", { message: error && error.message });
     });
   });
@@ -2393,8 +2629,19 @@ importScripts(
       });
       return;
     }
-    if (alarm.name === driveSyncAlarmName) {
-      runAutoDriveSync().catch(function(error) {
+    if (alarm.name === driveSyncAlarmName || alarm.name === driveChangeSyncAlarmName || alarm.name === driveStartupSyncAlarmName) {
+      var trigger = alarm.name === driveChangeSyncAlarmName
+        ? "change"
+        : alarm.name === driveStartupSyncAlarmName ? "startup" : "periodic";
+      if (trigger === "change" && driveChangeSyncTimer) {
+        clearTimeout(driveChangeSyncTimer);
+        driveChangeSyncTimer = null;
+      }
+      runAutoDriveSync(trigger).then(function() {
+        if (trigger === "change" && hasChromeMethod(chrome.alarms, "clear")) {
+          return chromeCall(chrome.alarms, "clear", [driveChangeSyncAlarmName]);
+        }
+      }).catch(function(error) {
         logger.error("drive_sync_alarm_failed", { message: error && error.message });
       });
     }
@@ -2403,7 +2650,11 @@ importScripts(
   runMigrations().then(function() {
     return initializeSyncRevisionMarkers();
   }).then(function() {
+    return recoverDriveTransaction();
+  }).then(function() {
     return rescheduleDriveSyncAlarm();
+  }).then(function() {
+    return scheduleDriveStartupSync();
   }).catch(function(error) {
     logger.error("initial_migration_failed", { message: error && error.message });
   });

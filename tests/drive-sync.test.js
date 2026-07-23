@@ -1389,6 +1389,25 @@ test("mergeCategoryData throws on unknown category", () => {
   );
 });
 
+test("three-way item merge propagates deletion while preserving opposite-side addition", () => {
+  const root = loadDriveSync();
+  const flags = { aliases: false, groups: false, history: false, options: false, profiles: false, urlRules: true };
+  const base = [{ id: "A" }, { id: "B" }];
+  const localEnvelope = { categories: { urlRules: { data: [{ id: "A" }], updatedAt: 20 } } };
+  const remoteEnvelope = { categories: { urlRules: { data: [{ id: "A" }, { id: "B" }, { id: "C" }], updatedAt: 30 } } };
+  const result = root.ExtensityDriveSync.buildThreeWayEnvelope(
+    localEnvelope,
+    remoteEnvelope,
+    { urlRules: base },
+    flags,
+    null,
+    "device-a"
+  );
+
+  assert.deepEqual(plain(result.conflicts), []);
+  assert.deepEqual(plain(result.envelope.categories.urlRules.data).map((item) => item.id).sort(), ["A", "C"]);
+});
+
 function tokenIdentityOverrides() {
   return {
     getAuthToken(options, callback) {
@@ -1399,17 +1418,41 @@ function tokenIdentityOverrides() {
 
 function driveSyncFetchHarness(remoteEnvelope) {
   const captured = { uploads: [], patches: [] };
+  let currentEnvelope = remoteEnvelope;
+  let version = 7;
   const fetchImpl = async function(url, options) {
     const method = (options && options.method) || "GET";
     if (url.indexOf("/drive/v3/files?spaces=appDataFolder") !== -1 && method === "GET") {
-      return jsonResponse(200, { files: [{ id: "file-1", name: "extensity-plus-sync.json" }] });
+      return jsonResponse(200, { files: [{
+        id: "file-1",
+        modifiedTime: "2026-07-23T10:00:00.000Z",
+        name: "extensity-plus-sync.json",
+        size: String(JSON.stringify(currentEnvelope).length),
+        version: String(version)
+      }] });
+    }
+    if (url.indexOf("/drive/v3/files/file-1?fields=") !== -1 && method === "GET") {
+      return jsonResponse(200, {
+        id: "file-1",
+        modifiedTime: "2026-07-23T10:00:00.000Z",
+        name: "extensity-plus-sync.json",
+        size: String(JSON.stringify(currentEnvelope).length),
+        version: String(version)
+      });
     }
     if (url.indexOf("alt=media") !== -1) {
-      return textResponse(200, JSON.stringify(remoteEnvelope));
+      return textResponse(200, JSON.stringify(currentEnvelope));
     }
     if (url.indexOf("/upload/drive/v3/files") !== -1 && (method === "PATCH" || method === "POST")) {
-      captured.uploads.push(JSON.parse(options.body));
-      return jsonResponse(200, { id: "file-1" });
+      currentEnvelope = JSON.parse(options.body);
+      captured.uploads.push(currentEnvelope);
+      version += 1;
+      return jsonResponse(200, {
+        id: "file-1",
+        modifiedTime: "2026-07-23T10:00:01.000Z",
+        size: String(JSON.stringify(currentEnvelope).length),
+        version: String(version)
+      });
     }
     throw new Error("Unexpected fetch: " + method + " " + url);
   };
@@ -1435,7 +1478,7 @@ test("syncDrive merges remote-only items into a superset written to Drive and lo
 
   const context = {
     driveSyncMeta: {
-      categoryTimestamps: { urlRules: 400 },
+      categoryTimestamps: { urlRules: 300 },
       fileId: "file-1",
       lastMergedAt: { urlRules: 300 }
     },
@@ -1446,7 +1489,7 @@ test("syncDrive merges remote-only items into a superset written to Drive and lo
       groups: {},
       urlRules: [{ id: "r-local", name: "Local Rule", urlPattern: "local.example" }],
       driveSyncMeta: {
-        categoryTimestamps: { urlRules: 400 },
+        categoryTimestamps: { urlRules: 300 },
         fileId: "file-1",
         lastMergedAt: { urlRules: 300 }
       }
@@ -1529,6 +1572,7 @@ test("syncDrive push overwrites Drive with local envelope verbatim", async () =>
   const result = await root.ExtensityDriveSync.syncDrive({
     direction: "push",
     interactive: false,
+    overrideFailsafe: true,
     loadContext: async function() { return context; },
     savePatches: async function(patches) { captured.patches.push(patches); },
     saveDriveMeta: async function() {},
@@ -1573,6 +1617,7 @@ test("syncDrive pull overwrites local with remote envelope verbatim", async () =
   const result = await root.ExtensityDriveSync.syncDrive({
     direction: "pull",
     interactive: false,
+    overrideFailsafe: true,
     loadContext: async function() { return context; },
     savePatches: async function(patches) { captured.patches.push(patches); },
     saveDriveMeta: async function() {},
@@ -1586,7 +1631,7 @@ test("syncDrive pull overwrites local with remote envelope verbatim", async () =
   assert.deepEqual(localRuleIds, ["r-remote"]);
 });
 
-test("syncDrive keep_local resolution overwrites Drive without merging", async () => {
+test("syncDrive keep_local preserves compatible remote additions", async () => {
   const remoteEnvelope = {
     version: "1.0.0",
     categories: {
@@ -1618,19 +1663,20 @@ test("syncDrive keep_local resolution overwrites Drive without merging", async (
     direction: "sync",
     resolution: "keep_local",
     interactive: false,
+    overrideFailsafe: true,
     loadContext: async function() { return context; },
     savePatches: async function(patches) { captured.patches.push(patches); },
     saveDriveMeta: async function() {},
     saveSyncOptions: async function() {}
   });
 
-  assert.equal(result.status, "resolved_local");
-  const uploadedRuleIds = captured.uploads[0].categories.urlRules.data.map((rule) => rule.id);
-  assert.deepEqual(uploadedRuleIds, ["r-local"]);
-  assert.equal(captured.patches.length, 0);
+  assert.equal(result.status, "merged");
+  const uploadedRuleIds = captured.uploads[0].categories.urlRules.data.map((rule) => rule.id).sort();
+  assert.deepEqual(uploadedRuleIds, ["r-local", "r-remote"]);
+  assert.equal(captured.patches.length, 1);
 });
 
-test("syncDrive keep_remote resolution overwrites local without merging", async () => {
+test("syncDrive keep_remote preserves compatible local additions", async () => {
   const remoteEnvelope = {
     version: "1.0.0",
     categories: {
@@ -1662,14 +1708,15 @@ test("syncDrive keep_remote resolution overwrites local without merging", async 
     direction: "sync",
     resolution: "keep_remote",
     interactive: false,
+    overrideFailsafe: true,
     loadContext: async function() { return context; },
     savePatches: async function(patches) { captured.patches.push(patches); },
     saveDriveMeta: async function() {},
     saveSyncOptions: async function() {}
   });
 
-  assert.equal(result.status, "resolved_remote");
-  assert.equal(captured.uploads.length, 0);
-  const localRuleIds = captured.patches[0].localState.urlRules.map((rule) => rule.id);
-  assert.deepEqual(localRuleIds, ["r-remote"]);
+  assert.equal(result.status, "merged");
+  assert.equal(captured.uploads.length, 1);
+  const localRuleIds = captured.patches[0].localState.urlRules.map((rule) => rule.id).sort();
+  assert.deepEqual(localRuleIds, ["r-local", "r-remote"]);
 });

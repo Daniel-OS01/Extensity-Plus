@@ -373,6 +373,12 @@ document.addEventListener("DOMContentLoaded", function() {
       { label: "Auto-sync", value: formatDriveAutoSync(normalized) },
       { label: "Last sync", value: formatDriveLastSync(normalized) },
       { label: "App-data file ID", value: normalized.fileId || "Not assigned yet" },
+      { label: "Drive file size", value: normalized.remote && normalized.remote.size ? normalized.remote.size + " bytes" : "Unknown" },
+      { label: "Drive modified", value: normalized.remote && normalized.remote.modifiedTime || "Unknown" },
+      { label: "Drive version", value: normalized.remote && normalized.remote.version || "Unknown" },
+      { label: "Local payload", value: normalized.local && normalized.local.bytes ? normalized.local.bytes + " bytes" : "Unknown" },
+      { label: "Recovery journal", value: normalized.transaction ? normalized.transaction.phase || "Pending" : "Clear" },
+      { label: "Undo backup", value: normalized.backupAvailable ? "Available" : "Unavailable" },
       { label: "Last error", value: formatDriveLastError(normalized) },
       {
         label: "Drive storage",
@@ -976,6 +982,25 @@ document.addEventListener("DOMContentLoaded", function() {
       self.performAction(ExtensityApi.resolveDriveConflict("cancel")).then(handleDriveSyncResult);
     };
 
+    self.saveDriveSettings = function() {
+      self.performAction(ExtensityApi.saveOptions(self.options.toJS())).then(function(payload) {
+        if (payload && payload.state) {
+          self.applyState(payload.state);
+        }
+        self.message("Drive sync settings saved.");
+      });
+    };
+
+    self.restoreDriveBackup = function() {
+      self.performAction(ExtensityApi.restoreDriveSyncBackup()).then(function(payload) {
+        if (payload && payload.state) {
+          self.applyState(payload.state);
+        }
+        self.message("Latest Drive sync backup restored.");
+        self.refreshDriveSyncStatus();
+      });
+    };
+
     self.openGoogleDrive = function() {
       if (typeof window !== "undefined" && typeof window.open === "function") {
         window.open("https://drive.google.com/drive/u/0", "_blank", "noopener,noreferrer");
@@ -1052,6 +1077,7 @@ document.addEventListener("DOMContentLoaded", function() {
 
     self.logEntries = ko.observableArray([]);
     self.logLevel = ko.observable(_logger ? _logger.getLevel() : "warn");
+    self.errorsOnly = ko.observable(false);
     self.logEmpty = ko.pureComputed(function() { return self.logEntries().length === 0; });
 
     if (_logger) {
@@ -1127,7 +1153,9 @@ document.addEventListener("DOMContentLoaded", function() {
         };
       });
       var logItems = self.logEntries();
-      var all = historyItems.concat(logItems);
+      var all = self.errorsOnly() ? logItems.filter(function(row) {
+        return row.level === "error";
+      }) : historyItems.concat(logItems);
       all.sort(function(a, b) { return b.epochTs - a.epochTs; });
       return all;
     });

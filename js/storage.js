@@ -7,6 +7,12 @@
     driveSync: false,
     driveAutoSyncIntervalMinutes: 60,
     driveAuthStatus: "unknown",
+    driveChangeBasedSync: false,
+    driveFailsafeEnabled: true,
+    driveFailsafeThresholdPercent: 20,
+    driveSyncOnStartup: false,
+    driveSyncStrategy: "merge",
+    driveTimeBasedSync: true,
     driveSyncCategories: {
       aliases: true,
       groups: true,
@@ -25,7 +31,6 @@
     keepAlwaysOn: true,
     lastDriveSync: null,
     lastDriveSyncError: null,
-    drivePendingConflict: null,
     localProfiles: false,
     migration: "1.4.0",
     profileExtensionSide: "right",
@@ -33,6 +38,7 @@
     migration_2_0_0: null,
     migration_popupListStyle: null,
     migration_syncModes: null,
+    migration_driveSyncStrategies: null,
     profileDisplay: "landscape",
     profileLayoutDirection: "ltr",
     profileNameDirection: "ltr",
@@ -85,10 +91,18 @@
     groups: {},
     lastSyncError: null,
     driveSyncMeta: {
+      baselineCategories: {},
       categoryTimestamps: {},
+      envelopeVersion: null,
       fileId: null,
+      fileModifiedTime: null,
+      fileSize: null,
+      fileVersion: null,
       lastMergedAt: {}
     },
+    drivePendingConflict: null,
+    driveSyncBackups: [],
+    driveSyncTxn: null,
     reminderQueue: [],
     recentlyUsed: [],
     toolbarPins: [],
@@ -178,7 +192,7 @@
       if (!name) {
         return;
       }
-      merged[name] = uniqueArray(syncSource[name]);
+      merged[name] = uniqueArray((merged[name] || []).concat(syncSource[name] || []));
     });
     return merged;
   }

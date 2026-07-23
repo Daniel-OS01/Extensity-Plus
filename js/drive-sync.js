@@ -1,6 +1,6 @@
 (function(root) {
   var DRIVE_FILE_NAME = "extensity-plus-sync.json";
-  var ENVELOPE_VERSION = "1.0.0";
+  var ENVELOPE_VERSION = "2.0.0";
   var DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.appdata";
   var PLACEHOLDER_CLIENT_ID = "REPLACE_WITH_OAUTH_CLIENT_ID.apps.googleusercontent.com";
   var PLACEHOLDER_WEB_CLIENT_ID = "REPLACE_WITH_DRIVE_WEB_CLIENT_ID.apps.googleusercontent.com";
@@ -28,6 +28,12 @@
   var DRIVE_SYNC_OPTION_KEYS = [
     "driveSync",
     "driveAutoSyncIntervalMinutes",
+    "driveChangeBasedSync",
+    "driveFailsafeEnabled",
+    "driveFailsafeThresholdPercent",
+    "driveSyncOnStartup",
+    "driveSyncStrategy",
+    "driveTimeBasedSync",
     "driveSyncCategories",
     "lastDriveSync",
     "lastDriveSyncError"
@@ -36,6 +42,11 @@
   var DRIVE_RETRY_BASE_DELAY_MS = 1000;
   var DRIVE_REQUEST_TIMEOUT_MS = 15000;
   var DRIVE_RETRYABLE_HTTP_STATUSES = [429, 500, 502, 503, 504];
+  var DRIVE_BACKUP_LIMIT = 3;
+  var DRIVE_FAILSAFE_ABSOLUTE_DELETIONS = 1000;
+  var DRIVE_MAX_CONCURRENCY_RETRIES = 3;
+  var activeSyncPromise = null;
+  var previewConfirmations = {};
 
   // Mirrors js/history-logger.js maxRecords so merged history truncation matches append truncation.
   var HISTORY_MAX_RECORDS = 500;
@@ -125,6 +136,11 @@
     return {
       categoryTimestamps: isObject(source.categoryTimestamps) ? clone(source.categoryTimestamps) : {},
       fileId: source.fileId || null,
+      fileModifiedTime: source.fileModifiedTime || null,
+      fileSize: source.fileSize || null,
+      fileVersion: source.fileVersion || null,
+      baselineCategories: isObject(source.baselineCategories) ? clone(source.baselineCategories) : {},
+      envelopeVersion: source.envelopeVersion || null,
       lastMergedAt: isObject(source.lastMergedAt) ? clone(source.lastMergedAt) : {}
     };
   }
@@ -404,7 +420,9 @@
     enabled.forEach(function(categoryId) {
       categories[categoryId] = {
         data: buildCategoryData(categoryId, context),
-        updatedAt: meta.categoryTimestamps[categoryId] || nowMs()
+        updatedAt: typeof meta.categoryTimestamps[categoryId] === "number"
+          ? meta.categoryTimestamps[categoryId]
+          : 0
       };
     });
 
@@ -422,6 +440,256 @@
 
   function dataEqual(left, right) {
     return stableSerialize(left) === stableSerialize(right);
+  }
+
+  function estimatePayloadBytes(value) {
+    return unescape(encodeURIComponent(stableSerialize(value))).length;
+  }
+
+  function envelopeFingerprint(envelope) {
+    var text = JSON.stringify(envelope || null);
+    var hash = 2166136261;
+    for (var index = 0; index < text.length; index += 1) {
+      hash ^= text.charCodeAt(index);
+      hash = Math.imul(hash, 16777619);
+    }
+    return (hash >>> 0).toString(16);
+  }
+
+  function createPreviewConfirmation(details) {
+    var token = "drive-preview-" + nowMs().toString(36) + "-" + Math.random().toString(36).slice(2);
+    previewConfirmations[token] = Object.assign({ expiresAt: nowMs() + 2 * 60 * 1000 }, details);
+    return token;
+  }
+
+  function consumePreviewConfirmation(token, expected) {
+    var record = token && previewConfirmations[token];
+    delete previewConfirmations[token];
+    if (!record || record.expiresAt < nowMs()) {
+      throw createDriveError("preview_stale", "The Drive sync preview expired. Refresh the preview and confirm again.");
+    }
+    if (
+      record.direction !== expected.direction
+      || record.localHash !== expected.localHash
+      || String(record.remoteVersion || "") !== String(expected.remoteVersion || "")
+      || record.resolution !== expected.resolution
+    ) {
+      throw createDriveError("preview_stale", "The Drive sync data changed after preview. Refresh the preview and confirm again.");
+    }
+  }
+
+  function stampEnvelopeForInitialUpload(envelope) {
+    var next = clone(envelope);
+    var stampedAt = nowMs();
+    Object.keys(next.categories || {}).forEach(function(categoryId) {
+      if (!next.categories[categoryId].updatedAt) {
+        next.categories[categoryId].updatedAt = stampedAt;
+      }
+    });
+    next.exportedAt = stampedAt;
+    return next;
+  }
+
+  function categoryItemMap(categoryId, data) {
+    var result = {};
+    if (categoryId === "options" || categoryId === "aliases") {
+      Object.keys(isObject(data) ? data : {}).forEach(function(key) {
+        result[key] = data[key];
+      });
+      return result;
+    }
+    if (categoryId === "profiles") {
+      var profileData = isObject(data) ? data : {};
+      Object.keys(profileData.map || {}).forEach(function(profileName) {
+        (profileData.map[profileName] || []).forEach(function(extensionId) {
+          result["member:" + profileName + ":" + extensionId] = true;
+        });
+      });
+      Object.keys(profileData.meta || {}).forEach(function(profileName) {
+        result["meta:" + profileName] = profileData.meta[profileName];
+      });
+      return result;
+    }
+    if (categoryId === "groups") {
+      var groupData = isObject(data) ? data : {};
+      Object.keys(groupData.groups || {}).forEach(function(groupId) {
+        result[groupId] = groupData.groups[groupId];
+      });
+      return result;
+    }
+    (Array.isArray(data) ? data : []).forEach(function(item, index) {
+      var id = item && (item.id || item.eventId || item.timestamp);
+      result[String(id || index)] = item;
+    });
+    return result;
+  }
+
+  function categoryDataFromItemMap(categoryId, items, template) {
+    if (categoryId === "options" || categoryId === "aliases") {
+      return clone(items);
+    }
+    if (categoryId === "profiles") {
+      var profiles = { map: {}, meta: {} };
+      Object.keys(items).forEach(function(key) {
+        if (key.indexOf("member:") === 0 && items[key]) {
+          var parts = key.split(":");
+          var profileName = parts[1];
+          var extensionId = parts.slice(2).join(":");
+          profiles.map[profileName] = (profiles.map[profileName] || []).concat([extensionId]);
+        } else if (key.indexOf("meta:") === 0) {
+          profiles.meta[key.slice(5)] = clone(items[key]);
+        }
+      });
+      return profiles;
+    }
+    if (categoryId === "groups") {
+      var groups = clone(items);
+      var previousOrder = template && Array.isArray(template.groupOrder) ? template.groupOrder : [];
+      var groupOrder = previousOrder.filter(function(id) {
+        return Object.prototype.hasOwnProperty.call(groups, id);
+      });
+      Object.keys(groups).forEach(function(id) {
+        if (groupOrder.indexOf(id) === -1) {
+          groupOrder.push(id);
+        }
+      });
+      return { groupOrder: groupOrder, groups: groups };
+    }
+    return Object.keys(items).map(function(key) {
+      return clone(items[key]);
+    });
+  }
+
+  function buildThreeWayEnvelope(localEnvelope, remoteEnvelope, baselineCategories, categoryFlags, resolution, writerId) {
+    var result = { categories: {}, exportedAt: nowMs(), version: ENVELOPE_VERSION, writerId: writerId || "" };
+    var conflicts = [];
+    enabledCategoryList(categoryFlags).forEach(function(categoryId) {
+      var localCategory = localEnvelope.categories && localEnvelope.categories[categoryId] || { data: null, updatedAt: 0 };
+      var remoteCategory = remoteEnvelope.categories && remoteEnvelope.categories[categoryId] || { data: null, updatedAt: 0 };
+      var baseData = baselineCategories && baselineCategories[categoryId];
+      var baseItems = categoryItemMap(categoryId, baseData);
+      var localItems = categoryItemMap(categoryId, localCategory.data);
+      var remoteItems = categoryItemMap(categoryId, remoteCategory.data);
+      var mergedItems = {};
+      var keys = Object.keys(Object.assign({}, baseItems, localItems, remoteItems));
+      keys.forEach(function(itemId) {
+        var baseHas = Object.prototype.hasOwnProperty.call(baseItems, itemId);
+        var localHas = Object.prototype.hasOwnProperty.call(localItems, itemId);
+        var remoteHas = Object.prototype.hasOwnProperty.call(remoteItems, itemId);
+        var localChanged = localHas !== baseHas || (localHas && !dataEqual(localItems[itemId], baseItems[itemId]));
+        var remoteChanged = remoteHas !== baseHas || (remoteHas && !dataEqual(remoteItems[itemId], baseItems[itemId]));
+        var chooseRemote = false;
+        if (localChanged && remoteChanged && (localHas !== remoteHas || !dataEqual(localItems[itemId], remoteItems[itemId]))) {
+          conflicts.push({
+            categoryId: categoryId,
+            itemId: itemId,
+            label: (CATEGORY_LABELS[categoryId] || categoryId) + " / " + itemId,
+            localDeleted: !localHas,
+            remoteDeleted: !remoteHas,
+            localUpdatedAt: localCategory.updatedAt || 0,
+            remoteUpdatedAt: remoteCategory.updatedAt || 0
+          });
+          chooseRemote = resolution === "keep_remote";
+        } else {
+          chooseRemote = remoteChanged && !localChanged;
+        }
+        var chosenHas = chooseRemote ? remoteHas : localChanged ? localHas : remoteHas;
+        var chosenValue = chooseRemote ? remoteItems[itemId] : localChanged ? localItems[itemId] : remoteItems[itemId];
+        if (chosenHas) {
+          mergedItems[itemId] = clone(chosenValue);
+        }
+      });
+      result.categories[categoryId] = {
+        data: categoryDataFromItemMap(categoryId, mergedItems, localCategory.data || remoteCategory.data),
+        updatedAt: Math.max(localCategory.updatedAt || 0, remoteCategory.updatedAt || 0) || nowMs()
+      };
+    });
+    return { conflicts: conflicts, envelope: result };
+  }
+
+  function buildCategoryChange(categoryId, beforeData, afterData) {
+    var before = categoryItemMap(categoryId, beforeData);
+    var after = categoryItemMap(categoryId, afterData);
+    var beforeKeys = Object.keys(before);
+    var afterKeys = Object.keys(after);
+    var added = afterKeys.filter(function(key) {
+      return !Object.prototype.hasOwnProperty.call(before, key);
+    }).length;
+    var deleted = beforeKeys.filter(function(key) {
+      return !Object.prototype.hasOwnProperty.call(after, key);
+    }).length;
+    var changed = afterKeys.filter(function(key) {
+      return Object.prototype.hasOwnProperty.call(before, key) && !dataEqual(before[key], after[key]);
+    }).length;
+    return {
+      added: added,
+      afterBytes: estimatePayloadBytes(afterData),
+      afterCount: afterKeys.length,
+      beforeBytes: estimatePayloadBytes(beforeData),
+      beforeCount: beforeKeys.length,
+      categoryId: categoryId,
+      changed: changed,
+      deleted: deleted,
+      deletionPercent: beforeKeys.length ? Math.round((deleted / beforeKeys.length) * 10000) / 100 : 0
+    };
+  }
+
+  function buildChangeSummary(beforeEnvelope, afterEnvelope, categoryFlags) {
+    var beforeCategories = beforeEnvelope && beforeEnvelope.categories || {};
+    var afterCategories = afterEnvelope && afterEnvelope.categories || {};
+    return enabledCategoryList(categoryFlags).map(function(categoryId) {
+      return buildCategoryChange(
+        categoryId,
+        beforeCategories[categoryId] && beforeCategories[categoryId].data,
+        afterCategories[categoryId] && afterCategories[categoryId].data
+      );
+    });
+  }
+
+  function findFailsafeViolation(summary, options) {
+    if (options && options.driveFailsafeEnabled === false) {
+      return null;
+    }
+    var threshold = Math.max(1, Math.min(100, Number(options && options.driveFailsafeThresholdPercent) || 20));
+    for (var index = 0; index < summary.length; index += 1) {
+      var entry = summary[index];
+      if (
+        (entry.beforeCount > 0 && entry.afterCount === 0)
+        || entry.deleted >= DRIVE_FAILSAFE_ABSOLUTE_DELETIONS
+        || (entry.deleted > 0 && entry.deletionPercent >= threshold)
+        || (options && options.driveAutomaticTrigger && entry.added >= 20)
+        || (
+          options && options.driveAutomaticTrigger
+          && entry.beforeCount > 0
+          && (entry.changed + entry.deleted) / entry.beforeCount * 100 >= threshold
+        )
+      ) {
+        return Object.assign({
+          label: CATEGORY_LABELS[entry.categoryId] || entry.categoryId,
+          thresholdPercent: threshold
+        }, entry);
+      }
+    }
+    return null;
+  }
+
+  function buildPendingConflict(conflicts, file, localEnvelope, reason, trigger, details) {
+    return Object.assign({
+      categories: clone(conflicts || []),
+      detectedAt: nowMs(),
+      file: file ? {
+        id: file.id || null,
+        modifiedTime: file.modifiedTime || null,
+        size: file.size || null,
+        version: file.version || null
+      } : null,
+      localSummary: {
+        bytes: estimatePayloadBytes(localEnvelope),
+        updatedAt: localEnvelope && localEnvelope.exportedAt || nowMs()
+      },
+      reason: reason || "divergence",
+      trigger: trigger || "manual"
+    }, details || {});
   }
 
   function detectConflicts(localMeta, remoteEnvelope, categoryFlags) {
@@ -565,6 +833,21 @@
     };
   }
 
+  function buildResolvedEnvelope(localEnvelope, remoteEnvelope, categoryFlags, conflicts, resolution, writerId) {
+    var merged = buildMergedEnvelope(localEnvelope, remoteEnvelope, categoryFlags, writerId);
+    var localCategories = localEnvelope && localEnvelope.categories || {};
+    var remoteCategories = remoteEnvelope && remoteEnvelope.categories || {};
+    (conflicts || []).forEach(function(conflict) {
+      var categoryId = conflict.categoryId;
+      var chosen = resolution === "keep_remote" ? remoteCategories[categoryId] : localCategories[categoryId];
+      if (chosen) {
+        merged.categories[categoryId] = clone(chosen);
+      }
+    });
+    merged.exportedAt = nowMs();
+    return merged;
+  }
+
   function mergeEnvelopeAfterSync(localMeta, envelope, categoryFlags) {
     var meta = normalizeDriveMeta(localMeta);
     var mergedAt = meta.lastMergedAt;
@@ -577,9 +860,11 @@
       var localUpdatedAt = timestamps[categoryId] || remoteUpdatedAt;
       mergedAt[categoryId] = Math.max(localUpdatedAt, remoteUpdatedAt, mergedAt[categoryId] || 0);
       timestamps[categoryId] = mergedAt[categoryId];
+      meta.baselineCategories[categoryId] = clone(remoteCategory && remoteCategory.data);
     });
     meta.lastMergedAt = mergedAt;
     meta.categoryTimestamps = timestamps;
+    meta.envelopeVersion = envelope && envelope.version || ENVELOPE_VERSION;
     return meta;
   }
 
@@ -1136,11 +1421,27 @@
   async function findDriveFile(requestDriveApi) {
     var query = "name='" + DRIVE_FILE_NAME.replace(/'/g, "\\'") + "' and trashed=false";
     var result = await requestDriveApi(
-      "/drive/v3/files?spaces=appDataFolder&pageSize=100&fields=files(id,name,modifiedTime)&q=" + encodeURIComponent(query),
+      "/drive/v3/files?spaces=appDataFolder&pageSize=100&orderBy=modifiedTime%20desc&fields=files(id,name,modifiedTime,size,version)&q=" + encodeURIComponent(query),
       { operation: "find_sync_file" }
     );
     var files = result && Array.isArray(result.files) ? result.files : [];
-    return selectNewestDriveFile(files);
+    var selected = selectNewestDriveFile(files);
+    if (selected) {
+      selected.duplicates = files.filter(function(file) {
+        return file && file.id && file.id !== selected.id && file.name === DRIVE_FILE_NAME;
+      });
+    }
+    return selected;
+  }
+
+  async function getDriveFileMetadata(requestDriveApi, fileId) {
+    if (!fileId) {
+      return null;
+    }
+    return requestDriveApi(
+      "/drive/v3/files/" + encodeURIComponent(fileId) + "?fields=id,name,modifiedTime,size,version",
+      { operation: "get_sync_file_metadata" }
+    );
   }
 
   async function downloadDriveFile(requestDriveApi, fileId) {
@@ -1218,8 +1519,8 @@
   }
 
   async function updateDriveFile(requestDriveApi, fileId, content) {
-    await requestDriveApi(
-      "/upload/drive/v3/files/" + encodeURIComponent(fileId) + "?uploadType=media",
+    return requestDriveApi(
+      "/upload/drive/v3/files/" + encodeURIComponent(fileId) + "?uploadType=media&fields=id,modifiedTime,size,version",
       {
         body: content,
         headers: {
@@ -1236,9 +1537,10 @@
       return { envelope: null, file: null };
     }
     try {
+      var file = await getDriveFileMetadata(requestDriveApi, fileId);
       return {
         envelope: await downloadDriveFile(requestDriveApi, fileId),
-        file: { id: fileId }
+        file: file || { id: fileId }
       };
     } catch (error) {
       if (error.code === "not_found") {
@@ -1251,10 +1553,32 @@
   async function writeRemoteEnvelope(requestDriveApi, fileId, envelope) {
     var serialized = JSON.stringify(envelope);
     if (fileId) {
-      await updateDriveFile(requestDriveApi, fileId, serialized);
-      return fileId;
+      return await updateDriveFile(requestDriveApi, fileId, serialized) || { id: fileId };
     }
-    return createDriveFile(requestDriveApi, serialized);
+    var createdId = await createDriveFile(requestDriveApi, serialized);
+    return await getDriveFileMetadata(requestDriveApi, createdId) || { id: createdId };
+  }
+
+  async function writeRemoteEnvelopeVerified(requestDriveApi, file, envelope) {
+    var expectedVersion = file && file.version || null;
+    if (file && file.id && expectedVersion != null) {
+      var current = await getDriveFileMetadata(requestDriveApi, file.id);
+      if (current && String(current.version) !== String(expectedVersion)) {
+        throw createDriveError(
+          "drive_concurrent_update",
+          "The Drive backup changed while synchronization was running. Please retry."
+        );
+      }
+    }
+    var written = await writeRemoteEnvelope(requestDriveApi, file && file.id, envelope);
+    var verified = await downloadDriveFile(requestDriveApi, written.id);
+    if (!dataEqual(verified, envelope)) {
+      throw createDriveError(
+        "drive_verification_failed",
+        "Drive wrote different data than expected. The recovery journal was retained."
+      );
+    }
+    return written;
   }
 
   function buildSyncResult(status, details) {
@@ -1424,7 +1748,7 @@
     return report;
   }
 
-  async function syncDrive(options) {
+  async function runSyncDrive(options) {
     var config = options || {};
     var manifest = chrome.runtime.getManifest();
     var preferredAuthProvider = await shouldPreferWebAuth() ? "web_fallback" : "chrome_identity";
@@ -1450,6 +1774,11 @@
     var savePatches = config.savePatches;
     var saveDriveMeta = config.saveDriveMeta;
     var saveSyncOptions = config.saveSyncOptions;
+    var saveBackup = config.saveBackup;
+    var savePendingConflict = config.savePendingConflict;
+    var saveTransaction = config.saveTransaction;
+    var clearTransaction = config.clearTransaction;
+    var appendAudit = config.appendAudit;
     if (typeof loadContext !== "function" || typeof savePatches !== "function") {
       throw new Error("Drive sync requires loadContext and savePatches callbacks.");
     }
@@ -1459,6 +1788,7 @@
     var categoryFlags = normalizeCategoryFlags(syncOptions.driveSyncCategories);
     var direction = config.direction || "sync";
     var resolution = config.resolution || null;
+    var trigger = config.trigger || (config.interactive === false ? "automatic" : "manual");
     var interactive = config.interactive !== false && (config.interactive === true || direction !== "auto");
 
     var token;
@@ -1486,125 +1816,249 @@
 
     try {
       var driveMeta = normalizeDriveMeta(context.localState.driveSyncMeta);
-      var fileRecord = driveMeta.fileId ? { id: driveMeta.fileId } : await findDriveFile(requestDriveApi);
-      if (fileRecord && fileRecord.id && !driveMeta.fileId) {
-        driveMeta.fileId = fileRecord.id;
-      }
-
-      var remoteRead = await readRemoteEnvelope(requestDriveApi, driveMeta.fileId);
-      var remoteEnvelope = remoteRead.envelope;
-      if (remoteRead.file && remoteRead.file.id) {
-        driveMeta.fileId = remoteRead.file.id;
-      }
-
+      var discoveredFile = await findDriveFile(requestDriveApi);
+      var selectedFileId = config.selectedFileId || driveMeta.fileId || discoveredFile && discoveredFile.id;
       var localEnvelope = buildEnvelope(context, categoryFlags, syncOptions.syncWriterId || "");
 
-      if (direction === "push") {
-        var pushedFileId = await writeRemoteEnvelope(requestDriveApi, driveMeta.fileId, localEnvelope);
-        driveMeta.fileId = pushedFileId || driveMeta.fileId;
-        driveMeta = mergeEnvelopeAfterSync(driveMeta, localEnvelope, categoryFlags);
-        await saveDriveMeta(driveMeta);
-        await saveSyncOptions({
-          lastDriveSync: nowMs(),
-          lastDriveSyncError: null
+      if (
+        discoveredFile
+        && Array.isArray(discoveredFile.duplicates)
+        && discoveredFile.duplicates.length
+        && !config.selectedFileId
+      ) {
+        var duplicateCandidates = [discoveredFile].concat(discoveredFile.duplicates).map(function(file) {
+          return {
+            id: file.id,
+            modifiedTime: file.modifiedTime || null,
+            name: file.name || DRIVE_FILE_NAME,
+            size: file.size || null,
+            version: file.version || null
+          };
         });
-        return buildSyncResult("pushed", { fileId: driveMeta.fileId });
+        var duplicatePending = buildPendingConflict(
+          [],
+          discoveredFile,
+          localEnvelope,
+          "duplicate_remote_files",
+          trigger,
+          { duplicateFiles: duplicateCandidates }
+        );
+        if (typeof savePendingConflict === "function") {
+          await savePendingConflict(duplicatePending);
+        }
+        return buildSyncResult("conflict", {
+          duplicateFiles: duplicateCandidates,
+          pendingConflict: duplicatePending,
+          reason: "duplicate_remote_files"
+        });
       }
 
+      driveMeta.fileId = selectedFileId || null;
+      var remoteRead = await readRemoteEnvelope(requestDriveApi, selectedFileId);
+      var remoteEnvelope = remoteRead.envelope;
+      var remoteFile = remoteRead.file || discoveredFile;
+      if (remoteRead.file && remoteRead.file.id) {
+        driveMeta.fileId = remoteRead.file.id;
+        driveMeta.fileModifiedTime = remoteRead.file.modifiedTime || null;
+        driveMeta.fileSize = remoteRead.file.size || null;
+        driveMeta.fileVersion = remoteRead.file.version || null;
+      }
+
+      if (
+        remoteEnvelope
+        && driveMeta.envelopeVersion
+        && String(driveMeta.envelopeVersion).indexOf("2.") === 0
+        && String(remoteEnvelope.version || "").indexOf("1.") === 0
+      ) {
+        var schemaPending = buildPendingConflict([], remoteFile, localEnvelope, "schema_regression", trigger);
+        if (typeof savePendingConflict === "function") {
+          await savePendingConflict(schemaPending);
+        }
+        return buildSyncResult("conflict", { pendingConflict: schemaPending, reason: "schema_regression" });
+      }
+      var threeWay = remoteEnvelope
+        ? buildThreeWayEnvelope(
+          localEnvelope,
+          remoteEnvelope,
+          driveMeta.baselineCategories,
+          categoryFlags,
+          resolution,
+          syncOptions.syncWriterId || ""
+        )
+        : null;
+      var conflicts = direction === "sync" && threeWay ? threeWay.conflicts : [];
+      if (direction === "sync" && conflicts.length && !resolution) {
+        var pending = buildPendingConflict(conflicts, remoteFile, localEnvelope, "divergence", trigger);
+        if (typeof savePendingConflict === "function") {
+          await savePendingConflict(pending);
+        }
+        if (typeof appendAudit === "function") {
+          await appendAudit({ direction: direction, status: "conflict", trigger: trigger, conflicts: conflicts });
+        }
+        return buildSyncResult("conflict", {
+          conflicts: conflicts,
+          fileId: driveMeta.fileId,
+          pendingConflict: pending
+        });
+      }
+      if (direction === "sync" && conflicts.length && resolution === "cancel") {
+        return buildSyncResult("cancelled", { conflicts: conflicts, pendingConflict: context.localState.drivePendingConflict || null });
+      }
+
+      var resultEnvelope;
+      var status;
+      var reason = null;
       if (direction === "pull") {
         if (!remoteEnvelope) {
           return buildSyncResult("noop", { reason: "no_remote_file" });
         }
-        var pullPatches = buildPatchesFromEnvelope(remoteEnvelope, categoryFlags);
-        await savePatches(pullPatches, { source: "drive", direction: "pull" });
-        driveMeta = mergeEnvelopeAfterSync(driveMeta, remoteEnvelope, categoryFlags);
-        await saveDriveMeta(driveMeta);
-        await saveSyncOptions({
-          drivePendingConflict: null,
-          lastDriveSync: nowMs(),
-          lastDriveSyncError: null
-        });
-        return buildSyncResult("pulled", { fileId: driveMeta.fileId });
+        resultEnvelope = remoteEnvelope;
+        status = "pulled";
+      } else if (direction === "push") {
+        resultEnvelope = remoteEnvelope ? localEnvelope : stampEnvelopeForInitialUpload(localEnvelope);
+        status = "pushed";
+      } else if (!remoteEnvelope) {
+        resultEnvelope = stampEnvelopeForInitialUpload(localEnvelope);
+        status = "pushed";
+        reason = "initial_upload";
+      } else if (conflicts.length && (resolution === "keep_local" || resolution === "keep_remote")) {
+        resultEnvelope = threeWay.envelope;
+        status = resolution === "keep_local" ? "resolved_local" : "resolved_remote";
+      } else {
+        resultEnvelope = threeWay.envelope;
+        status = "merged";
       }
 
-      if (!remoteEnvelope) {
-        var createdId = await writeRemoteEnvelope(requestDriveApi, null, localEnvelope);
-        driveMeta.fileId = createdId || driveMeta.fileId;
-        driveMeta = mergeEnvelopeAfterSync(driveMeta, localEnvelope, categoryFlags);
-        await saveDriveMeta(driveMeta);
-        await saveSyncOptions({
-          lastDriveSync: nowMs(),
-          lastDriveSyncError: null
-        });
-        return buildSyncResult("pushed", { fileId: driveMeta.fileId, reason: "initial_upload" });
-      }
-
-      var conflicts = detectConflicts(driveMeta, remoteEnvelope, categoryFlags);
-
-      if (conflicts.length && resolution === "cancel") {
-        return buildSyncResult("cancelled", { conflicts: conflicts });
-      }
-
-      if (conflicts.length && resolution === "keep_local") {
-        await writeRemoteEnvelope(requestDriveApi, driveMeta.fileId, localEnvelope);
-        driveMeta = mergeEnvelopeAfterSync(driveMeta, localEnvelope, categoryFlags);
-        await saveDriveMeta(driveMeta);
-        await saveSyncOptions({
-          drivePendingConflict: null,
-          lastDriveSync: nowMs(),
-          lastDriveSyncError: null
-        });
-        return buildSyncResult("resolved_local", { conflicts: conflicts });
-      }
-
-      if (conflicts.length && resolution === "keep_remote") {
-        var remotePatches = buildPatchesFromEnvelope(remoteEnvelope, categoryFlags);
-        await savePatches(remotePatches, { source: "drive", direction: "pull" });
-        driveMeta = mergeEnvelopeAfterSync(driveMeta, remoteEnvelope, categoryFlags);
-        await saveDriveMeta(driveMeta);
-        await saveSyncOptions({
-          drivePendingConflict: null,
-          lastDriveSync: nowMs(),
-          lastDriveSyncError: null
-        });
-        return buildSyncResult("resolved_remote", { conflicts: conflicts });
-      }
-
-      // Automatic sync: merge every enabled category into a superset so no one-sided
-      // items are discarded. Divergent categories (including detectConflicts hits) all
-      // flow through the same item-level merge instead of a whole-category overwrite.
-      var mergedEnvelope = buildMergedEnvelope(
-        localEnvelope,
-        remoteEnvelope,
-        categoryFlags,
-        syncOptions.syncWriterId || ""
-      );
-      var remoteDiffers = mergedDataDiffers(mergedEnvelope, remoteEnvelope, categoryFlags);
-      var localDiffers = mergedDataDiffers(mergedEnvelope, localEnvelope, categoryFlags);
-
-      if (remoteDiffers) {
-        var mergedFileId = await writeRemoteEnvelope(requestDriveApi, driveMeta.fileId, mergedEnvelope);
-        driveMeta.fileId = mergedFileId || driveMeta.fileId;
-      }
-      if (localDiffers) {
-        var mergedPatches = buildPatchesFromEnvelope(mergedEnvelope, categoryFlags);
-        await savePatches(mergedPatches, { source: "drive", direction: "merge" });
-      }
-
-      driveMeta = mergeEnvelopeAfterSync(driveMeta, mergedEnvelope, categoryFlags);
-      await saveDriveMeta(driveMeta);
-      await saveSyncOptions({
-        drivePendingConflict: null,
-        lastDriveSync: nowMs(),
-        lastDriveSyncError: null
-      });
-
+      var remoteDiffers = direction !== "pull" && (!remoteEnvelope || mergedDataDiffers(resultEnvelope, remoteEnvelope, categoryFlags));
+      var localDiffers = direction !== "push" && mergedDataDiffers(resultEnvelope, localEnvelope, categoryFlags);
       if (!remoteDiffers && !localDiffers) {
         return buildSyncResult("noop", { fileId: driveMeta.fileId });
       }
-      return buildSyncResult("merged", {
+
+      var remoteSummary = remoteDiffers ? buildChangeSummary(remoteEnvelope, resultEnvelope, categoryFlags) : [];
+      var localSummary = localDiffers ? buildChangeSummary(localEnvelope, resultEnvelope, categoryFlags) : [];
+      var failsafeOptions = Object.assign({}, syncOptions, {
+        driveAutomaticTrigger: ["change", "periodic", "startup"].indexOf(trigger) >= 0
+      });
+      var failsafe = findFailsafeViolation(remoteSummary, failsafeOptions) || findFailsafeViolation(localSummary, failsafeOptions);
+      var confirmationDetails = {
+        direction: direction,
+        localHash: envelopeFingerprint(localEnvelope),
+        remoteVersion: remoteFile && remoteFile.version || null,
+        resolution: resolution
+      };
+      if (config.preview) {
+        return buildSyncResult("preview", {
+          changes: remoteSummary.concat(localSummary),
+          confirmationToken: createPreviewConfirmation(confirmationDetails),
+          expiresInMs: 2 * 60 * 1000,
+          failsafe: failsafe,
+          local: { bytes: estimatePayloadBytes(localEnvelope) },
+          remote: remoteFile ? {
+            id: remoteFile.id,
+            modifiedTime: remoteFile.modifiedTime || null,
+            size: remoteFile.size || null,
+            version: remoteFile.version || null
+          } : null
+        });
+      }
+      if (config.requireConfirmation) {
+        consumePreviewConfirmation(config.confirmationToken, confirmationDetails);
+      }
+      if (failsafe && !config.overrideFailsafe) {
+        var failsafePending = buildPendingConflict(
+          [],
+          remoteFile,
+          localEnvelope,
+          "failsafe",
+          trigger,
+          { failsafe: failsafe }
+        );
+        if (typeof savePendingConflict === "function") {
+          await savePendingConflict(failsafePending);
+        }
+        if (typeof appendAudit === "function") {
+          await appendAudit({ direction: direction, failsafe: failsafe, status: "failsafe", trigger: trigger });
+        }
+        return buildSyncResult("failsafe", {
+          details: failsafe,
+          pendingConflict: failsafePending
+        });
+      }
+
+      var backupRef = null;
+      if (typeof saveBackup === "function") {
+        backupRef = await saveBackup({
+          at: nowMs(),
+          direction: direction,
+          localEnvelope: localDiffers ? localEnvelope : null,
+          remoteEnvelope: remoteDiffers ? remoteEnvelope : null
+        });
+      }
+      var transaction = {
+        backupRef: backupRef,
+        direction: direction,
+        expectedRemoteVersion: remoteFile && remoteFile.version || null,
+        phase: "prepared",
+        recovery: {
+          localSnapshotRequired: localDiffers,
+          remoteSnapshotRequired: remoteDiffers
+        },
+        resultEnvelope: resultEnvelope,
+        resultHash: envelopeFingerprint(resultEnvelope),
+        startedAt: nowMs()
+      };
+      if (typeof saveTransaction === "function") {
+        await saveTransaction(transaction);
+      }
+
+      if (remoteDiffers) {
+        var writtenFile = await writeRemoteEnvelopeVerified(requestDriveApi, remoteFile, resultEnvelope);
+        driveMeta.fileId = writtenFile.id || driveMeta.fileId;
+        driveMeta.fileModifiedTime = writtenFile.modifiedTime || null;
+        driveMeta.fileSize = writtenFile.size || null;
+        driveMeta.fileVersion = writtenFile.version || null;
+        transaction.phase = "remote_verified";
+        if (typeof saveTransaction === "function") {
+          await saveTransaction(transaction);
+        }
+      }
+      if (localDiffers) {
+        await savePatches(buildPatchesFromEnvelope(resultEnvelope, categoryFlags), {
+          direction: direction === "pull" ? "pull" : "merge",
+          source: "drive"
+        });
+        transaction.phase = "local_written";
+        if (typeof saveTransaction === "function") {
+          await saveTransaction(transaction);
+        }
+      }
+
+      driveMeta = mergeEnvelopeAfterSync(driveMeta, resultEnvelope, categoryFlags);
+      await saveDriveMeta(driveMeta);
+      await saveSyncOptions({
+        lastDriveSync: nowMs(),
+        lastDriveSyncError: null
+      });
+      if (typeof savePendingConflict === "function") {
+        await savePendingConflict(null);
+      }
+      if (typeof appendAudit === "function") {
+        await appendAudit({
+          changes: remoteSummary.concat(localSummary),
+          direction: direction,
+          status: status,
+          trigger: trigger
+        });
+      }
+      if (typeof clearTransaction === "function") {
+        await clearTransaction();
+      }
+      return buildSyncResult(status, {
+        changes: remoteSummary.concat(localSummary),
         conflicts: conflicts,
-        fileId: driveMeta.fileId
+        fileId: driveMeta.fileId,
+        reason: reason
       });
     } catch (error) {
       if (error && error.code === "auth" && token) {
@@ -1614,12 +2068,53 @@
     }
   }
 
+  async function syncDrive(options) {
+    if (activeSyncPromise) {
+      if (options && (options.interactive !== false || options.trigger === "manual" || options.trigger === "preview")) {
+        return activeSyncPromise.catch(function() {}).then(function() {
+          return syncDrive(options);
+        });
+      }
+      return activeSyncPromise;
+    }
+    var config = options || {};
+    activeSyncPromise = (async function() {
+      var attempt = 0;
+      while (true) {
+        try {
+          return await runSyncDrive(config);
+        } catch (error) {
+          attempt += 1;
+          if (
+            error && error.code === "drive_concurrent_update"
+            && !config.resolution
+            && (config.direction || "sync") === "sync"
+            && attempt < DRIVE_MAX_CONCURRENCY_RETRIES
+          ) {
+            continue;
+          }
+          throw error;
+        }
+      }
+    })();
+    try {
+      return await activeSyncPromise;
+    } finally {
+      activeSyncPromise = null;
+    }
+  }
+
   async function getDriveSyncStatus(options) {
     var manifest = chrome.runtime.getManifest();
     var loadContext = options && options.loadContext;
     var context = typeof loadContext === "function" ? await loadContext() : { localState: {}, options: {} };
     var environment = context.extensionEnvironment || await getExtensionEnvironment();
     var driveMeta = normalizeDriveMeta(context.driveSyncMeta || context.localState && context.localState.driveSyncMeta);
+    var localEnvelope = buildEnvelope(
+      context,
+      normalizeCategoryFlags(context.options.driveSyncCategories),
+      context.options.syncWriterId || ""
+    );
     var webAuthPreferred = await shouldPreferWebAuth();
     var preferredAuthProvider = webAuthPreferred ? "web_fallback" : "chrome_identity";
     return {
@@ -1634,7 +2129,19 @@
       lastDriveSync: context.options.lastDriveSync || null,
       lastDriveSyncError: context.options.lastDriveSyncError || null,
       fileId: driveMeta.fileId || null,
-      pendingConflict: context.options.drivePendingConflict || context.localState.drivePendingConflict || null,
+      local: {
+        bytes: estimatePayloadBytes(localEnvelope),
+        updatedAt: localEnvelope.exportedAt
+      },
+      pendingConflict: context.localState.drivePendingConflict || null,
+      remote: {
+        id: driveMeta.fileId || null,
+        modifiedTime: driveMeta.fileModifiedTime || null,
+        size: driveMeta.fileSize || null,
+        version: driveMeta.fileVersion || null
+      },
+      transaction: context.localState.driveSyncTxn || null,
+      backupAvailable: !!(context.localState.driveSyncBackups && context.localState.driveSyncBackups.length),
       webAuthPreferred: webAuthPreferred,
       webFallbackConfigured: isDriveWebOAuthConfigured(),
       webClientId: getDriveWebClientId()
@@ -1649,7 +2156,10 @@
     applyCategoryToPatches: applyCategoryToPatches,
     buildCategoryData: buildCategoryData,
     buildEnvelope: buildEnvelope,
+    buildChangeSummary: buildChangeSummary,
     buildPatchesFromEnvelope: buildPatchesFromEnvelope,
+    buildResolvedEnvelope: buildResolvedEnvelope,
+    buildThreeWayEnvelope: buildThreeWayEnvelope,
     bumpCategoryTimestamp: bumpCategoryTimestamp,
     createDriveFile: createDriveFile,
     mergeCategoryData: mergeCategoryData,
@@ -1659,6 +2169,7 @@
     acquireDriveToken: acquireDriveToken,
     getExtensionEnvironment: getExtensionEnvironment,
     getDriveSyncStatus: getDriveSyncStatus,
+    findFailsafeViolation: findFailsafeViolation,
     isDriveWebOAuthConfigured: isDriveWebOAuthConfigured,
     isOAuthConfigured: isOAuthConfigured,
     isGoogleClientIdFormat: isGoogleClientIdFormat,

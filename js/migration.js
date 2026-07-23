@@ -175,8 +175,43 @@
     return true;
   }
 
+  async function migrateDriveSyncRemediation() {
+    await storage.ensureSyncDefaults();
+    await storage.ensureLocalDefaults();
+    var syncValues = await storage.getArea("sync", [
+      "drivePendingConflict",
+      "migration_driveSyncStrategies"
+    ]);
+    if (syncValues.migration_driveSyncStrategies) {
+      return false;
+    }
+
+    var localState = await storage.loadLocalState();
+    var meta = localState.driveSyncMeta || {};
+    var timestamps = Object.assign({}, meta.categoryTimestamps || {});
+    var mergedAt = meta.lastMergedAt || {};
+    ["aliases", "groups", "history", "options", "profiles", "urlRules"].forEach(function(category) {
+      if (!Number.isFinite(Number(timestamps[category]))) {
+        timestamps[category] = Number(mergedAt[category]) || 0;
+      }
+    });
+    meta.categoryTimestamps = timestamps;
+
+    var localPatch = { driveSyncMeta: meta };
+    if (!localState.drivePendingConflict && syncValues.drivePendingConflict) {
+      localPatch.drivePendingConflict = syncValues.drivePendingConflict;
+    }
+    await storage.saveLocalState(localPatch);
+    if (typeof syncValues.drivePendingConflict !== "undefined") {
+      await storage.removeArea("sync", ["drivePendingConflict"]);
+    }
+    await storage.saveSyncOptions({ migration_driveSyncStrategies: "4.6.0" });
+    return true;
+  }
+
   root.ExtensityMigrations = {
     migrateLegacyLocalStorage: migrateLegacyLocalStorage,
+    migrateDriveSyncRemediation: migrateDriveSyncRemediation,
     migratePopupListStyle: migratePopupListStyle,
     migrateSyncModesAndDismissals: migrateSyncModesAndDismissals,
     migrateTo2_0_0: migrateTo2_0_0

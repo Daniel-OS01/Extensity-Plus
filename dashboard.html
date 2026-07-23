@@ -90,6 +90,7 @@
           <option value="info">Info</option>
           <option value="debug">Debug</option>
         </select>
+        <label for="errorsOnly"><input type="checkbox" id="errorsOnly" data-sbind="checked: errorsOnly" /> Errors only</label>
         <button type="button" title="Clear all log entries" data-sbind="click: clearLog">Clear log</button>
         <button type="button" title="Copy log to clipboard" data-sbind="click: copyLog">Copy log</button>
       </div>
@@ -279,6 +280,9 @@
           <span class="event-meta" data-sbind="visible: driveStatusCheckedAt, text: driveStatusCheckedAt"></span>
         </div>
         <p class="sync-status-note" data-sbind="visible: driveStatusDetails, text: driveStatusDetails"></p>
+        <div class="field"><label for="dashboardDriveStrategy">Strategy</label><select id="dashboardDriveStrategy" data-sbind="value: options.driveSyncStrategy"><option value="merge">Merge compatible changes</option><option value="overwrite_remote">Use this device</option><option value="overwrite_local">Use Drive</option></select></div>
+        <div class="field"><input type="checkbox" id="dashboardDriveTime" data-sbind="checked: options.driveTimeBasedSync" /><label for="dashboardDriveTime">Periodic</label> <input type="checkbox" id="dashboardDriveStartup" data-sbind="checked: options.driveSyncOnStartup" /><label for="dashboardDriveStartup">Startup</label> <input type="checkbox" id="dashboardDriveChange" data-sbind="checked: options.driveChangeBasedSync" /><label for="dashboardDriveChange">Changes</label></div>
+        <div class="field"><input type="checkbox" id="dashboardDriveFailsafe" data-sbind="checked: options.driveFailsafeEnabled" /><label for="dashboardDriveFailsafe">Failsafe</label> <input type="number" min="1" max="100" data-sbind="value: options.driveFailsafeThresholdPercent" aria-label="Drive deletion failsafe percent" /></div>
         <div class="drive-status-grid" data-sbind="foreach: driveStatusRows">
           <div class="drive-status-row">
             <span class="drive-status-label" data-sbind="text: label"></span>
@@ -292,6 +296,8 @@
           <button type="button" title="Sync with Google Drive now" data-sbind="click: driveSyncNow, disable: busy">Sync now</button>
           <button type="button" title="Upload local data to Google Drive" data-sbind="click: drivePush, disable: busy">Push to Drive</button>
           <button type="button" title="Download data from Google Drive" data-sbind="click: drivePull, disable: busy">Pull from Drive</button>
+          <button type="button" title="Save Drive sync settings" data-sbind="click: saveDriveSettings, disable: busy">Save settings</button>
+          <button type="button" title="Restore the latest Drive sync backup" data-sbind="click: restoreDriveBackup, disable: busy">Undo last sync</button>
         </div>
         <div class="drive-test-report" data-sbind="if: driveConnectionReport">
           <div data-sbind="foreach: driveTestSteps">

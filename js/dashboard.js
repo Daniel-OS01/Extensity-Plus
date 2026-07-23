@@ -1006,6 +1006,7 @@ document.addEventListener("DOMContentLoaded", function() {
           self.applyState(payload.state);
         }
         self.message("Drive sync settings saved.");
+        self.refreshDriveSyncStatus();
       }).catch(function() {});
     };
 

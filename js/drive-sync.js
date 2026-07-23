@@ -553,7 +553,7 @@
    * @return {Promise<string>} The generated confirmation token, valid for two minutes.
    */
   async function createPreviewConfirmation(details) {
-    var token = "drive-preview-" + nowMs().toString(36) + "-" + Math.random().toString(36).slice(2);
+    var token = "drive-preview-" + nowMs().toString(36) + "-" + crypto.randomUUID();
     var confirmations = await readPreviewConfirmations();
     confirmations[token] = Object.assign({ expiresAt: nowMs() + 2 * 60 * 1000 }, details);
     await writePreviewConfirmations(confirmations);

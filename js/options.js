@@ -69,6 +69,11 @@ document.addEventListener("DOMContentLoaded", function() {
     return normalized;
   }
 
+  /**
+   * Creates a display label for a profile name.
+   * @param {*} name - The profile name to label.
+   * @return {string} A human-readable label for reserved profile names, or the original name as text.
+   */
   function profileOptionLabel(name) {
     var reserved = {
       "__always_on": "Always On",
@@ -79,6 +84,11 @@ document.addEventListener("DOMContentLoaded", function() {
     return reserved[name] || String(name || "");
   }
 
+  /**
+   * Builds selectable options for the available profiles.
+   * @param {Array<Object>} profileItems - Profiles whose names should be included as options.
+   * @return {Array<Object>} An array beginning with a "None" option, followed by labeled profile options.
+   */
   function buildActiveProfileOptions(profileItems) {
     var items = Array.isArray(profileItems) ? profileItems : [];
     return [{ label: "None", value: null }].concat(items.filter(function(profile) {
@@ -91,6 +101,12 @@ document.addEventListener("DOMContentLoaded", function() {
     }));
   }
 
+  /**
+   * Normalize option values for consistent application and persistence.
+   * @param {Object} options - The option values to normalize.
+   * @param {Array<string>} allowedProfiles - Profile names permitted as the active profile.
+   * @return {Object} A normalized copy of the options, including validated enum and boolean values, default values, and constrained numeric settings.
+   */
   function normalizeOptionState(options, allowedProfiles) {
     var normalized = Object.assign({}, options || {});
     normalized.activeProfile = normalizeActiveProfile(normalized.activeProfile, allowedProfiles);
@@ -117,6 +133,19 @@ document.addEventListener("DOMContentLoaded", function() {
       normalized.driveAuthStatus,
       ["unknown", "authorized", "needs_interactive_sign_in", "error"],
       "unknown"
+    );
+    normalized.driveSyncStrategy = normalizeEnum(
+      normalized.driveSyncStrategy,
+      ["merge", "overwrite_remote", "overwrite_local"],
+      "merge"
+    );
+    normalized.driveSyncOnStartup = normalized.driveSyncOnStartup === true;
+    normalized.driveChangeBasedSync = normalized.driveChangeBasedSync === true;
+    normalized.driveTimeBasedSync = normalized.driveTimeBasedSync !== false;
+    normalized.driveFailsafeEnabled = normalized.driveFailsafeEnabled !== false;
+    normalized.driveFailsafeThresholdPercent = Math.min(
+      100,
+      Math.max(1, parseInt(normalized.driveFailsafeThresholdPercent, 10) || 20)
     );
     if (typeof ExtensityDriveSync !== "undefined" && typeof ExtensityDriveSync.normalizeCategoryFlags === "function") {
       normalized.driveSyncCategories = ExtensityDriveSync.normalizeCategoryFlags(normalized.driveSyncCategories);
@@ -173,6 +202,10 @@ document.addEventListener("DOMContentLoaded", function() {
     };
   }
 
+  /**
+   * Attach data export, import, and synchronization status methods to the view model.
+   * @param {Object} self - The options view model receiving the data methods and computed labels.
+   */
   function attachDataMethods(self) {
     function downloadBackup(payload, filenamePrefix) {
       ExtensityIO.downloadText(
@@ -264,6 +297,11 @@ document.addEventListener("DOMContentLoaded", function() {
 
   }
 
+  /**
+   * Creates Knockout bindings for toggling Drive sync categories.
+   * @param {Object} self - The view model containing Drive sync category options.
+   * @return {Object} Bindings keyed by Drive category ID.
+   */
   function buildDriveCategoryChecked(self) {
     var bindings = {};
     if (typeof ExtensityDriveSync === "undefined" || !Array.isArray(ExtensityDriveSync.CATEGORY_IDS)) {
@@ -285,6 +323,10 @@ document.addEventListener("DOMContentLoaded", function() {
     return bindings;
   }
 
+  /**
+   * Attach Google Drive sync state, status labels, conflict handling, and synchronization actions to a view model.
+   * @param {Object} self - The view model to augment with Drive sync observables and methods.
+   */
   function attachDriveSyncMethods(self) {
     self.driveCategoryChecked = buildDriveCategoryChecked(self);
     self.driveConfiguredLabel = ko.observable("");
@@ -495,6 +537,15 @@ document.addEventListener("DOMContentLoaded", function() {
 
     self.driveResolveCancel = function() {
       return runDriveSyncRequest(ExtensityApi.resolveDriveConflict("cancel"));
+    };
+
+    self.restoreDriveBackup = function() {
+      clearDriveFeedback();
+      return self.performAction(ExtensityApi.restoreDriveSyncBackup()).then(function() {
+        self.driveMessage("Latest Drive sync backup restored.");
+      }).catch(function(err) {
+        self.driveError((err && err.message) || "Drive backup restore failed.");
+      });
     };
 
     self.refreshDriveSyncStatus = refreshDriveConfiguredLabel;

@@ -169,6 +169,12 @@
         <div class="field"><span class="muted" data-sbind="text: driveExtensionIdLabel"></span></div>
         <div class="field"><span class="muted" data-sbind="text: driveAuthProviderLabel"></span></div>
         <div class="field"><input type="checkbox" id="driveSync" data-sbind="checked: options.driveSync" /><label for="driveSync">Enable automatic Google Drive sync</label></div>
+        <div class="field"><label for="driveSyncStrategy">Sync strategy</label><select id="driveSyncStrategy" data-sbind="value: options.driveSyncStrategy"><option value="merge">Merge compatible changes</option><option value="overwrite_remote">Use this device</option><option value="overwrite_local">Use Drive</option></select></div>
+        <div class="field"><input type="checkbox" id="driveTimeBasedSync" data-sbind="checked: options.driveTimeBasedSync" /><label for="driveTimeBasedSync">Periodic sync</label></div>
+        <div class="field"><input type="checkbox" id="driveSyncOnStartup" data-sbind="checked: options.driveSyncOnStartup" /><label for="driveSyncOnStartup">Sync on startup</label></div>
+        <div class="field"><input type="checkbox" id="driveChangeBasedSync" data-sbind="checked: options.driveChangeBasedSync" /><label for="driveChangeBasedSync">Sync after local changes</label></div>
+        <div class="field"><input type="checkbox" id="driveFailsafeEnabled" data-sbind="checked: options.driveFailsafeEnabled" /><label for="driveFailsafeEnabled">Protect destructive changes</label></div>
+        <div class="field"><label for="driveFailsafeThresholdPercent">Deletion failsafe (%)</label><input type="number" min="1" max="100" id="driveFailsafeThresholdPercent" data-sbind="value: options.driveFailsafeThresholdPercent" /></div>
         <div class="field"><label for="driveAutoSyncIntervalMinutes">Auto-sync interval (minutes, min 15)</label><input type="number" min="15" max="1440" id="driveAutoSyncIntervalMinutes" data-sbind="value: options.driveAutoSyncIntervalMinutes" /></div>
         <div class="field"><span class="muted">Select which data to include in Drive sync:</span></div>
         <div class="field"><input type="checkbox" id="driveCatOptions" data-sbind="checked: driveCategoryChecked.options" /><label for="driveCatOptions">Options</label></div>
@@ -183,6 +189,7 @@
           <button type="button" title="Upload local data to Google Drive" data-sbind="click: drivePush, disable: busy">Push to Drive</button>
           <button type="button" title="Download data from Google Drive" data-sbind="click: drivePull, disable: busy">Pull from Drive</button>
           <button type="button" title="Test Drive connection (read-only check)" data-sbind="click: testDriveConnection, disable: busy">Test connection</button>
+          <button type="button" title="Restore the latest Drive sync backup" data-sbind="click: restoreDriveBackup, disable: busy">Undo last sync</button>
         </div>
         <div class="field" data-sbind="visible: driveMessage">
           <span class="status" data-sbind="text: driveMessage"></span>

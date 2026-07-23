@@ -341,6 +341,11 @@ document.addEventListener("DOMContentLoaded", function() {
     return "Enabled every " + (status.intervalMinutes || 60) + " minutes";
   }
 
+  /**
+   * Formats the most recent Drive synchronization time.
+   * @param {Object} status - Drive synchronization status data.
+   * @return {string} The formatted synchronization time, or `"Never"` when no synchronization has occurred.
+   */
   function formatDriveLastSync(status) {
     if (!status || !status.lastDriveSync) {
       return "Never";
@@ -348,6 +353,11 @@ document.addEventListener("DOMContentLoaded", function() {
     return formatDateTime(status.lastDriveSync);
   }
 
+  /**
+   * Formats the most recent Drive sync error for display.
+   * @param {Object|null|undefined} status - Drive sync status data.
+   * @returns {string} The error message, or `"None"` when no error is recorded.
+   */
   function formatDriveLastError(status) {
     if (!status || !status.lastDriveSyncError) {
       return "None";
@@ -361,6 +371,11 @@ document.addEventListener("DOMContentLoaded", function() {
     return "Drive sync error";
   }
 
+  /**
+   * Builds display-ready rows summarizing Google Drive synchronization status, including remote file, local payload, recovery, and backup details.
+   * @param {Object|null|undefined} status - Drive synchronization status data.
+   * @return {Array<Object>} Rows containing labels and formatted status values.
+   */
   function buildDriveStatusRows(status) {
     var normalized = status || {};
     return [
@@ -373,6 +388,12 @@ document.addEventListener("DOMContentLoaded", function() {
       { label: "Auto-sync", value: formatDriveAutoSync(normalized) },
       { label: "Last sync", value: formatDriveLastSync(normalized) },
       { label: "App-data file ID", value: normalized.fileId || "Not assigned yet" },
+      { label: "Drive file size", value: normalized.remote && normalized.remote.size ? normalized.remote.size + " bytes" : "Unknown" },
+      { label: "Drive modified", value: normalized.remote && normalized.remote.modifiedTime || "Unknown" },
+      { label: "Drive version", value: normalized.remote && normalized.remote.version || "Unknown" },
+      { label: "Local payload", value: normalized.local && normalized.local.bytes ? normalized.local.bytes + " bytes" : "Unknown" },
+      { label: "Recovery journal", value: normalized.transaction ? normalized.transaction.phase || "Pending" : "Clear" },
+      { label: "Undo backup", value: normalized.backupAvailable ? "Available" : "Unavailable" },
       { label: "Last error", value: formatDriveLastError(normalized) },
       {
         label: "Drive storage",
@@ -381,6 +402,11 @@ document.addEventListener("DOMContentLoaded", function() {
     ];
   }
 
+  /**
+   * Builds a user-facing headline describing the current Google Drive sync state.
+   * @param {Object|null|undefined} status - Drive sync status information.
+   * @return {string} A headline describing the sync configuration, authorization, or readiness state.
+   */
   function buildDriveStatusHeadline(status) {
     if (!status) {
       return "Google Drive sync status unavailable.";
@@ -400,6 +426,11 @@ document.addEventListener("DOMContentLoaded", function() {
     return "Drive sync is ready.";
   }
 
+  /**
+   * Describes the active Google Drive authentication path and fallback configuration.
+   * @param {Object|null|undefined} status - Drive authentication status information.
+   * @return {string} A human-readable description of the authentication path.
+   */
   function buildDriveStatusDetails(status) {
     if (!status) {
       return "Google Drive status is unavailable.";
@@ -413,6 +444,9 @@ document.addEventListener("DOMContentLoaded", function() {
     return "Chrome extension OAuth is active. Brave fallback is not configured.";
   }
 
+  /**
+   * Create the dashboard's Knockout view model and initialize its state, actions, computed values, and synchronization controls.
+   */
   function DashboardViewModel() {
     var self = this;
     self.loading = ko.observable(true);
@@ -976,6 +1010,26 @@ document.addEventListener("DOMContentLoaded", function() {
       self.performAction(ExtensityApi.resolveDriveConflict("cancel")).then(handleDriveSyncResult);
     };
 
+    self.saveDriveSettings = function() {
+      self.performAction(ExtensityApi.saveOptions(self.options.toJS())).then(function(payload) {
+        if (payload && payload.state) {
+          self.applyState(payload.state);
+        }
+        self.message("Drive sync settings saved.");
+        self.refreshDriveSyncStatus();
+      }).catch(function() {});
+    };
+
+    self.restoreDriveBackup = function() {
+      self.performAction(ExtensityApi.restoreDriveSyncBackup()).then(function(payload) {
+        if (payload && payload.state) {
+          self.applyState(payload.state);
+        }
+        self.message("Latest Drive sync backup restored.");
+        self.refreshDriveSyncStatus();
+      }).catch(function() {});
+    };
+
     self.openGoogleDrive = function() {
       if (typeof window !== "undefined" && typeof window.open === "function") {
         window.open("https://drive.google.com/drive/u/0", "_blank", "noopener,noreferrer");
@@ -1052,6 +1106,7 @@ document.addEventListener("DOMContentLoaded", function() {
 
     self.logEntries = ko.observableArray([]);
     self.logLevel = ko.observable(_logger ? _logger.getLevel() : "warn");
+    self.errorsOnly = ko.observable(false);
     self.logEmpty = ko.pureComputed(function() { return self.logEntries().length === 0; });
 
     if (_logger) {
@@ -1127,7 +1182,9 @@ document.addEventListener("DOMContentLoaded", function() {
         };
       });
       var logItems = self.logEntries();
-      var all = historyItems.concat(logItems);
+      var all = self.errorsOnly() ? logItems.filter(function(row) {
+        return row.level === "error";
+      }) : historyItems.concat(logItems);
       all.sort(function(a, b) { return b.epochTs - a.epochTs; });
       return all;
     });

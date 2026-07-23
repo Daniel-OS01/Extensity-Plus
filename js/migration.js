@@ -12,6 +12,10 @@
     return Boolean(value);
   }
 
+  /**
+   * Migrates legacy local storage settings into sync storage.
+   * @returns {boolean} `true` if the migration completes, `false` if local storage is unavailable or migration was already completed.
+   */
   async function migrateLegacyLocalStorage() {
     if (typeof localStorage === "undefined") {
       return false;
@@ -63,6 +67,11 @@
     return true;
   }
 
+  /**
+   * Moves selected settings from sync storage to local state and records completion of the 2.0.0 migration.
+   * Existing local bulk-toggle restoration data takes precedence over migrated toggle data.
+   * @return {boolean} `true` after the migration completes.
+   */
   async function migrateTo2_0_0() {
     await storage.ensureSyncDefaults();
     await storage.ensureLocalDefaults();
@@ -96,6 +105,10 @@
     return true;
   }
 
+  /**
+   * Migrates the legacy popup list preference to the current sync storage format.
+   * @return {boolean} `true` if the migration ran, `false` if it was already completed.
+   */
   async function migratePopupListStyle() {
     await storage.ensureSyncDefaults();
     var syncValues = await storage.getArea("sync", [
@@ -123,6 +136,10 @@
     return true;
   }
 
+  /**
+   * Migrates sync modes and dismissals to the current storage model.
+   * @return {boolean} `true` if the migration runs, `false` if it was already completed.
+   */
   async function migrateSyncModesAndDismissals() {
     await storage.ensureSyncDefaults();
     await storage.ensureLocalDefaults();
@@ -175,8 +192,47 @@
     return true;
   }
 
+  /**
+   * Migrates Drive Sync metadata and pending conflict state to local storage.
+   * @return {boolean} `true` if the migration ran, `false` if it was already completed.
+   */
+  async function migrateDriveSyncRemediation() {
+    await storage.ensureSyncDefaults();
+    await storage.ensureLocalDefaults();
+    var syncValues = await storage.getArea("sync", [
+      "drivePendingConflict",
+      "migration_driveSyncStrategies"
+    ]);
+    if (syncValues.migration_driveSyncStrategies) {
+      return false;
+    }
+
+    var localState = await storage.loadLocalState();
+    var meta = localState.driveSyncMeta || {};
+    var timestamps = Object.assign({}, meta.categoryTimestamps || {});
+    var mergedAt = meta.lastMergedAt || {};
+    ["aliases", "groups", "history", "options", "profiles", "urlRules"].forEach(function(category) {
+      if (!Number.isFinite(Number(timestamps[category]))) {
+        timestamps[category] = Number(mergedAt[category]) || 0;
+      }
+    });
+    meta.categoryTimestamps = timestamps;
+
+    var localPatch = { driveSyncMeta: meta };
+    if (!localState.drivePendingConflict && syncValues.drivePendingConflict) {
+      localPatch.drivePendingConflict = syncValues.drivePendingConflict;
+    }
+    await storage.saveLocalState(localPatch);
+    if (typeof syncValues.drivePendingConflict !== "undefined") {
+      await storage.removeArea("sync", ["drivePendingConflict"]);
+    }
+    await storage.saveSyncOptions({ migration_driveSyncStrategies: "4.6.0" });
+    return true;
+  }
+
   root.ExtensityMigrations = {
     migrateLegacyLocalStorage: migrateLegacyLocalStorage,
+    migrateDriveSyncRemediation: migrateDriveSyncRemediation,
     migratePopupListStyle: migratePopupListStyle,
     migrateSyncModesAndDismissals: migrateSyncModesAndDismissals,
     migrateTo2_0_0: migrateTo2_0_0

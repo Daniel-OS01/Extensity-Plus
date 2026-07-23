@@ -72,31 +72,32 @@ These are offline checks only. Final acceptance requires both the unpacked insta
 
 Open **Options → Google Drive Sync**:
 
-- **Enable automatic Google Drive sync** — background sync on a timer (minimum 15 minutes).
+- **Strategy** — merge compatible changes, use this device (overwrite Drive), or use Drive (overwrite this device). Persistent overwrite strategies never bypass failsafes.
+- **Periodic**, **Startup**, and **Changes** independently control automatic triggers. Periodic sync has a 15-minute minimum; change sync is debounced and backed by a 30-second alarm.
+- **Protect destructive changes** blocks empty replacements, large deletion percentages, 1,000-item deletions, and anomalous automatic additions or replacements. The threshold is clamped to 1–100%.
 - The Google Drive Sync section shows the current extension ID and whether the build is local or store.
 - Choose categories: Options, Profiles, Aliases, Groups, URL rules, History.
-- **Sync now** — performs an item-level merge with Drive. Groups, URL rules, aliases, profiles, history, and options are combined and de-duplicated across both sides, so items that exist only locally or only on Drive are preserved rather than overwritten. Where the same item changed on both sides, the more recently updated side wins (ties keep the local value).
-- **Push to Drive** / **Pull from Drive** — force one direction. These are explicit whole-category overwrites: **Push** replaces the Drive copy with local data, **Pull** replaces local data with the Drive copy. Use them when you deliberately want one side to win.
+- **Sync now** performs a three-way item merge against the last durable baseline. One-sided edits and deletions propagate; changes to different items merge automatically.
+- **Push to Drive** / **Pull from Drive** are destructive directions. The extension first produces a short-lived preview bound to the current local payload and Drive file version, then snapshots recovery data before writing.
+- **Undo last sync** restores the newest entry in the three-deep local backup ring.
 
-The Dashboard **Import / Export** tab exposes the same sync actions.
+The Dashboard **Import / Export** tab exposes only the core sync actions — **Sync Drive**, **Push to Drive**, and **Pull from Drive**. **Undo last sync** and **Save settings** are available under the Dashboard **Sync Status** tab (Undo last sync is also available on the Options page).
 
 The Dashboard **Sync Status** tab now also includes a Drive sync card with the current extension ID, install type, auth path, last sync timestamp, remote file ID, and a direct `Open Google Drive` action.
 
-## Conflicts
+## Conflicts and recovery
 
-Automatic **Sync now** no longer stops on divergence. When the same category changed on both the local device and Drive since the last successful merge, sync merges the two sides item by item — combining and de-duplicating groups, rules, aliases, profiles, history, and options — so no side's unique items are lost. For an individual item that changed on both sides, the more recently updated side wins (ties keep the local value).
+When the same item changes differently on this device and Drive, including edit-versus-delete, synchronization pauses without writing either side. **Keep this device** or **Use Drive copy** applies only to conflicting items; compatible changes remain merged. **Cancel** performs no write and leaves synchronization paused.
 
-If you want one side to overwrite the other outright, use the explicit whole-category overrides instead of the automatic merge:
+Multiple matching app-data files also pause sync and every candidate is reported; duplicates are never silently deleted. The UI does not yet expose a control to pick a canonical file among duplicates — the **Keep this device** / **Use Drive copy** / **Cancel** buttons resolve only item-level conflicts, not this case. Drive `version` is checked immediately before upload, and uploaded content is downloaded and verified before local state or the merge baseline advances. A version race is re-read and recomputed up to three times for merge runs. A verification or partial-write failure retains the transaction journal; startup restores the saved local snapshot and leaves a recovery notice before another automatic run.
 
-- **Push to Drive** / **Keep this device** — replace the Drive copy with local data.
-- **Pull from Drive** / **Use Drive copy** — replace local data with the Drive copy.
-- **Cancel** — no changes.
+Legacy v1 files remain readable and the first successful write snapshots data before producing v2. If a device that has written v2 later sees a v1 file, synchronization pauses as a schema regression rather than discarding deletion history.
 
 ## Storage details
 
 - Remote file: `extensity-plus-sync.json` in the Drive app data folder (hidden from the user’s Drive UI).
-- Local metadata: `driveSyncMeta` in `chrome.storage.local` (timestamps, file id).
-- Settings: `driveSync`, `driveSyncCategories`, `driveAutoSyncIntervalMinutes`, `lastDriveSync`, `drivePendingConflict` in `chrome.storage.sync`.
+- Device-local metadata: `driveSyncMeta`, `drivePendingConflict`, `driveSyncBackups`, and `driveSyncTxn` in `chrome.storage.local`.
+- Portable settings: strategy, trigger flags, failsafe settings, category selection, interval, and last-sync diagnostics in `chrome.storage.sync`.
 
 ## Troubleshooting
 
@@ -108,8 +109,10 @@ If you want one side to overwrite the other outright, use the explicit whole-cat
 | “Custom URI scheme is not supported on Chrome apps” in Brave | Configure the **Web application** OAuth fallback and add the two `chromiumapp.org/drive` redirect URIs. |
 | Sign-in loop / 401 | Remove the extension from [Google Account permissions](https://myaccount.google.com/permissions) and sync again. |
 | Auto-sync fails with auth-needed status | Click **Sync now** once to complete interactive sign-in; background auto-sync then resumes. |
-| Multiple same-name sync files exist | **Test connection** reports the duplicate count and selects the newest modification deterministically. It never deletes duplicates automatically. |
-| Want one side to win outright | Automatic **Sync now** always merges. Use **Push** or **Pull** to force a whole-category overwrite. |
+| Multiple same-name sync files exist | Sync pauses and reports every candidate; there is no in-UI way to pick a canonical file yet. Remove the extra file(s) from the Drive app data folder via the Drive API. |
+| `preview_stale` | Local data or the Drive version changed after preview. Refresh and confirm again. |
+| `drive_verification_failed` | The downloaded post-write content did not match. The recovery journal is retained; do not clear it manually. |
+| Want one side to win outright | Select an overwrite strategy or use **Push**/**Pull**; backups, preview confirmation, verification, and failsafes still apply. |
 | History sync is slow/large | Leave **History** unchecked (default). |
 
 ## Security policy

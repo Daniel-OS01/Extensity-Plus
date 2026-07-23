@@ -20,6 +20,10 @@ importScripts(
   var driveSync = root.ExtensityDriveSync;
   var logger = root.ExtensityLogger;
   var driveSyncAlarmName = "extensity-drive-auto-sync";
+  var driveChangeSyncAlarmName = "extensity-drive-change-sync";
+  var driveStartupSyncAlarmName = "extensity-drive-startup-sync";
+  var driveChangeSyncTimer = null;
+  var driveApplyingPatches = false;
   var urlRuleTimeoutAlarmPrefix = "extensity-url-rule-timeout-";
   var urlEvaluationTimers = {};
   var tabRuleApplications = {};
@@ -1077,6 +1081,12 @@ importScripts(
     };
   }
 
+  /**
+   * Builds the normalized, alphabetically sorted extension list for public state.
+   * @param {Array<Object>} items - Chrome management items to normalize.
+   * @param {Object} state - Current local state and profile data used to enrich each extension.
+   * @return {Array<Object>} Normalized extension records with metadata, groups, usage data, and status flags.
+   */
   function normalizeExtensions(items, state) {
     var aliases = state.localState.aliases || {};
     var counters = state.localState.usageCounters || {};
@@ -1139,14 +1149,26 @@ importScripts(
     });
   }
 
+  /**
+   * Creates the local state exposed to other extension components.
+   * @param {Object} localState - The local state to sanitize.
+   * @return {Object} A cloned state object without Web Store metadata.
+   */
   function buildPublicLocalState(localState) {
     var nextState = storage.clone(localState || {});
     delete nextState.webStoreMetadata;
     return nextState;
   }
 
+  /**
+   * Build the public application state from current extension context.
+   * @returns {Object} The current extensions, local state, manifest metadata, options, and profiles.
+   */
   async function buildState() {
     var context = await loadContext();
+    context.options = Object.assign({}, context.options, {
+      drivePendingConflict: context.localState.drivePendingConflict || null
+    });
     return {
       extensions: normalizeExtensions(context.items, context),
       localState: buildPublicLocalState(context.localState),
@@ -1302,6 +1324,11 @@ importScripts(
     );
   }
 
+  /**
+   * Applies a named profile and its always-on extensions.
+   * @param {string} profileName - The name of the profile to apply.
+   * @return {Object} The rebuilt extension state after applying the profile.
+   */
   async function runApplyProfile(profileName) {
     var current = await loadContext();
     var targetProfile = current.profiles.map[profileName];
@@ -1332,6 +1359,10 @@ importScripts(
     );
   }
 
+  /**
+   * Restores extension states from the most recent undo entry.
+   * @return {Object} The updated extension state.
+   */
   async function runUndo() {
     var localState = await storage.loadLocalState();
     var undoStack = Array.isArray(localState.undoStack) ? localState.undoStack.slice() : [];
@@ -1363,6 +1394,10 @@ importScripts(
     );
   }
 
+  /**
+   * Updates Drive synchronization timestamps for the specified categories and schedules change-based synchronization.
+   * @param {string[]} categoryIds - Category identifiers whose timestamps should be updated.
+   */
   async function touchDriveCategories(categoryIds) {
     if (!driveSync || typeof driveSync.bumpCategoryTimestamp !== "function") {
       return;
@@ -1377,8 +1412,15 @@ importScripts(
       meta = driveSync.bumpCategoryTimestamp(meta, categoryId);
     });
     await storage.saveLocalState({ driveSyncMeta: meta });
+    if (!driveApplyingPatches) {
+      await scheduleDriveChangeSync();
+    }
   }
 
+  /**
+   * Builds the runtime context required for Drive synchronization.
+   * @returns {Object} The application context with Drive metadata, extension environment details, extension identity, installation type, and sync writer ID.
+   */
   async function loadDriveContext() {
     var context = await loadContext();
     var syncMeta = await storage.loadSyncMeta();
@@ -1398,54 +1440,286 @@ importScripts(
     return context;
   }
 
+  /**
+   * Persists Drive synchronization metadata to local state.
+   * @param {Object} meta - The Drive synchronization metadata to save.
+   */
   async function saveDriveMeta(meta) {
     await storage.saveLocalState({ driveSyncMeta: meta });
   }
 
-  async function applyDrivePatches(patches) {
-    if (patches.syncOptions) {
-      await storage.saveSyncOptions(patches.syncOptions);
-      applyCacheOptions(await storage.loadSyncOptions());
-    }
-    if (patches.profiles) {
-      await storage.saveProfiles(patches.profiles.map, patches.profiles.meta);
-    }
-    if (patches.localState) {
-      var currentLocal = await storage.loadLocalState();
-      await storage.saveLocalState(Object.assign({}, currentLocal, patches.localState));
-    }
-    return buildState();
+  /**
+   * Stores the current Drive sync conflict state.
+   * @param {Object|null} conflict - Conflict details, or `null` to clear the pending conflict.
+   */
+  async function saveDrivePendingConflict(conflict) {
+    await storage.saveLocalState({ drivePendingConflict: conflict || null });
   }
 
+  /**
+   * Saves a local backup associated with a Drive synchronization operation.
+   * @param {Object} snapshot - Optional sync metadata, including timestamp, direction, and remote data.
+   * @return {Promise<string>} The saved backup identifier.
+   * @throws {Error} With code `backup_quota` when the backups exceed the safe local storage budget.
+   */
+  async function saveDriveBackup(snapshot) {
+    var state = await buildState();
+    var localState = await storage.loadLocalState();
+    var backups = Array.isArray(localState.driveSyncBackups) ? localState.driveSyncBackups.slice() : [];
+    var record = {
+      at: snapshot && snapshot.at || Date.now(),
+      direction: snapshot && snapshot.direction || "sync",
+      id: storage.makeId("drive-backup"),
+      localBackup: importExport.buildBackupEnvelope(state),
+      remoteEnvelope: snapshot && snapshot.remoteEnvelope || null
+    };
+    backups.push(record);
+    backups = backups.slice(-3);
+    if (storage.estimatePayloadBytes(backups) > 8 * 1024 * 1024) {
+      var quotaError = new Error("Drive sync backup would exceed the safe local storage budget.");
+      quotaError.code = "backup_quota";
+      throw quotaError;
+    }
+    await storage.saveLocalState({ driveSyncBackups: backups });
+    return record.id;
+  }
+
+  /**
+   * Persists the current Drive synchronization transaction for recovery.
+   * @param {Object} transaction - Transaction data to save.
+   */
+  async function saveDriveTransaction(transaction) {
+    await storage.saveLocalState({ driveSyncTxn: transaction });
+  }
+
+  /**
+   * Clears the persisted Drive synchronization transaction.
+   * @returns {Promise<void>} Resolves when the transaction state has been cleared.
+   */
+  async function clearDriveTransaction() {
+    await storage.saveLocalState({ driveSyncTxn: null });
+  }
+
+  /**
+   * Recovers a pending Drive sync transaction from its local backup.
+   * @return {boolean} `true` if the transaction was recovered, `false` if no transaction exists or its backup is unavailable.
+   */
+  async function recoverDriveTransaction() {
+    var localState = await storage.loadLocalState();
+    var transaction = localState.driveSyncTxn;
+    if (!transaction) {
+      return false;
+    }
+    var backups = Array.isArray(localState.driveSyncBackups) ? localState.driveSyncBackups : [];
+    var backup = backups.find(function(item) {
+      return item.id === transaction.backupRef;
+    });
+    if (!backup || !backup.localBackup) {
+      await storage.saveLocalState({
+        drivePendingConflict: {
+          at: Date.now(),
+          reason: "transaction_recovery_missing_backup",
+          transaction: transaction,
+          trigger: "recovery"
+        }
+      });
+      return false;
+    }
+    await importBackup({ envelope: backup.localBackup });
+    await storage.saveLocalState({
+      drivePendingConflict: {
+        at: Date.now(),
+        backupId: backup.id,
+        reason: "transaction_recovered",
+        trigger: "recovery"
+      },
+      driveSyncTxn: null
+    });
+    return true;
+  }
+
+  /**
+   * Records a Drive synchronization event in local history.
+   * @param {Object} payload - Synchronization details, including status, direction, and trigger information.
+   */
+  async function appendDriveAudit(payload) {
+    var localState = await storage.loadLocalState();
+    var record = history.createEventRecord({
+      action: "drive_sync",
+      debug: payload,
+      event: payload && payload.status === "conflict" || payload && payload.status === "failsafe" ? "error" : "info",
+      label: payload && payload.status || "sync",
+      result: payload && payload.direction || "sync",
+      triggeredBy: payload && payload.trigger || "drive"
+    });
+    await storage.saveLocalState({
+      eventHistory: history.appendHistory(localState.eventHistory, [record])
+    });
+  }
+
+  /**
+   * Creates persistence callbacks for Drive synchronization operations.
+   * @return {Object} Callbacks for recording audits, backups, metadata, patches, conflicts, options, and transactions.
+   */
+  function driveSyncCallbacks() {
+    return {
+      appendAudit: appendDriveAudit,
+      clearTransaction: clearDriveTransaction,
+      saveBackup: saveDriveBackup,
+      saveDriveMeta: saveDriveMeta,
+      savePatches: applyDrivePatches,
+      savePendingConflict: saveDrivePendingConflict,
+      saveSyncOptions: function(patch) {
+        return storage.saveSyncOptions(patch);
+      },
+      saveTransaction: saveDriveTransaction
+    };
+  }
+
+  /**
+   * Applies state patches received from Drive synchronization and returns the updated application state.
+   * @param {Object} patches - Drive synchronization patches for sync options, profiles, and local state.
+   * @returns {Object} The rebuilt application state after applying the patches.
+   */
+  async function applyDrivePatches(patches) {
+    driveApplyingPatches = true;
+    try {
+      if (patches.syncOptions) {
+        await storage.saveSyncOptions(patches.syncOptions);
+        applyCacheOptions(await storage.loadSyncOptions());
+      }
+      if (patches.profiles) {
+        await storage.saveProfiles(patches.profiles.map, patches.profiles.meta);
+      }
+      if (patches.localState) {
+        var currentLocal = await storage.loadLocalState();
+        await storage.saveLocalState(Object.assign({}, currentLocal, patches.localState));
+      }
+      return buildState();
+    } finally {
+      driveApplyingPatches = false;
+    }
+  }
+
+  /**
+   * Reschedules the periodic Drive synchronization alarm based on the current sync options.
+   */
   async function rescheduleDriveSyncAlarm() {
     if (!hasChromeMethod(chrome.alarms, "clear") || !hasChromeMethod(chrome.alarms, "create")) {
       return;
     }
     await chromeCall(chrome.alarms, "clear", [driveSyncAlarmName]);
     var options = await storage.loadSyncOptions();
-    if (!options.driveSync) {
+    if (!options.driveSync || !options.driveTimeBasedSync) {
       return;
     }
     var minutes = Math.max(15, Number(options.driveAutoSyncIntervalMinutes) || 60);
-    chrome.alarms.create(driveSyncAlarmName, { periodInMinutes: minutes });
+    chrome.alarms.create(driveSyncAlarmName, {
+      delayInMinutes: minutes,
+      periodInMinutes: minutes
+    });
   }
 
-  async function runAutoDriveSync() {
+  /**
+   * Maps a Drive sync overwrite strategy to its synchronization direction.
+   * @param {string} strategy - The configured overwrite strategy.
+   * @return {string} `"push"` for remote overwrite, `"pull"` for local overwrite, or `"sync"` otherwise.
+   */
+  function driveDirectionForStrategy(strategy) {
+    if (strategy === "overwrite_remote") {
+      return "push";
+    }
+    if (strategy === "overwrite_local") {
+      return "pull";
+    }
+    return "sync";
+  }
+
+  /**
+   * Determines whether an automatic Drive synchronization may run for the specified trigger.
+   * @param {string} trigger - The synchronization trigger: `"periodic"`, `"change"`, or `"startup"`.
+   * @return {Object|null} The current sync options when synchronization is allowed, otherwise `null`.
+   */
+  async function canRunAutomaticDriveSync(trigger) {
+    var options = await storage.loadSyncOptions();
+    var localState = await storage.loadLocalState();
+    if (!options.driveSync || localState.drivePendingConflict || localState.driveSyncTxn) {
+      return null;
+    }
+    if (trigger === "periodic" && !options.driveTimeBasedSync) {
+      return null;
+    }
+    if (trigger === "change" && !options.driveChangeBasedSync) {
+      return null;
+    }
+    if (trigger === "startup" && !options.driveSyncOnStartup) {
+      return null;
+    }
+    return options;
+  }
+
+  /**
+   * Schedules a debounced automatic Drive sync for change-triggered updates when enabled.
+   */
+  async function scheduleDriveChangeSync() {
+    var options = await canRunAutomaticDriveSync("change");
+    if (!options) {
+      return;
+    }
+    if (driveChangeSyncTimer) {
+      clearTimeout(driveChangeSyncTimer);
+    }
+    driveChangeSyncTimer = setTimeout(function() {
+      driveChangeSyncTimer = null;
+      var clearAlarm = hasChromeMethod(chrome.alarms, "clear")
+        ? chromeCall(chrome.alarms, "clear", [driveChangeSyncAlarmName])
+        : Promise.resolve();
+      clearAlarm.then(function() {
+        return runAutoDriveSync("change");
+      }).catch(function(error) {
+        logger.error("drive_change_sync_failed", { message: error && error.message });
+      });
+    }, 5000);
+    if (hasChromeMethod(chrome.alarms, "clear") && hasChromeMethod(chrome.alarms, "create")) {
+      await chromeCall(chrome.alarms, "clear", [driveChangeSyncAlarmName]);
+      chrome.alarms.create(driveChangeSyncAlarmName, { delayInMinutes: 0.5 });
+    }
+  }
+
+  /**
+   * Schedule a delayed startup-triggered Drive sync when automatic synchronization is available.
+   */
+  async function scheduleDriveStartupSync() {
+    var options = await canRunAutomaticDriveSync("startup");
+    if (!options || !hasChromeMethod(chrome.alarms, "create")) {
+      return;
+    }
+    chrome.alarms.create(driveStartupSyncAlarmName, { delayInMinutes: 0.5 });
+  }
+
+  /**
+   * Runs a background Drive synchronization for the specified automatic-sync trigger.
+   * @param {string} [trigger="periodic"] - The event that initiated synchronization.
+   * @return {Object|undefined} The synchronization result, or a cancellation object when automatic synchronization is paused.
+   */
+  async function runAutoDriveSync(trigger) {
+    var source = trigger || "periodic";
+    var options = await canRunAutomaticDriveSync(source);
+    if (!options) {
+      return { status: "cancelled", reason: "automatic_sync_paused" };
+    }
     try {
-      await driveSync.syncDrive({
-        direction: "sync",
+      var result = await driveSync.syncDrive(Object.assign({
+        direction: driveDirectionForStrategy(options.driveSyncStrategy),
         interactive: false,
         loadContext: loadDriveContext,
-        saveDriveMeta: saveDriveMeta,
-        savePatches: applyDrivePatches,
-        saveSyncOptions: function(patch) {
-          return storage.saveSyncOptions(patch);
-        }
-      });
+        trigger: source
+      }, driveSyncCallbacks()));
       await storage.saveSyncOptions({
         driveAuthStatus: "authorized",
         lastDriveSyncError: null
       });
+      return result;
     } catch (error) {
       var normalized = driveSync && typeof driveSync.normalizeDriveError === "function"
         ? driveSync.normalizeDriveError(error, "sync_failed")
@@ -1734,6 +2008,13 @@ importScripts(
     };
   }
 
+  /**
+   * Assigns an extension to a profile, removing it from other profiles first.
+   * @param {string} extensionId - The extension identifier to assign.
+   * @param {string} profileName - The target profile name, or an empty value to remove the extension from all profiles.
+   * @returns {Promise<Object>} The updated extension state.
+   * @throws {Error} If the extension identifier is missing or the profile does not exist.
+   */
   async function assignExtensionProfile(extensionId, profileName) {
     if (!extensionId) {
       throw new Error("Missing extension id.");
@@ -1762,27 +2043,38 @@ importScripts(
     return buildState();
   }
 
+  /**
+   * Uninstall an extension and return the updated application state.
+   * @param {string} extensionId - The ID of the extension to uninstall.
+   * @return {Promise<Object>} The updated application state.
+   */
   async function runUninstallExtension(extensionId) {
     await uninstallExtension(extensionId);
     return buildState();
   }
 
+  /**
+   * Runs a Drive synchronization and returns the synchronization result with updated application state.
+   * @param {Object} [message] - Synchronization options, including direction, conflict resolution, selected file, and confirmation settings.
+   * @returns {Promise<Object>} An object containing the synchronization result and updated application state.
+   * @throws {Error} Re-throws synchronization errors after recording the failure status.
+   */
   async function syncDriveNow(message) {
     var payload = message || {};
     var direction = payload.direction || "sync";
     logger.info("drive_sync_started", { direction: direction });
     try {
-      var result = await driveSync.syncDrive({
+      var result = await driveSync.syncDrive(Object.assign({
         direction: direction,
         interactive: payload.interactive !== false,
         loadContext: loadDriveContext,
+        confirmationToken: payload.confirmationToken || null,
+        overrideFailsafe: !!payload.overrideFailsafe,
+        requireConfirmation: !!payload.requireConfirmation,
         resolution: payload.resolution || null,
-        saveDriveMeta: saveDriveMeta,
-        savePatches: applyDrivePatches,
-        saveSyncOptions: function(patch) {
-          return storage.saveSyncOptions(patch);
-        }
-      });
+        selectedFileId: payload.selectedFileId || null,
+        trigger: payload.trigger || "manual"
+      }, driveSyncCallbacks()));
       if (result.status !== "conflict") {
         await rescheduleDriveSyncAlarm();
       }
@@ -1812,6 +2104,73 @@ importScripts(
     }
   }
 
+  /**
+   * Preview the changes that a Drive synchronization would apply.
+   * @param {Object} [message] - Sync options, including direction, conflict resolution, or a selected Drive file.
+   * @returns {Object} The Drive synchronization preview result.
+   */
+  async function previewDriveSync(message) {
+    var payload = message || {};
+    return await driveSync.syncDrive(Object.assign({
+      direction: payload.direction || "sync",
+      interactive: true,
+      loadContext: loadDriveContext,
+      preview: true,
+      resolution: payload.resolution || null,
+      selectedFileId: payload.selectedFileId || null,
+      trigger: "preview"
+    }, driveSyncCallbacks()));
+  }
+
+  /**
+   * Restores a saved Drive synchronization backup and clears pending recovery data.
+   * @param {Object} [message] - Optional request containing the backup identifier to restore.
+   * @returns {Object} The restored backup ID, restoration timestamp, and resulting application state.
+   * @throws {Error} If the requested or latest backup is unavailable.
+   */
+  async function restoreDriveSyncBackup(message) {
+    var localState = await storage.loadLocalState();
+    var backups = Array.isArray(localState.driveSyncBackups) ? localState.driveSyncBackups : [];
+    var requestedId = message && message.backupId;
+    var backup = requestedId
+      ? backups.find(function(item) { return item.id === requestedId; })
+      : backups[backups.length - 1];
+    if (!backup || !backup.localBackup) {
+      throw new Error("No Drive sync backup is available to restore.");
+    }
+    var restored = await importBackup({ envelope: backup.localBackup });
+    await storage.saveLocalState({ drivePendingConflict: null, driveSyncTxn: null });
+    return {
+      backupId: backup.id,
+      restoredAt: Date.now(),
+      state: restored.state
+    };
+  }
+
+  /**
+   * Selects the Drive file used for synchronization and clears its cached version metadata and pending conflict.
+   * @param {Object} message - Message containing the selected Drive file ID.
+   * @returns {Promise<Object>} The selected `fileId` and updated application state.
+   * @throws {Error} If a Drive file ID is not provided.
+   */
+  async function selectDriveSyncFile(message) {
+    if (!message || !message.fileId) {
+      throw new Error("A Drive file ID is required.");
+    }
+    var localState = await storage.loadLocalState();
+    var meta = driveSync.normalizeDriveMeta(localState.driveSyncMeta);
+    meta.fileId = String(message.fileId);
+    meta.fileModifiedTime = null;
+    meta.fileSize = null;
+    meta.fileVersion = null;
+    await storage.saveLocalState({ drivePendingConflict: null, driveSyncMeta: meta });
+    return { fileId: meta.fileId, state: await buildState() };
+  }
+
+  /**
+   * Retrieves the current Drive sync status.
+   * @returns {Promise<Object>} An object containing the current Drive sync status.
+   */
   async function getDriveSyncStatusNow() {
     return {
       status: await driveSync.getDriveSyncStatus({
@@ -1951,6 +2310,12 @@ importScripts(
     delete tabRuleApplications[tabId];
   }
 
+  /**
+   * Evaluates URL rules for a tab and applies the resulting extension state changes.
+   * @param {string} url - The tab URL to evaluate.
+   * @param {?number} tabId - The tab identifier used to track rule applications for close-time handling.
+   * @return {Object} The updated extension state.
+   */
   async function evaluateRulesForUrl(url, tabId) {
     var current = await loadContext();
     var analysis = urlRules.analyzeUrl(url, current.localState.urlRules);
@@ -2014,6 +2379,11 @@ importScripts(
     );
   }
 
+  /**
+   * Schedules debounced URL rule evaluation for a supported tab URL.
+   * @param {number} tabId - The tab whose URL rules should be evaluated.
+   * @param {string} url - The URL to evaluate.
+   */
   function scheduleRuleEvaluation(tabId, url) {
     if (urlEvaluationTimers[tabId]) {
       clearTimeout(urlEvaluationTimers[tabId]);
@@ -2032,6 +2402,12 @@ importScripts(
     }, 300);
   }
 
+  /**
+   * Routes a background message to its supported state, backup, dashboard, extension, or Drive operation.
+   * @param {Object} message - Message containing a supported `type` and operation-specific fields.
+   * @return {Promise<Object>} The operation-specific response.
+   * @throws {Error} If the message type is unsupported or the operation fails.
+   */
   async function handleMessage(message) {
     switch (message.type) {
       case "APPLY_PROFILE":
@@ -2073,6 +2449,12 @@ importScripts(
         };
       case "GET_DRIVE_SYNC_STATUS":
         return await getDriveSyncStatusNow();
+      case "PREVIEW_DRIVE_SYNC":
+        return { preview: await previewDriveSync(message) };
+      case "RESTORE_DRIVE_SYNC_BACKUP":
+        return await restoreDriveSyncBackup(message);
+      case "SELECT_DRIVE_SYNC_FILE":
+        return await selectDriveSyncFile(message);
       case "SET_DRIVE_WEB_CLIENT_ID":
         await new Promise(function(resolve) {
           chrome.storage.local.set({ driveWebClientIdOverride: message.clientId || "" }, resolve);
@@ -2083,8 +2465,11 @@ importScripts(
         return { report: await driveSync.testDriveConnection({ loadContext: loadDriveContext }) };
       case "RESOLVE_DRIVE_CONFLICT":
         return await syncDriveNow({
+          confirmationToken: message.confirmationToken,
           direction: "sync",
           interactive: false,
+          overrideFailsafe: !!message.overrideFailsafe,
+          requireConfirmation: true,
           resolution: message.resolution
         });
       case "SYNC_DRIVE":
@@ -2104,6 +2489,12 @@ importScripts(
     }
   }
 
+  /**
+   * Runs available data migrations during extension initialization.
+   *
+   * Legacy local-storage migration failures are logged and skipped; subsequent
+   * migrations continue to run.
+   */
   async function runMigrations() {
     try {
       await migrations.migrateLegacyLocalStorage();
@@ -2117,16 +2508,23 @@ importScripts(
     if (migrations.migrateSyncModesAndDismissals) {
       await migrations.migrateSyncModesAndDismissals();
     }
+    if (migrations.migrateDriveSyncRemediation) {
+      await migrations.migrateDriveSyncRemediation();
+    }
   }
 
   addChromeListener(chrome.runtime && chrome.runtime.onInstalled, function() {
-    runMigrations().catch(function(error) {
+    runMigrations().then(function() {
+      return scheduleDriveStartupSync();
+    }).catch(function(error) {
       logger.error("migration_failed", { message: error && error.message });
     });
   });
 
   addChromeListener(chrome.runtime && chrome.runtime.onStartup, function() {
-    runMigrations().catch(function(error) {
+    runMigrations().then(function() {
+      return scheduleDriveStartupSync();
+    }).catch(function(error) {
       logger.error("startup_migration_failed", { message: error && error.message });
     });
   });
@@ -2393,8 +2791,19 @@ importScripts(
       });
       return;
     }
-    if (alarm.name === driveSyncAlarmName) {
-      runAutoDriveSync().catch(function(error) {
+    if (alarm.name === driveSyncAlarmName || alarm.name === driveChangeSyncAlarmName || alarm.name === driveStartupSyncAlarmName) {
+      var trigger = alarm.name === driveChangeSyncAlarmName
+        ? "change"
+        : alarm.name === driveStartupSyncAlarmName ? "startup" : "periodic";
+      if (trigger === "change" && driveChangeSyncTimer) {
+        clearTimeout(driveChangeSyncTimer);
+        driveChangeSyncTimer = null;
+      }
+      runAutoDriveSync(trigger).then(function() {
+        if (trigger === "change" && hasChromeMethod(chrome.alarms, "clear")) {
+          return chromeCall(chrome.alarms, "clear", [driveChangeSyncAlarmName]);
+        }
+      }).catch(function(error) {
         logger.error("drive_sync_alarm_failed", { message: error && error.message });
       });
     }
@@ -2403,7 +2812,11 @@ importScripts(
   runMigrations().then(function() {
     return initializeSyncRevisionMarkers();
   }).then(function() {
+    return recoverDriveTransaction();
+  }).then(function() {
     return rescheduleDriveSyncAlarm();
+  }).then(function() {
+    return scheduleDriveStartupSync();
   }).catch(function(error) {
     logger.error("initial_migration_failed", { message: error && error.message });
   });

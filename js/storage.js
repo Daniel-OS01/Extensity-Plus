@@ -7,6 +7,12 @@
     driveSync: false,
     driveAutoSyncIntervalMinutes: 60,
     driveAuthStatus: "unknown",
+    driveChangeBasedSync: false,
+    driveFailsafeEnabled: true,
+    driveFailsafeThresholdPercent: 20,
+    driveSyncOnStartup: false,
+    driveSyncStrategy: "merge",
+    driveTimeBasedSync: true,
     driveSyncCategories: {
       aliases: true,
       groups: true,
@@ -25,7 +31,6 @@
     keepAlwaysOn: true,
     lastDriveSync: null,
     lastDriveSyncError: null,
-    drivePendingConflict: null,
     localProfiles: false,
     migration: "1.4.0",
     profileExtensionSide: "right",
@@ -33,6 +38,7 @@
     migration_2_0_0: null,
     migration_popupListStyle: null,
     migration_syncModes: null,
+    migration_driveSyncStrategies: null,
     profileDisplay: "landscape",
     profileLayoutDirection: "ltr",
     profileNameDirection: "ltr",
@@ -85,10 +91,18 @@
     groups: {},
     lastSyncError: null,
     driveSyncMeta: {
+      baselineCategories: {},
       categoryTimestamps: {},
+      envelopeVersion: null,
       fileId: null,
+      fileModifiedTime: null,
+      fileSize: null,
+      fileVersion: null,
       lastMergedAt: {}
     },
+    drivePendingConflict: null,
+    driveSyncBackups: [],
+    driveSyncTxn: null,
     reminderQueue: [],
     recentlyUsed: [],
     toolbarPins: [],
@@ -126,6 +140,11 @@
     return profileNames.indexOf(name) !== -1;
   }
 
+  /**
+   * Extract the reserved profile memberships from a profile map.
+   * @param {Object} profileMap - A profile membership map.
+   * @return {Object} A map containing each reserved profile name with deduplicated memberships.
+   */
   function pickReservedProfileMap(profileMap) {
     var source = isObject(profileMap) ? profileMap : {};
     var result = {};
@@ -135,10 +154,21 @@
     return result;
   }
 
+  /**
+   * Estimates the serialized storage size of a normalized profile membership map.
+   * @param {Object} profileMap - Profile names mapped to arrays of item identifiers.
+   * @return {number} The estimated payload size in bytes.
+   */
   function estimateProfilesPayloadBytes(profileMap) {
     return estimateStorageEntryBytes("profiles", normalizeProfileMap(profileMap));
   }
 
+  /**
+   * Builds the profile payload for synchronization according to the selected sync mode and payload size.
+   * @param {Object} profileMap - The profile membership map to synchronize.
+   * @param {string} syncMode - The synchronization mode: `"full"`, `"smart"`, or `"minimal"`.
+   * @return {Object} An object containing `membershipsLocal`, `partial`, and the profiles to synchronize.
+   */
   function buildSyncProfilePayload(profileMap, syncMode) {
     var normalized = normalizeProfileMap(profileMap);
     var mode = normalizeSyncMode(syncMode);
@@ -171,6 +201,12 @@
     };
   }
 
+  /**
+   * Merges local and synchronized profile memberships by profile name.
+   * @param {Object} localMap - The local profile membership map.
+   * @param {Object} syncMap - The synchronized profile membership map.
+   * @returns {Object} A normalized profile map containing deduplicated memberships from both sources.
+   */
   function mergeProfileMaps(localMap, syncMap) {
     var merged = normalizeProfileMap(localMap);
     var syncSource = isObject(syncMap) ? syncMap : {};
@@ -178,11 +214,17 @@
       if (!name) {
         return;
       }
-      merged[name] = uniqueArray(syncSource[name]);
+      merged[name] = uniqueArray((merged[name] || []).concat(syncSource[name] || []));
     });
     return merged;
   }
 
+  /**
+   * Merges local and synchronized metadata for each profile.
+   * @param {Object} localMeta - Local profile metadata.
+   * @param {Object} syncMeta - Synchronized profile metadata, whose values take precedence.
+   * @return {Object} The merged profile metadata map.
+   */
   function mergeProfileMetaMaps(localMeta, syncMeta) {
     var localValue = isObject(localMeta) ? localMeta : {};
     var syncValue = isObject(syncMeta) ? syncMeta : {};

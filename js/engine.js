@@ -126,6 +126,11 @@
     }, 0);
   }
 
+  /**
+   * Reads a file as text.
+   * @param {File|Blob} file - The file to read.
+   * @return {Promise<string>} The file contents.
+   */
   function readFileAsText(file) {
     return new Promise(function(resolve, reject) {
       var reader = new FileReader();
@@ -139,6 +144,12 @@
     });
   }
 
+  /**
+   * Manages dismissed item identifiers and persists dismissal changes.
+   *
+   * Loads previously dismissed identifiers on construction and exposes observable
+   * state with methods for adding and checking dismissals.
+   */
   function DismissalsCollection() {
     var self = this;
     self.dismissals = ko.observableArray([]);
@@ -177,6 +188,10 @@
     }
   }
 
+  /**
+   * Creates an observable collection of synchronized options.
+   * @param {Object} initialState - Initial option values and any pending Drive conflict state.
+   */
   function OptionsCollection(initialState) {
     var self = this;
     var defaults = root.ExtensityStorage.getSyncDefaults();
@@ -186,12 +201,14 @@
     self.keys.forEach(function(key) {
       self[key] = ko.observable(state[key]);
     });
+    self.drivePendingConflict = ko.observable(state.drivePendingConflict || null);
 
     self.apply = function(nextState) {
       var merged = root.ExtensityStorage.mergeDefaults(defaults, nextState || {});
       self.keys.forEach(function(key) {
         self[key](merged[key]);
       });
+      self.drivePendingConflict(nextState && nextState.drivePendingConflict || null);
     };
 
     self.toJS = function() {
@@ -981,13 +998,29 @@
     testDriveConnection: function() {
       return chromeMessage({ type: "TEST_DRIVE_CONNECTION" });
     },
-    resolveDriveConflict: function(resolution) {
+    previewDriveSync: function(options) {
+      return chromeMessage(Object.assign({ type: "PREVIEW_DRIVE_SYNC" }, options || {}));
+    },
+    restoreDriveSyncBackup: function(backupId) {
+      return chromeMessage({ backupId: backupId || null, type: "RESTORE_DRIVE_SYNC_BACKUP" });
+    },
+    selectDriveSyncFile: function(fileId) {
+      return chromeMessage({ fileId: fileId, type: "SELECT_DRIVE_SYNC_FILE" });
+    },
+    resolveDriveConflict: async function(resolution, overrideFailsafe) {
+      var previewPayload = await chromeMessage({
+        direction: "sync",
+        resolution: resolution,
+        type: "PREVIEW_DRIVE_SYNC"
+      });
       return chromeMessage({
+        confirmationToken: previewPayload.preview.confirmationToken,
+        overrideFailsafe: !!overrideFailsafe,
         resolution: resolution,
         type: "RESOLVE_DRIVE_CONFLICT"
       });
     },
-    syncDrive: function(options) {
+    syncDrive: async function(options) {
       var payload = { type: "SYNC_DRIVE" };
       if (options) {
         if (options.direction) {
@@ -996,6 +1029,12 @@
         if (options.interactive === false) {
           payload.interactive = false;
         }
+      }
+      if (payload.direction === "push" || payload.direction === "pull") {
+        var previewPayload = await chromeMessage(Object.assign({}, payload, { type: "PREVIEW_DRIVE_SYNC" }));
+        payload.confirmationToken = previewPayload.preview.confirmationToken;
+        payload.overrideFailsafe = !!(options && options.overrideFailsafe);
+        payload.requireConfirmation = true;
       }
       return chromeMessage(payload);
     },

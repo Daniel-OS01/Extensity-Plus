@@ -153,6 +153,12 @@
     return estimateStorageEntryBytes("profiles", normalizeProfileMap(profileMap));
   }
 
+  /**
+   * Builds the profile payload for synchronization according to the selected sync mode and payload size.
+   * @param {Object} profileMap - The profile membership map to synchronize.
+   * @param {string} syncMode - The synchronization mode: `"full"`, `"smart"`, or `"minimal"`.
+   * @return {Object} An object containing `membershipsLocal`, `partial`, and the profiles to synchronize.
+   */
   function buildSyncProfilePayload(profileMap, syncMode) {
     var normalized = normalizeProfileMap(profileMap);
     var mode = normalizeSyncMode(syncMode);
@@ -185,6 +191,12 @@
     };
   }
 
+  /**
+   * Merges local and synchronized profile memberships by profile name.
+   * @param {Object} localMap - The local profile membership map.
+   * @param {Object} syncMap - The synchronized profile membership map.
+   * @returns {Object} A normalized profile map containing deduplicated memberships from both sources.
+   */
   function mergeProfileMaps(localMap, syncMap) {
     var merged = normalizeProfileMap(localMap);
     var syncSource = isObject(syncMap) ? syncMap : {};
@@ -197,6 +209,12 @@
     return merged;
   }
 
+  /**
+   * Merges local and synchronized metadata for each profile.
+   * @param {Object} localMeta - Local profile metadata.
+   * @param {Object} syncMeta - Synchronized profile metadata, whose values take precedence.
+   * @return {Object} The merged profile metadata map.
+   */
   function mergeProfileMetaMaps(localMeta, syncMeta) {
     var localValue = isObject(localMeta) ? localMeta : {};
     var syncValue = isObject(syncMeta) ? syncMeta : {};

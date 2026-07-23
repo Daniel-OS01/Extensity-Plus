@@ -177,6 +177,10 @@
     }
   }
 
+  /**
+   * Creates an observable collection of synchronized options.
+   * @param {Object} initialState - Initial option values and any pending Drive conflict state.
+   */
   function OptionsCollection(initialState) {
     var self = this;
     var defaults = root.ExtensityStorage.getSyncDefaults();

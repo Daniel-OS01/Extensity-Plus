@@ -96,6 +96,10 @@
     return true;
   }
 
+  /**
+   * Migrates the legacy popup list preference to the current sync storage format.
+   * @return {boolean} `true` if the migration ran, `false` if it was already completed.
+   */
   async function migratePopupListStyle() {
     await storage.ensureSyncDefaults();
     var syncValues = await storage.getArea("sync", [
@@ -123,6 +127,10 @@
     return true;
   }
 
+  /**
+   * Migrates sync modes and dismissals to the current storage model.
+   * @return {boolean} `true` if the migration runs, `false` if it was already completed.
+   */
   async function migrateSyncModesAndDismissals() {
     await storage.ensureSyncDefaults();
     await storage.ensureLocalDefaults();
@@ -175,6 +183,10 @@
     return true;
   }
 
+  /**
+   * Migrates Drive Sync metadata and pending conflict state to the current storage format.
+   * @return {boolean} `true` if the migration ran, `false` if it was already completed.
+   */
   async function migrateDriveSyncRemediation() {
     await storage.ensureSyncDefaults();
     await storage.ensureLocalDefaults();

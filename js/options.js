@@ -91,6 +91,12 @@ document.addEventListener("DOMContentLoaded", function() {
     }));
   }
 
+  /**
+   * Normalize option values for consistent application and persistence.
+   * @param {Object} options - The option values to normalize.
+   * @param {Array<string>} allowedProfiles - Profile names permitted as the active profile.
+   * @return {Object} A normalized copy of the options, including validated enum and boolean values, default values, and constrained numeric settings.
+   */
   function normalizeOptionState(options, allowedProfiles) {
     var normalized = Object.assign({}, options || {});
     normalized.activeProfile = normalizeActiveProfile(normalized.activeProfile, allowedProfiles);
@@ -298,6 +304,10 @@ document.addEventListener("DOMContentLoaded", function() {
     return bindings;
   }
 
+  /**
+   * Attach Google Drive sync state, status labels, conflict handling, and synchronization actions to a view model.
+   * @param {Object} self - The view model to augment with Drive sync observables and methods.
+   */
   function attachDriveSyncMethods(self) {
     self.driveCategoryChecked = buildDriveCategoryChecked(self);
     self.driveConfiguredLabel = ko.observable("");

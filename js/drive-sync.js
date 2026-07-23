@@ -125,12 +125,22 @@
     return normalized;
   }
 
+  /**
+   * Lists the enabled synchronization categories.
+   * @param {Object} flags - Category enablement flags.
+   * @return {string[]} The enabled category IDs.
+   */
   function enabledCategoryList(flags) {
     return CATEGORY_IDS.filter(function(id) {
       return !!normalizeCategoryFlags(flags)[id];
     });
   }
 
+  /**
+   * Normalize Drive synchronization metadata into a consistent structure.
+   * @param {*} meta - The metadata to normalize.
+   * @return {Object} A normalized metadata object with cloned category timestamps, baseline categories, and merge times.
+   */
   function normalizeDriveMeta(meta) {
     var source = isObject(meta) ? meta : {};
     return {
@@ -145,6 +155,13 @@
     };
   }
 
+  /**
+   * Records the update time for a synchronization category.
+   * @param {Object} meta - Drive synchronization metadata to normalize and update.
+   * @param {string} categoryId - Category whose timestamp should be recorded.
+   * @param {number} [timestamp] - Timestamp to store; defaults to the current time.
+   * @return {Object} Updated Drive synchronization metadata.
+   */
   function bumpCategoryTimestamp(meta, categoryId, timestamp) {
     var next = normalizeDriveMeta(meta);
     var at = typeof timestamp === "number" ? timestamp : nowMs();
@@ -413,6 +430,13 @@
     throw new Error("Unknown Drive sync category: " + categoryId);
   }
 
+  /**
+   * Builds a versioned sync envelope for the enabled categories.
+   * @param {Object} context - Local sync context containing category data and Drive metadata.
+   * @param {Object} categoryFlags - Category enablement flags.
+   * @param {string} writerId - Identifier for the envelope writer.
+   * @return {Object} The envelope containing category data, timestamps, export time, version, and writer ID.
+   */
   function buildEnvelope(context, categoryFlags, writerId) {
     var enabled = enabledCategoryList(categoryFlags);
     var meta = normalizeDriveMeta(context.driveSyncMeta);
@@ -438,14 +462,30 @@
     return JSON.stringify(value);
   }
 
+  /**
+   * Determines whether two values have identical JSON representations.
+   * @param {*} left - The first value to compare.
+   * @param {*} right - The second value to compare.
+   * @return {boolean} `true` if both values serialize identically, `false` otherwise.
+   */
   function dataEqual(left, right) {
     return stableSerialize(left) === stableSerialize(right);
   }
 
+  /**
+   * Estimates the UTF-8 byte size of a serialized value.
+   * @param {*} value - The value to serialize and measure.
+   * @return {number} The estimated serialized size in bytes.
+   */
   function estimatePayloadBytes(value) {
     return unescape(encodeURIComponent(stableSerialize(value))).length;
   }
 
+  /**
+   * Computes a deterministic hexadecimal fingerprint for a sync envelope.
+   * @param {Object|null|undefined} envelope - The envelope to fingerprint.
+   * @return {string} The envelope's hexadecimal fingerprint.
+   */
   function envelopeFingerprint(envelope) {
     var text = JSON.stringify(envelope || null);
     var hash = 2166136261;
@@ -456,12 +496,23 @@
     return (hash >>> 0).toString(16);
   }
 
+  /**
+   * Create a short-lived token for confirming a Drive sync preview.
+   * @param {Object} details - Confirmation details associated with the token.
+   * @return {string} The generated confirmation token, valid for two minutes.
+   */
   function createPreviewConfirmation(details) {
     var token = "drive-preview-" + nowMs().toString(36) + "-" + Math.random().toString(36).slice(2);
     previewConfirmations[token] = Object.assign({ expiresAt: nowMs() + 2 * 60 * 1000 }, details);
     return token;
   }
 
+  /**
+   * Validates and consumes a Drive sync preview confirmation.
+   * @param {string} token - The confirmation token issued for the preview.
+   * @param {Object} expected - The current sync details that must match the preview.
+   * @throws {Error} If the token is missing, expired, already consumed, or does not match the expected sync details.
+   */
   function consumePreviewConfirmation(token, expected) {
     var record = token && previewConfirmations[token];
     delete previewConfirmations[token];
@@ -478,6 +529,11 @@
     }
   }
 
+  /**
+   * Stamp an envelope for its initial upload.
+   * @param {Object} envelope - The envelope to clone and timestamp.
+   * @return {Object} A cloned envelope with timestamps assigned to unstamped categories and the export time.
+   */
   function stampEnvelopeForInitialUpload(envelope) {
     var next = clone(envelope);
     var stampedAt = nowMs();
@@ -490,6 +546,12 @@
     return next;
   }
 
+  /**
+   * Converts category data into an item map keyed for comparison and merging.
+   * @param {string} categoryId - The category whose data should be mapped.
+   * @param {*} data - The category data to convert.
+   * @return {Object} An item map keyed by category-specific identifiers.
+   */
   function categoryItemMap(categoryId, data) {
     var result = {};
     if (categoryId === "options" || categoryId === "aliases") {
@@ -524,6 +586,13 @@
     return result;
   }
 
+  /**
+   * Reconstructs category data from an item map.
+   * @param {string} categoryId - The category whose data shape should be reconstructed.
+   * @param {Object} items - Item data keyed by category-specific identifiers.
+   * @param {Object} [template] - Optional group data used to preserve existing group order.
+   * @return {Object|Array} The reconstructed category data.
+   */
   function categoryDataFromItemMap(categoryId, items, template) {
     if (categoryId === "options" || categoryId === "aliases") {
       return clone(items);
@@ -560,6 +629,16 @@
     });
   }
 
+  /**
+   * Builds a merged envelope from local, remote, and baseline category data.
+   * @param {Object} localEnvelope - The current local envelope.
+   * @param {Object} remoteEnvelope - The remote envelope to compare.
+   * @param {Object} baselineCategories - Category snapshots from the last successful merge.
+   * @param {Object} categoryFlags - Flags identifying categories to include.
+   * @param {string} resolution - Conflict resolution mode; `"keep_remote"` selects remote values for conflicts, while other modes select local values.
+   * @param {string} writerId - Identifier for the envelope writer.
+   * @return {Object} An object containing item-level conflict records and the merged envelope.
+   */
   function buildThreeWayEnvelope(localEnvelope, remoteEnvelope, baselineCategories, categoryFlags, resolution, writerId) {
     var result = { categories: {}, exportedAt: nowMs(), version: ENVELOPE_VERSION, writerId: writerId || "" };
     var conflicts = [];
@@ -607,6 +686,13 @@
     return { conflicts: conflicts, envelope: result };
   }
 
+  /**
+   * Summarize item-level changes between two versions of a category.
+   * @param {string} categoryId - The category whose items are being compared.
+   * @param {*} beforeData - The earlier category data.
+   * @param {*} afterData - The later category data.
+   * @return {Object} Change counts, item counts, estimated payload sizes, category ID, and deletion percentage.
+   */
   function buildCategoryChange(categoryId, beforeData, afterData) {
     var before = categoryItemMap(categoryId, beforeData);
     var after = categoryItemMap(categoryId, afterData);
@@ -634,6 +720,13 @@
     };
   }
 
+  /**
+   * Summarize changes for each enabled synchronization category.
+   * @param {Object} beforeEnvelope - The envelope representing the earlier state.
+   * @param {Object} afterEnvelope - The envelope representing the later state.
+   * @param {Object} categoryFlags - Flags indicating which categories to include.
+   * @return {Array<Object>} Change summaries for the enabled categories.
+   */
   function buildChangeSummary(beforeEnvelope, afterEnvelope, categoryFlags) {
     var beforeCategories = beforeEnvelope && beforeEnvelope.categories || {};
     var afterCategories = afterEnvelope && afterEnvelope.categories || {};
@@ -646,6 +739,12 @@
     });
   }
 
+  /**
+   * Detects whether a category change exceeds the configured failsafe limits.
+   * @param {Array<Object>} summary - Category change summaries containing item counts and deletion statistics.
+   * @param {Object} [options] - Failsafe settings, including threshold and automatic-trigger behavior.
+   * @return {Object|null} The first violating category summary with its label and threshold, or `null` when no violation is found.
+   */
   function findFailsafeViolation(summary, options) {
     if (options && options.driveFailsafeEnabled === false) {
       return null;
@@ -673,6 +772,16 @@
     return null;
   }
 
+  /**
+   * Creates a structured record describing a pending Drive sync conflict.
+   * @param {Array} conflicts - Conflict details to include in the record.
+   * @param {Object|null} file - Remote Drive file metadata, if available.
+   * @param {Object} localEnvelope - Local envelope used to calculate the summary.
+   * @param {string} reason - Cause of the pending conflict.
+   * @param {string} trigger - Event that initiated the sync.
+   * @param {Object} details - Additional fields to merge into the record.
+   * @return {Object} The pending conflict record containing conflict, file, local summary, reason, and trigger data.
+   */
   function buildPendingConflict(conflicts, file, localEnvelope, reason, trigger, details) {
     return Object.assign({
       categories: clone(conflicts || []),
@@ -692,6 +801,13 @@
     }, details || {});
   }
 
+  /**
+   * Identifies enabled categories changed locally and remotely since the last merge.
+   * @param {Object} localMeta - Local Drive sync metadata containing category timestamps and merge timestamps.
+   * @param {Object} remoteEnvelope - Remote sync envelope containing category update timestamps.
+   * @param {Object} categoryFlags - Category enablement flags used to limit conflict detection.
+   * @return {Array<Object>} Conflict records containing the category ID, label, and local and remote update timestamps.
+   */
   function detectConflicts(localMeta, remoteEnvelope, categoryFlags) {
     var enabled = enabledCategoryList(categoryFlags);
     var mergedAt = normalizeDriveMeta(localMeta).lastMergedAt;
@@ -776,6 +892,13 @@
     return buildPatchesFromEnvelope(buildEnvelope(context, categoryFlags, ""), categoryFlags);
   }
 
+  /**
+   * Determines whether merged data differs from the reference envelope for any enabled category.
+   * @param {Object} mergedEnvelope - The envelope containing the merged category data.
+   * @param {Object} referenceEnvelope - The envelope containing the data to compare.
+   * @param {Object} categoryFlags - Category enablement flags.
+   * @return {boolean} `true` if any enabled category differs, `false` otherwise.
+   */
   function mergedDataDiffers(mergedEnvelope, referenceEnvelope, categoryFlags) {
     var enabled = enabledCategoryList(categoryFlags);
     var mergedCategories = mergedEnvelope && isObject(mergedEnvelope.categories) ? mergedEnvelope.categories : {};
@@ -789,6 +912,14 @@
     });
   }
 
+  /**
+   * Combines enabled categories from local and remote envelopes into a versioned envelope.
+   * @param {Object} localEnvelope - The local sync envelope.
+   * @param {Object} remoteEnvelope - The remote sync envelope.
+   * @param {Object} categoryFlags - Flags identifying categories to include.
+   * @param {string} writerId - Identifier of the envelope writer.
+   * @return {Object} The merged envelope with category data, timestamps, export time, version, and writer identifier.
+   */
   function buildMergedEnvelope(localEnvelope, remoteEnvelope, categoryFlags, writerId) {
     var enabled = enabledCategoryList(categoryFlags);
     var localCategories = localEnvelope && isObject(localEnvelope.categories) ? localEnvelope.categories : {};
@@ -833,6 +964,16 @@
     };
   }
 
+  /**
+   * Applies conflict resolutions to a merged synchronization envelope.
+   * @param {Object} localEnvelope - The local synchronization envelope.
+   * @param {Object} remoteEnvelope - The remote synchronization envelope.
+   * @param {Object} categoryFlags - Category enablement flags.
+   * @param {Array<Object>} conflicts - Conflicts identifying categories requiring resolution.
+   * @param {string} resolution - Resolution mode; `"keep_remote"` selects remote data, while other values select local data.
+   * @param {string} writerId - Identifier for the envelope writer.
+   * @return {Object} The merged envelope with resolved category data and an updated export timestamp.
+   */
   function buildResolvedEnvelope(localEnvelope, remoteEnvelope, categoryFlags, conflicts, resolution, writerId) {
     var merged = buildMergedEnvelope(localEnvelope, remoteEnvelope, categoryFlags, writerId);
     var localCategories = localEnvelope && localEnvelope.categories || {};
@@ -848,6 +989,14 @@
     return merged;
   }
 
+  /**
+   * Updates sync metadata after applying an envelope.
+   *
+   * @param {Object} localMeta - Current Drive sync metadata.
+   * @param {Object} envelope - Envelope whose category data becomes the sync baseline.
+   * @param {Object} categoryFlags - Flags identifying the categories to update.
+   * @return {Object} Updated metadata with category timestamps, baselines, and envelope version.
+   */
   function mergeEnvelopeAfterSync(localMeta, envelope, categoryFlags) {
     var meta = normalizeDriveMeta(localMeta);
     var mergedAt = meta.lastMergedAt;
@@ -868,6 +1017,11 @@
     return meta;
   }
 
+  /**
+   * Determines whether the manifest contains a configured OAuth client ID.
+   * @param {Object} manifest - Extension manifest containing OAuth configuration.
+   * @return {boolean} `true` if the OAuth client ID is present and not a placeholder, `false` otherwise.
+   */
   function isOAuthConfigured(manifest) {
     var oauth = manifest && manifest.oauth2;
     if (!oauth || !oauth.client_id) {
@@ -1399,6 +1553,11 @@
     throw createDriveError("sync_failed", "Google Drive request failed.");
   }
 
+  /**
+   * Selects the newest matching Drive sync file and reports duplicate candidates.
+   * @param {Array<Object>} files - Drive file metadata candidates.
+   * @return {Object|null} The newest matching file with its duplicate count, or `null` if no match exists.
+   */
   function selectNewestDriveFile(files) {
     var matches = (Array.isArray(files) ? files : []).filter(function(file) {
       return file && file.name === DRIVE_FILE_NAME && file.id;
@@ -1418,6 +1577,11 @@
     });
   }
 
+  /**
+   * Finds the newest Extensity sync file in the Drive app data folder.
+   * @param {Function} requestDriveApi - Performs an authenticated Drive API request.
+   * @return {Object|null} The newest matching file with any older matching files in `duplicates`, or `null` when none exist.
+   */
   async function findDriveFile(requestDriveApi) {
     var query = "name='" + DRIVE_FILE_NAME.replace(/'/g, "\\'") + "' and trashed=false";
     var result = await requestDriveApi(
@@ -1434,6 +1598,11 @@
     return selected;
   }
 
+  /**
+   * Retrieves metadata for a Drive sync file.
+   * @param {string} fileId - The Drive file identifier.
+   * @returns {Object|null} The file metadata, or `null` when no file ID is provided.
+   */
   async function getDriveFileMetadata(requestDriveApi, fileId) {
     if (!fileId) {
       return null;
@@ -1444,6 +1613,12 @@
     );
   }
 
+  /**
+   * Downloads and parses a Drive sync file.
+   * @param {string} fileId - The Drive file identifier.
+   * @return {Object|null} The parsed file contents, or `null` when the file is empty.
+   * @throws {Error} If the file contents are not valid JSON.
+   */
   async function downloadDriveFile(requestDriveApi, fileId) {
     var raw = await requestDriveApi(
       "/drive/v3/files/" + encodeURIComponent(fileId) + "?alt=media",
@@ -1459,6 +1634,12 @@
     }
   }
 
+  /**
+   * Creates the sync file in Google Drive's app data folder.
+   * @param {Function} requestDriveApi - Function used to make authenticated Drive API requests.
+   * @param {string} content - JSON content to store in the sync file.
+   * @returns {string} The created or safely reused Drive file ID.
+   */
   async function createDriveFile(requestDriveApi, content) {
     var generated = await requestDriveApi(
       "/drive/v3/files/generateIds?count=1&space=appDataFolder&fields=ids",
@@ -1518,6 +1699,12 @@
     }
   }
 
+  /**
+   * Update the contents of an existing Drive sync file.
+   * @param {string} fileId - The Drive file identifier.
+   * @param {string} content - The serialized JSON content to upload.
+   * @return {Object} The updated Drive file response.
+   */
   async function updateDriveFile(requestDriveApi, fileId, content) {
     return requestDriveApi(
       "/upload/drive/v3/files/" + encodeURIComponent(fileId) + "?uploadType=media&fields=id,modifiedTime,size,version",
@@ -1532,6 +1719,12 @@
     );
   }
 
+  /**
+   * Reads a remote Drive sync envelope and its file metadata.
+   * @param {Function} requestDriveApi - Drive API request function used to access the file.
+   * @param {string} fileId - Drive file ID to read.
+   * @return {{envelope: Object|null, file: Object|null}} The envelope and file metadata, or null values when the file ID is missing or the file cannot be found.
+   */
   async function readRemoteEnvelope(requestDriveApi, fileId) {
     if (!fileId) {
       return { envelope: null, file: null };
@@ -1550,6 +1743,12 @@
     }
   }
 
+  /**
+   * Writes an envelope to an existing Drive file or creates a new sync file.
+   * @param {string|null} fileId - The existing Drive file ID, or a falsy value to create a file.
+   * @param {Object} envelope - The envelope to serialize and store.
+   * @return {Object} Metadata for the written file, including its ID.
+   */
   async function writeRemoteEnvelope(requestDriveApi, fileId, envelope) {
     var serialized = JSON.stringify(envelope);
     if (fileId) {
@@ -1559,6 +1758,13 @@
     return await getDriveFileMetadata(requestDriveApi, createdId) || { id: createdId };
   }
 
+  /**
+   * Writes an envelope to Drive with concurrency protection and post-write content verification.
+   * @param {Function} requestDriveApi - Function used to make authenticated Drive API requests.
+   * @param {Object|null} file - Existing Drive file metadata, if available.
+   * @param {Object} envelope - Envelope to write and verify.
+   * @returns {Object} Metadata for the written Drive file.
+   */
   async function writeRemoteEnvelopeVerified(requestDriveApi, file, envelope) {
     var expectedVersion = file && file.version || null;
     if (file && file.id && expectedVersion != null) {
@@ -1581,6 +1787,12 @@
     return written;
   }
 
+  /**
+   * Creates a sync result with a status and creation timestamp.
+   * @param {string} status - The sync operation status.
+   * @param {Object} [details] - Additional result properties to include.
+   * @return {Object} The sync result containing the status, timestamp, and additional details.
+   */
   function buildSyncResult(status, details) {
     return Object.assign({
       status: status,
@@ -1588,6 +1800,13 @@
     }, details || {});
   }
 
+  /**
+   * Tests Drive authentication, connectivity, sync-file access, and optional conflict detection.
+   * @param {Object} [options] - Test configuration.
+   * @param {Function} [options.loadContext] - Loads local sync context for dry-run conflict detection.
+   * @param {Function} [options.sleep] - Delays retry attempts.
+   * @return {Object} A report containing the overall success state, timestamp, and per-step results.
+   */
   async function testDriveConnection(options) {
     var config = options || {};
     var report = {
@@ -1748,6 +1967,12 @@
     return report;
   }
 
+  /**
+   * Execute a Drive synchronization using the configured direction, conflict resolution, and safety checks.
+   * @param {Object} [options] - Synchronization configuration, including context-loading, patch-saving, metadata-saving, and optional backup or transaction callbacks.
+   * @return {Object} A synchronization result describing the status, changes, conflicts, and associated Drive file.
+   * @throws {Error} If Drive authentication is unavailable, required callbacks are missing, or synchronization fails.
+   */
   async function runSyncDrive(options) {
     var config = options || {};
     var manifest = chrome.runtime.getManifest();
@@ -2068,6 +2293,11 @@
     }
   }
 
+  /**
+   * Coordinates a Drive synchronization while preventing conflicting concurrent runs.
+   * @param {Object} [options] - Synchronization configuration, including direction, trigger, and conflict resolution settings.
+   * @return {Promise<Object>} The synchronization result.
+   */
   async function syncDrive(options) {
     if (activeSyncPromise) {
       if (options && (options.interactive !== false || options.trigger === "manual" || options.trigger === "preview")) {
@@ -2104,6 +2334,12 @@
     }
   }
 
+  /**
+   * Builds a status snapshot for Drive synchronization and the local sync state.
+   * @param {Object} [options] - Status options.
+   * @param {Function} [options.loadContext] - Loads the current extension context.
+   * @return {Object} The sync status, including category settings, authentication configuration, local and remote file metadata, pending conflicts, transactions, and backup availability.
+   */
   async function getDriveSyncStatus(options) {
     var manifest = chrome.runtime.getManifest();
     var loadContext = options && options.loadContext;

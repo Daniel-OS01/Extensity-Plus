@@ -361,6 +361,11 @@ document.addEventListener("DOMContentLoaded", function() {
     return "Drive sync error";
   }
 
+  /**
+   * Builds display-ready rows summarizing Google Drive synchronization status.
+   * @param {Object|null|undefined} status - Drive synchronization status data.
+   * @return {Array<Object>} Rows containing labels and formatted status values.
+   */
   function buildDriveStatusRows(status) {
     var normalized = status || {};
     return [
@@ -419,6 +424,9 @@ document.addEventListener("DOMContentLoaded", function() {
     return "Chrome extension OAuth is active. Brave fallback is not configured.";
   }
 
+  /**
+   * Create the dashboard's Knockout view model and initialize its state, actions, computed values, and synchronization controls.
+   */
   function DashboardViewModel() {
     var self = this;
     self.loading = ko.observable(true);

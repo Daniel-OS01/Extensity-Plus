@@ -140,6 +140,11 @@
     return profileNames.indexOf(name) !== -1;
   }
 
+  /**
+   * Extract the reserved profile memberships from a profile map.
+   * @param {Object} profileMap - A profile membership map.
+   * @return {Object} A map containing each reserved profile name with deduplicated memberships.
+   */
   function pickReservedProfileMap(profileMap) {
     var source = isObject(profileMap) ? profileMap : {};
     var result = {};

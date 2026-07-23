@@ -1081,6 +1081,12 @@ importScripts(
     };
   }
 
+  /**
+   * Builds the normalized, alphabetically sorted extension list for public state.
+   * @param {Array<Object>} items - Chrome management items to normalize.
+   * @param {Object} state - Current local state and profile data used to enrich each extension.
+   * @return {Array<Object>} Normalized extension records with metadata, groups, usage data, and status flags.
+   */
   function normalizeExtensions(items, state) {
     var aliases = state.localState.aliases || {};
     var counters = state.localState.usageCounters || {};
@@ -1318,6 +1324,11 @@ importScripts(
     );
   }
 
+  /**
+   * Applies a named profile and its always-on extensions.
+   * @param {string} profileName - The name of the profile to apply.
+   * @return {Object} The rebuilt extension state after applying the profile.
+   */
   async function runApplyProfile(profileName) {
     var current = await loadContext();
     var targetProfile = current.profiles.map[profileName];
@@ -1384,7 +1395,7 @@ importScripts(
   }
 
   /**
-   * Updates Drive synchronization timestamps for the specified categories and schedules a change-based sync.
+   * Updates Drive synchronization timestamps for the specified categories and schedules change-based synchronization.
    * @param {string[]} categoryIds - Category identifiers whose timestamps should be updated.
    */
   async function touchDriveCategories(categoryIds) {
@@ -1687,9 +1698,9 @@ importScripts(
   }
 
   /**
-   * Runs a background Drive synchronization when automatic synchronization is enabled.
+   * Runs a background Drive synchronization for the specified automatic-sync trigger.
    * @param {string} [trigger="periodic"] - The event that initiated synchronization.
-   * @return {Object|undefined} The synchronization result, a cancellation status when automatic synchronization is paused, or `undefined` when synchronization fails.
+   * @return {Object|undefined} The synchronization result, or a cancellation object when automatic synchronization is paused.
    */
   async function runAutoDriveSync(trigger) {
     var source = trigger || "periodic";
@@ -1997,6 +2008,13 @@ importScripts(
     };
   }
 
+  /**
+   * Assigns an extension to a profile, removing it from other profiles first.
+   * @param {string} extensionId - The extension identifier to assign.
+   * @param {string} profileName - The target profile name, or an empty value to remove the extension from all profiles.
+   * @returns {Promise<Object>} The updated extension state.
+   * @throws {Error} If the extension identifier is missing or the profile does not exist.
+   */
   async function assignExtensionProfile(extensionId, profileName) {
     if (!extensionId) {
       throw new Error("Missing extension id.");
@@ -2130,9 +2148,10 @@ importScripts(
   }
 
   /**
-   * Selects the Drive file used for synchronization and clears its cached version metadata.
+   * Selects the Drive file used for synchronization and clears its cached version metadata and pending conflict.
    * @param {Object} message - Message containing the selected Drive file ID.
-   * @returns {Promise<Object>} An object containing the selected `fileId` and updated application state.
+   * @returns {Promise<Object>} The selected `fileId` and updated application state.
+   * @throws {Error} If a Drive file ID is not provided.
    */
   async function selectDriveSyncFile(message) {
     if (!message || !message.fileId) {
@@ -2291,6 +2310,12 @@ importScripts(
     delete tabRuleApplications[tabId];
   }
 
+  /**
+   * Evaluates URL rules for a tab and applies the resulting extension state changes.
+   * @param {string} url - The tab URL to evaluate.
+   * @param {?number} tabId - The tab identifier used to track rule applications for close-time handling.
+   * @return {Object} The updated extension state.
+   */
   async function evaluateRulesForUrl(url, tabId) {
     var current = await loadContext();
     var analysis = urlRules.analyzeUrl(url, current.localState.urlRules);
@@ -2355,9 +2380,9 @@ importScripts(
   }
 
   /**
-   * Schedules URL rule evaluation for a tab after a short debounce period.
+   * Schedules debounced URL rule evaluation for a supported tab URL.
    * @param {number} tabId - The tab whose URL rules should be evaluated.
-   * @param {string} url - The tab URL to evaluate.
+   * @param {string} url - The URL to evaluate.
    */
   function scheduleRuleEvaluation(tabId, url) {
     if (urlEvaluationTimers[tabId]) {
@@ -2378,10 +2403,10 @@ importScripts(
   }
 
   /**
-   * Dispatch a background message to the corresponding state, backup, dashboard, extension, or Drive operation.
+   * Routes a background message to its supported state, backup, dashboard, extension, or Drive operation.
    * @param {Object} message - Message containing a supported `type` and operation-specific fields.
-   * @returns {Promise<Object>} The operation-specific response.
-   * @throws {Error} If the message type is unsupported or the selected operation fails.
+   * @return {Promise<Object>} The operation-specific response.
+   * @throws {Error} If the message type is unsupported or the operation fails.
    */
   async function handleMessage(message) {
     switch (message.type) {

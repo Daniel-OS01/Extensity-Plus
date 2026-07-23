@@ -341,6 +341,11 @@ document.addEventListener("DOMContentLoaded", function() {
     return "Enabled every " + (status.intervalMinutes || 60) + " minutes";
   }
 
+  /**
+   * Formats the most recent Drive synchronization time.
+   * @param {Object} status - Drive synchronization status data.
+   * @return {string} The formatted synchronization time, or `"Never"` when no synchronization has occurred.
+   */
   function formatDriveLastSync(status) {
     if (!status || !status.lastDriveSync) {
       return "Never";
@@ -397,6 +402,11 @@ document.addEventListener("DOMContentLoaded", function() {
     ];
   }
 
+  /**
+   * Builds a user-facing headline describing the current Google Drive sync state.
+   * @param {Object|null|undefined} status - Drive sync status information.
+   * @return {string} A headline describing the sync configuration, authorization, or readiness state.
+   */
   function buildDriveStatusHeadline(status) {
     if (!status) {
       return "Google Drive sync status unavailable.";

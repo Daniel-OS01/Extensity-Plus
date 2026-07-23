@@ -12,6 +12,10 @@
     return Boolean(value);
   }
 
+  /**
+   * Migrates legacy local storage settings into sync storage.
+   * @returns {boolean} `true` if the migration completes, `false` if local storage is unavailable or migration was already completed.
+   */
   async function migrateLegacyLocalStorage() {
     if (typeof localStorage === "undefined") {
       return false;
@@ -64,9 +68,9 @@
   }
 
   /**
-   * Migrates selected settings from sync storage to local state and records completion of the 2.0.0 migration.
+   * Moves selected settings from sync storage to local state and records completion of the 2.0.0 migration.
    * Existing local bulk-toggle restoration data takes precedence over migrated toggle data.
-   * @return {Promise<boolean>} `true` after the migration completes.
+   * @return {boolean} `true` after the migration completes.
    */
   async function migrateTo2_0_0() {
     await storage.ensureSyncDefaults();

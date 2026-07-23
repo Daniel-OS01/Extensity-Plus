@@ -86,6 +86,10 @@
     return !!config.drivePreferWebAuth || false;
   }
 
+  /**
+   * Retrieves the extension identifier and normalized installation type.
+   * @returns {Object} An object containing `extensionId` and `installType`.
+   */
   async function getExtensionEnvironment() {
     var extensionId = chrome.runtime && chrome.runtime.id ? chrome.runtime.id : "";
     if (!chrome.management || typeof chrome.management.getSelf !== "function") {
@@ -397,6 +401,14 @@
     };
   }
 
+  /**
+   * Merges local and remote options, preferring values from the newer source when conflicts occur.
+   * @param {Object} localData - The local options data.
+   * @param {Object} remoteData - The remote options data.
+   * @param {number} localUpdatedAt - The local update timestamp.
+   * @param {number} remoteUpdatedAt - The remote update timestamp.
+   * @return {Object} The merged options data.
+   */
   function mergeOptions(localData, remoteData, localUpdatedAt, remoteUpdatedAt) {
     var storage = getStorage();
     var local = isObject(localData) ? localData : {};
@@ -534,9 +546,8 @@
   }
 
   /**
-   * Persists the given preview confirmation map to durable storage.
-   * @param {Object} confirmations - The confirmation map to persist.
-   * @return {Promise<void>}
+   * Persists preview confirmation records to local storage.
+   * @param {Object} confirmations - The confirmation records to persist.
    */
   async function writePreviewConfirmations(confirmations) {
     await storageLocalSet((function() {
@@ -604,10 +615,10 @@
   }
 
   /**
-   * Converts category data into a comparison map using category-specific item keys.
-   * @param {string} categoryId - The category whose data should be mapped.
+   * Converts category data into an item map for comparison and merging.
+   * @param {string} categoryId - The category whose items should be mapped.
    * @param {*} data - The category data to convert.
-   * @return {Object} A map of category items keyed by property, membership, metadata, group, or item identifier.
+   * @return {Object} Items keyed by category-specific property, membership, metadata, group, or item identifiers.
    */
   function categoryItemMap(categoryId, data) {
     var result = {};
@@ -778,10 +789,10 @@
   }
 
   /**
-   * Summarize changes for each enabled synchronization category.
-   * @param {Object} beforeEnvelope - The envelope representing the earlier state.
-   * @param {Object} afterEnvelope - The envelope representing the later state.
-   * @param {Object} categoryFlags - Flags indicating which categories to include.
+   * Summarize data changes for each enabled synchronization category.
+   * @param {Object} beforeEnvelope - The earlier synchronization envelope.
+   * @param {Object} afterEnvelope - The later synchronization envelope.
+   * @param {Object} categoryFlags - Flags identifying enabled categories.
    * @return {Array<Object>} Change summaries for the enabled categories.
    */
   function buildChangeSummary(beforeEnvelope, afterEnvelope, categoryFlags) {
@@ -929,6 +940,12 @@
     }
   }
 
+  /**
+   * Builds local-state patches from the enabled categories in a sync envelope.
+   * @param {Object} envelope - The sync envelope containing category data.
+   * @param {Object} categoryFlags - Boolean flags indicating which categories to include.
+   * @return {Object} Patches for applying the enabled category data to local state.
+   */
   function buildPatchesFromEnvelope(envelope, categoryFlags) {
     var enabled = enabledCategoryList(categoryFlags);
     var patches = {};
@@ -976,12 +993,12 @@
   }
 
   /**
-   * Combines enabled categories from local and remote envelopes into a versioned envelope.
+   * Merges enabled category data from local and remote sync envelopes.
    * @param {Object} localEnvelope - The local sync envelope.
    * @param {Object} remoteEnvelope - The remote sync envelope.
    * @param {Object} categoryFlags - Flags identifying categories to include.
    * @param {string} writerId - Identifier of the envelope writer.
-   * @return {Object} The merged envelope with category data, timestamps, export time, version, and writer identifier.
+   * @return {Object} A versioned envelope containing merged categories, export time, and writer identifier.
    */
   function buildMergedEnvelope(localEnvelope, remoteEnvelope, categoryFlags, writerId) {
     var enabled = enabledCategoryList(categoryFlags);
@@ -1028,14 +1045,14 @@
   }
 
   /**
-   * Resolves category conflicts in a merged synchronization envelope.
+   * Resolves specified category conflicts in a synchronization envelope.
    * @param {Object} localEnvelope - The local synchronization envelope.
    * @param {Object} remoteEnvelope - The remote synchronization envelope.
    * @param {Object} categoryFlags - Category enablement flags.
    * @param {Array<Object>} conflicts - Conflicts identifying categories to resolve.
-   * @param {string} resolution - Resolution mode; `"keep_remote"` selects remote data, while other values select local data.
+   * @param {string} resolution - Resolution mode; `"keep_remote"` selects remote category data, while other values select local data.
    * @param {string} writerId - Identifier for the envelope writer.
-   * @return {Object} The resolved envelope with an updated export timestamp.
+   * @return {Object} The merged envelope with conflicting categories resolved and a refreshed export timestamp.
    */
   function buildResolvedEnvelope(localEnvelope, remoteEnvelope, categoryFlags, conflicts, resolution, writerId) {
     var merged = buildMergedEnvelope(localEnvelope, remoteEnvelope, categoryFlags, writerId);
@@ -1556,6 +1573,11 @@
     return response.json();
   }
 
+  /**
+   * Determines whether a Drive error is eligible for retry.
+   * @param {Error|Object} error - The error to classify.
+   * @return {boolean} `true` if the error has a retryable HTTP status or represents a network or timeout failure, `false` otherwise.
+   */
   function isRetryableDriveError(error) {
     var httpStatus = error && typeof error.httpStatus === "number" ? error.httpStatus : 0;
     return DRIVE_RETRYABLE_HTTP_STATUSES.indexOf(httpStatus) !== -1
@@ -1564,7 +1586,7 @@
   }
 
   /**
-   * Executes a Google Drive request with token refresh and retry handling.
+   * Executes a Google Drive request with automatic token refresh and retry handling.
    * @param {string} token - The initial authentication token.
    * @param {string} path - The Drive API request path.
    * @param {Object} [options] - Request and retry configuration.
@@ -1572,9 +1594,9 @@
    * @param {boolean} [options.interactive] - Whether token refresh may prompt for authentication.
    * @param {Function} [options.getFreshToken] - Callback that obtains a refreshed token.
    * @param {Function} [options.onTokenRefresh] - Callback invoked after the token is refreshed.
-   * @param {Function} [options.sleep] - Delay callback used between retries.
-   * @returns {*} The Drive API response.
-   * @throws {Object} The final request error when retries are exhausted or the error is not retryable.
+   * @param {Function} [options.sleep] - Callback used to delay retry attempts.
+   * @return {*} The Drive API response.
+   * @throws {Error} The request error when authentication refresh or retries cannot recover it.
    */
   async function retryDriveApiRequest(token, path, options) {
     var config = options || {};
@@ -1776,10 +1798,10 @@
   }
 
   /**
-   * Update the contents of an existing Drive sync file.
+   * Replaces the contents of an existing Drive sync file.
    * @param {string} fileId - The Drive file identifier.
    * @param {string} content - The serialized JSON content to upload.
-   * @return {Object} The updated Drive file response.
+   * @return {Object} The updated file metadata, including its identifier, modification time, size, and version.
    */
   async function updateDriveFile(requestDriveApi, fileId, content) {
     return requestDriveApi(
@@ -1820,9 +1842,10 @@
   }
 
   /**
-   * Writes an envelope to an existing Drive file or creates a new sync file.
-   * @param {string|null} fileId - The existing Drive file ID, or a falsy value to create a file.
-   * @param {Object} envelope - The envelope to serialize and store.
+   * Stores a sync envelope in Drive, updating the specified file or creating a new one.
+   * @param {Function} requestDriveApi - Drive API request function.
+   * @param {string|null} fileId - Existing Drive file ID, or `null` to create a file.
+   * @param {Object} envelope - Envelope to serialize and store.
    * @return {Object} Metadata for the written file, including its ID.
    */
   async function writeRemoteEnvelope(requestDriveApi, fileId, envelope) {
@@ -1835,7 +1858,7 @@
   }
 
   /**
-   * Writes an envelope to Drive, detects concurrent changes, and verifies the stored content.
+   * Writes an envelope to Drive only when the existing file version is unchanged, then verifies the stored content.
    * @param {Function} requestDriveApi - Function used to make authenticated Drive API requests.
    * @param {Object|null} file - Existing Drive file metadata, if available.
    * @param {Object} envelope - Envelope to write.
@@ -2045,10 +2068,10 @@
 
   /**
    * Synchronize configured extension data with its Google Drive app data file.
-   * Supports pull, push, and bidirectional merge flows with conflict detection, preview confirmation, failsafe checks, backups, and transaction tracking.
-   * @param {Object} [options] - Synchronization settings and required `loadContext` and `savePatches` callbacks, plus optional persistence callbacks.
+   * Supports pull, push, and bidirectional merge flows with conflict detection, previews, failsafe checks, backups, and transaction tracking.
+   * @param {Object} [options] - Synchronization settings, including required `loadContext` and `savePatches` callbacks and optional conflict, backup, transaction, and audit callbacks.
    * @return {Object} The synchronization status, changes, conflicts, and associated Drive file ID.
-   * @throws {Error} If authentication or configuration is invalid, required callbacks are missing, or synchronization fails.
+   * @throws {Error} If Drive authentication or configuration is invalid, required callbacks are missing, or synchronization fails.
    */
   async function runSyncDrive(options) {
     var config = options || {};
@@ -2104,9 +2127,9 @@
     }
 
     /**
-     * Executes a Drive API request with retry and token-refresh handling.
-     * @param {string} path - The Drive API path.
-     * @param {Object} [requestOptions] - Request options passed to the Drive API client.
+     * Executes a Drive API request with retries and automatic token refresh.
+     * @param {string} path - The Drive API request path.
+     * @param {Object} [requestOptions] - Request options for the API call.
      * @return {*} The Drive API response.
      */
     function requestDriveApi(path, requestOptions) {
@@ -2418,10 +2441,10 @@
   }
 
   /**
-   * Builds a status snapshot for Drive synchronization and the local sync state.
-   * @param {Object} [options] - Status options.
-   * @param {Function} [options.loadContext] - Loads the current extension context.
-   * @return {Object} The sync status, including category settings, authentication configuration, local and remote file metadata, pending conflicts, transactions, and backup availability.
+   * Builds a status snapshot for Drive synchronization and local sync state.
+   * @param {Object} [options] - Options for loading the current extension context.
+   * @param {Function} [options.loadContext] - Loads the extension context used to build the snapshot.
+   * @return {Object} The synchronization configuration, authentication status, local payload details, remote file metadata, pending conflict, transaction, and backup status.
    */
   async function getDriveSyncStatus(options) {
     var manifest = chrome.runtime.getManifest();

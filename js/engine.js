@@ -126,6 +126,11 @@
     }, 0);
   }
 
+  /**
+   * Reads a file as text.
+   * @param {File|Blob} file - The file to read.
+   * @return {Promise<string>} The file contents.
+   */
   function readFileAsText(file) {
     return new Promise(function(resolve, reject) {
       var reader = new FileReader();

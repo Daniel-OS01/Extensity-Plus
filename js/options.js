@@ -69,6 +69,11 @@ document.addEventListener("DOMContentLoaded", function() {
     return normalized;
   }
 
+  /**
+   * Creates a display label for a profile name.
+   * @param {*} name - The profile name to label.
+   * @return {string} A human-readable label for reserved profile names, or the original name as text.
+   */
   function profileOptionLabel(name) {
     var reserved = {
       "__always_on": "Always On",
@@ -197,6 +202,10 @@ document.addEventListener("DOMContentLoaded", function() {
     };
   }
 
+  /**
+   * Attach data export, import, and synchronization status methods to the view model.
+   * @param {Object} self - The options view model receiving the data methods and computed labels.
+   */
   function attachDataMethods(self) {
     function downloadBackup(payload, filenamePrefix) {
       ExtensityIO.downloadText(

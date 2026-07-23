@@ -549,6 +549,10 @@ document.addEventListener("DOMContentLoaded", function() {
       var s = self.driveStatus();
       return (s && s.webAuthPreferred) ? "Brave web fallback" : "Chrome extension token";
     });
+    self.driveOAuthRedirectUri = ko.pureComputed(function() {
+      var s = self.driveStatus();
+      return (s && s.extensionId) ? "https://" + s.extensionId + ".chromiumapp.org/drive" : "";
+    });
 
     self.filteredHistoryRows = ko.pureComputed(function() {
       var sourceFilter = self.historySourceFilter();

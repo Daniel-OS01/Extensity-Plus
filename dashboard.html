@@ -312,7 +312,7 @@
       <div class="sync-status-card">
         <h3 style="margin:0 0 12px;font-size:14px;color:var(--accent)">Drive OAuth Configuration</h3>
         <p class="event-meta">Configure the Web OAuth client ID to enable Google Drive sync on Brave. The extension OAuth client ID (in manifest) is read-only and set at build time.</p>
-        <p class="event-meta">Create or manage OAuth credentials at <a href="https://console.cloud.google.com" target="_blank" rel="noopener noreferrer">console.cloud.google.com</a>.</p>
+        <p class="event-meta">Create or manage OAuth credentials at <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener noreferrer">console.cloud.google.com/apis/credentials</a>.</p>
         <div class="drive-status-grid" style="margin-bottom:12px">
           <div class="drive-status-row">
             <span class="drive-status-label">Extension OAuth client</span>
@@ -337,6 +337,11 @@
             <input type="text" id="driveWebClientId" placeholder="775277874801-xxxx.apps.googleusercontent.com" style="flex:1;min-width:0" data-sbind="value: driveWebClientIdInput" />
             <button type="button" title="Save web OAuth client ID for Brave Drive sync" data-sbind="click: saveDriveWebClientId, disable: busy">Save</button>
           </div>
+        </div>
+        <div class="field" style="margin-top:16px">
+          <label>Web application redirect URI</label>
+          <p class="event-meta">In the Google Cloud <strong>Web application</strong> OAuth client's <strong>Authorized redirect URIs</strong>, add this extension's redirect URI so Brave's web OAuth fallback can complete sign-in:</p>
+          <p class="event-meta"><code data-sbind="text: driveOAuthRedirectUri"></code></p>
         </div>
       </div>
     </section>

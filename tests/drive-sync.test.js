@@ -2067,3 +2067,108 @@ test("deleteDriveFile surfaces a Drive API error (e.g. file already gone) with a
     }
   );
 });
+
+function statefulLocalStorage() {
+  var stored = {};
+  return {
+    get(keys, callback) { callback(stored); },
+    remove(keys, callback) {
+      (Array.isArray(keys) ? keys : [keys]).forEach(function(key) { delete stored[key]; });
+      callback();
+    },
+    set(values, callback) { Object.assign(stored, values); callback(); },
+    _stored: stored
+  };
+}
+
+test("hasPendingPreviewConfirmation tracks an outstanding preview until it is consumed or expires", async () => {
+  const remoteEnvelope = {
+    version: "1.0.0",
+    categories: { urlRules: { updatedAt: 999, data: [{ id: "r-remote", name: "Remote Rule" }] } }
+  };
+  const { fetchImpl } = driveSyncFetchHarness(remoteEnvelope);
+  const localStorageStub = statefulLocalStorage();
+  const root = loadDriveSync({
+    crypto: crypto,
+    fetch: fetchImpl,
+    chrome: { identity: tokenIdentityOverrides(), storage: { local: localStorageStub } }
+  });
+
+  assert.equal(await root.ExtensityDriveSync.hasPendingPreviewConfirmation(), false);
+
+  const previewResult = await root.ExtensityDriveSync.syncDrive(
+    successfulSyncConfig({ direction: "push", preview: true })
+  );
+  assert.equal(previewResult.status, "preview");
+  assert.ok(previewResult.confirmationToken);
+  assert.equal(await root.ExtensityDriveSync.hasPendingPreviewConfirmation(), true);
+
+  await root.ExtensityDriveSync.syncDrive(
+    successfulSyncConfig({
+      confirmationToken: previewResult.confirmationToken,
+      direction: "push",
+      requireConfirmation: true
+    })
+  );
+  assert.equal(await root.ExtensityDriveSync.hasPendingPreviewConfirmation(), false);
+});
+
+test("hasPendingPreviewConfirmation ignores an expired confirmation record", async () => {
+  const remoteEnvelope = {
+    version: "1.0.0",
+    categories: { urlRules: { updatedAt: 999, data: [{ id: "r-remote", name: "Remote Rule" }] } }
+  };
+  const { fetchImpl } = driveSyncFetchHarness(remoteEnvelope);
+  const localStorageStub = statefulLocalStorage();
+  const root = loadDriveSync({
+    crypto: crypto,
+    fetch: fetchImpl,
+    chrome: { identity: tokenIdentityOverrides(), storage: { local: localStorageStub } }
+  });
+
+  const previewResult = await root.ExtensityDriveSync.syncDrive(
+    successfulSyncConfig({ direction: "push", preview: true })
+  );
+  assert.equal(await root.ExtensityDriveSync.hasPendingPreviewConfirmation(), true);
+
+  const confirmations = localStorageStub._stored.drivePreviewConfirmations;
+  Object.keys(confirmations).forEach(function(token) {
+    confirmations[token].expiresAt = 0;
+  });
+
+  assert.equal(await root.ExtensityDriveSync.hasPendingPreviewConfirmation(), false);
+});
+
+test("confirming a preview succeeds even when real time passes between the two calls", async () => {
+  // Regression test: buildEnvelope() stamps a fresh exportedAt (nowMs()) on every call,
+  // so if the confirmation fingerprint included it, any real elapsed time between the
+  // preview call and the confirm call would make the confirmation fail every time.
+  const remoteEnvelope = {
+    version: "1.0.0",
+    categories: { urlRules: { updatedAt: 999, data: [{ id: "r-remote", name: "Remote Rule" }] } }
+  };
+  const { fetchImpl } = driveSyncFetchHarness(remoteEnvelope);
+  const root = loadDriveSync({
+    crypto: crypto,
+    fetch: fetchImpl,
+    chrome: { identity: tokenIdentityOverrides(), storage: { local: statefulLocalStorage() } }
+  });
+
+  const previewResult = await root.ExtensityDriveSync.syncDrive(
+    successfulSyncConfig({ direction: "push", preview: true })
+  );
+  assert.equal(previewResult.status, "preview");
+
+  // Guarantee nowMs() advances by at least a few milliseconds before the confirm call,
+  // so this test cannot pass by timing luck the way the original bug sometimes did.
+  await new Promise(function(resolve) { setTimeout(resolve, 10); });
+
+  const confirmResult = await root.ExtensityDriveSync.syncDrive(
+    successfulSyncConfig({
+      confirmationToken: previewResult.confirmationToken,
+      direction: "push",
+      requireConfirmation: true
+    })
+  );
+  assert.equal(confirmResult.status, "pushed");
+});

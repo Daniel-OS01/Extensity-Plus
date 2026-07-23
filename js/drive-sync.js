@@ -514,12 +514,22 @@
   }
 
   /**
-   * Computes a deterministic hexadecimal fingerprint for a sync envelope.
+   * Computes a deterministic hexadecimal fingerprint for a sync envelope's content.
+   * Deliberately excludes `exportedAt`, which `buildEnvelope` stamps fresh with
+   * `nowMs()` on every call — including it would make the fingerprint differ between
+   * a preview call and its matching confirm call purely from elapsed wall-clock time,
+   * even when nothing about the actual data changed, causing every preview to appear
+   * stale.
    * @param {Object|null|undefined} envelope - The envelope to fingerprint.
-   * @return {string} The envelope's hexadecimal fingerprint.
+   * @return {string} The envelope content's hexadecimal fingerprint.
    */
   function envelopeFingerprint(envelope) {
-    var text = JSON.stringify(envelope || null);
+    var normalized = envelope ? {
+      categories: envelope.categories,
+      version: envelope.version,
+      writerId: envelope.writerId
+    } : null;
+    var text = JSON.stringify(normalized);
     var hash = 2166136261;
     for (var index = 0; index < text.length; index += 1) {
       hash ^= text.charCodeAt(index);
@@ -555,6 +565,18 @@
       payload[DRIVE_PREVIEW_CONFIRMATION_KEY] = confirmations;
       return payload;
     })());
+  }
+
+  /**
+   * Checks whether a manual Drive sync preview confirmation is currently outstanding.
+   * Used to block automatic sync from writing to Drive (and bumping the file version)
+   * in the gap between a manual preview call and its matching confirm call, which would
+   * otherwise make the confirm call fail with `preview_stale` on essentially every attempt.
+   * @return {Promise<boolean>} True if at least one non-expired confirmation record exists.
+   */
+  async function hasPendingPreviewConfirmation() {
+    var confirmations = await readPreviewConfirmations();
+    return Object.keys(confirmations).length > 0;
   }
 
   /**
@@ -2631,6 +2653,7 @@
     getExtensionEnvironment: getExtensionEnvironment,
     getDriveSyncStatus: getDriveSyncStatus,
     findFailsafeViolation: findFailsafeViolation,
+    hasPendingPreviewConfirmation: hasPendingPreviewConfirmation,
     isDriveConflictResolvable: isDriveConflictResolvable,
     isDriveWebOAuthConfigured: isDriveWebOAuthConfigured,
     isOAuthConfigured: isOAuthConfigured,

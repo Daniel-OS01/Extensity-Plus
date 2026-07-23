@@ -549,10 +549,6 @@ document.addEventListener("DOMContentLoaded", function() {
       var s = self.driveStatus();
       return (s && s.webAuthPreferred) ? "Brave web fallback" : "Chrome extension token";
     });
-    self.driveOAuthRedirectUri = ko.pureComputed(function() {
-      var s = self.driveStatus();
-      return (s && s.extensionId) ? "https://" + s.extensionId + ".chromiumapp.org/drive" : "";
-    });
 
     self.filteredHistoryRows = ko.pureComputed(function() {
       var sourceFilter = self.historySourceFilter();
@@ -997,8 +993,12 @@ document.addEventListener("DOMContentLoaded", function() {
     }
 
     function handleDriveSyncError(err) {
-      self.error((err && err.message) || "Drive sync failed.");
-      return self.refresh().catch(function() {});
+      var msg = (err && err.message) || "Drive sync failed.";
+      // self.refresh() clears self.error via performAction, so the failure
+      // message must be (re-)applied after refresh settles, not before.
+      return self.refresh().catch(function() {}).then(function() {
+        self.error(msg);
+      });
     }
 
     self.driveSyncNow = function() {

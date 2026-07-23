@@ -1876,6 +1876,161 @@ test("runDriveSyncRequest gives up after a second consecutive preview_stale and 
   assert.equal(vm.driveError(), "Drive data changed after preview.");
 });
 
+function buildDashboardDriveSyncHarness(extensityApiOverrides) {
+  function observable(initialValue) {
+    let value = initialValue;
+    const obs = function(nextValue) {
+      if (arguments.length > 0) {
+        value = nextValue;
+        return obs;
+      }
+      return value;
+    };
+    obs.subscribe = function() {};
+    return obs;
+  }
+
+  function observableArray(initialValue) {
+    const obs = observable(initialValue || []);
+    obs.push = function(item) { obs(obs().concat([item])); };
+    obs.remove = function() {};
+    return obs;
+  }
+
+  function OptionsCollection() {
+    this.fontSizePx = observable(16);
+    this.drivePendingConflict = observable(null);
+    this.driveAuthStatus = observable("authorized");
+    this.lastDriveSyncError = observable(null);
+    this.lastDriveSync = observable(null);
+    this.apply = function() {};
+    this.toJS = function() { return {}; };
+  }
+
+  let initFn = null;
+  let capturedVm = null;
+  const windowRoot = {};
+
+  loadBrowserScript(path.join(repoRoot, "js/dashboard.js"), {
+    OptionsCollection,
+    ExtensityStorage: {
+      makeId(prefix) { return prefix + "-id"; },
+      uniqueArray(list) { return list; }
+    },
+    ExtensityApi: Object.assign({
+      getState() {
+        return Promise.resolve({ state: { options: {}, extensions: [], groups: [], rules: [], profiles: {} } });
+      },
+      getDriveSyncStatus() {
+        return Promise.resolve({ status: null });
+      }
+    }, extensityApiOverrides || {}),
+    ExtensityDriveSync: {
+      describeDrivePendingConflict(conflict) {
+        return conflict ? "stub-summary:" + (conflict.reason || "divergence") : "";
+      },
+      isDriveConflictResolvable(conflict) {
+        return !!conflict && (conflict.reason || "divergence") === "divergence";
+      }
+    },
+    ExtensityUtils: {
+      applyThemeClasses() {},
+      importSuccessMessage() { return ""; },
+      clampInteger(value) { return value; }
+    },
+    ExtensityImportExport: {},
+    _: {
+      defer(fn) { initFn = fn; }
+    },
+    ko: {
+      observable,
+      observableArray,
+      pureComputed(fn) { return fn; },
+      computed(fn) { return fn; },
+      applyBindings(vm) { capturedVm = vm; },
+      secureBindingsProvider: function() {},
+      bindingProvider: {}
+    },
+    chrome: {
+      permissions: {
+        contains(descriptor, callback) { callback(true); },
+        request(descriptor, callback) { callback(false); }
+      },
+      storage: {}
+    },
+    document: {
+      addEventListener(event, cb) {
+        if (event === "DOMContentLoaded") {
+          cb();
+        }
+      },
+      body: { classList: { toggle() {} } },
+      documentElement: { style: { setProperty() {} } },
+      getElementById() { return {}; }
+    },
+    window: Object.assign(windowRoot, {
+      location: { hash: "", pathname: "/dashboard.html", search: "" },
+      history: { replaceState() {} }
+    })
+  });
+
+  initFn();
+  return capturedVm;
+}
+
+test("dashboard driveConflictSummary and driveConflictResolvable delegate to ExtensityDriveSync", () => {
+  const vm = buildDashboardDriveSyncHarness();
+
+  assert.equal(vm.driveConflictSummary(), "");
+  assert.equal(vm.driveConflictResolvable(), false);
+
+  vm.options.drivePendingConflict({ reason: "divergence" });
+  assert.equal(vm.driveConflictSummary(), "stub-summary:divergence");
+  assert.equal(vm.driveConflictResolvable(), true);
+
+  vm.options.drivePendingConflict({ reason: "failsafe" });
+  assert.equal(vm.driveConflictSummary(), "stub-summary:failsafe");
+  assert.equal(vm.driveConflictResolvable(), false);
+});
+
+test("dashboard handleDriveSyncResult treats failsafe status like conflict and surfaces a message", async () => {
+  const vm = buildDashboardDriveSyncHarness({
+    syncDrive() {
+      return Promise.resolve({ result: { status: "failsafe", message: "Sync paused by failsafe." } });
+    }
+  });
+
+  await vm.driveSyncNow();
+
+  assert.equal(vm.message(), "Sync paused by failsafe.");
+});
+
+test("dashboard Drive sync failures surface an error message instead of being silently cleared by refresh", async () => {
+  const vm = buildDashboardDriveSyncHarness({
+    syncDrive() {
+      return Promise.reject(new Error("Simulated drive sync failure."));
+    }
+  });
+
+  vm.error("");
+  await vm.driveSyncNow();
+
+  assert.equal(vm.error(), "Simulated drive sync failure.");
+});
+
+test("dashboard resolve conflict failures surface an error message instead of being silently cleared by refresh", async () => {
+  const vm = buildDashboardDriveSyncHarness({
+    resolveDriveConflict() {
+      return Promise.reject(new Error("Simulated resolve failure."));
+    }
+  });
+
+  vm.error("");
+  await vm.driveResolveKeepLocal();
+
+  assert.equal(vm.error(), "Simulated resolve failure.");
+});
+
 test("profiles add decorates custom profiles without parent-context bindings", async () => {
   function observable(initialValue) {
     let value = initialValue;

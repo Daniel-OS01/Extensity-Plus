@@ -17,16 +17,19 @@ It keeps the original Extensity idea simple, but expands it into a more complete
 
 ## Latest Release
 
-Current version: `v4.2.0` (published 2026-05-15)
+Current version: `v4.6.0` (published 2026-07-23)
 
-### What's Changed in v4.2.0
+### What's Changed in v4.6.0
 
-- Added **Drive connection test** button (Options → Google Drive Sync, Dashboard → Sync Status): performs a read-only connection check, token acquisition, Drive file listing, and dry-run conflict detection with a step-by-step debug report.
-- Added **Dashboard Log tab** with four log levels (none / error / warn / info). The selected level persists across sessions. Log entries can be cleared or copied to clipboard.
-- Chrome Web Store extension ID verified: `gbojjphhdboeaafjdilfibonoflhgcde`.
-- Fixed Google Drive OAuth 400 error for Brave fallback: Web OAuth client now requires `chromiumapp.org` redirect URIs (see `docs/google-drive-sync.md`).
+- Google Drive sync now requires a **preview/confirmation** step before `push`, `pull`, or conflict-resolution writes actually apply, and adds a **deletion failsafe** (configurable 1–100% threshold) that pauses risky automatic changes.
+- Added configurable **sync strategy** (merge / use this device / use Drive) plus independent **periodic**, **startup**, and **after local changes** triggers, in both Options and the Dashboard Sync Status → Google Drive card.
+- Added **“Undo last sync”** (restores the latest verified Drive backup) and **“Save settings”** actions to the Dashboard Drive sync card and Options page.
+- Added an **“Errors only”** checkbox to the Dashboard Activity & Log timeline that filters the unified log/history view down to error-level Drive log entries.
+- Drive sync engine upgraded to envelope **v2.0.0** with item-level three-way merging, deterministic fingerprinting, optimistic-concurrency writes, and post-write verification against Drive.
+- **Breaking:** `ExtensityApi.syncDrive` and `ExtensityApi.resolveDriveConflict` are now `async` and require the preview/confirmation-token flow; `resolveDriveConflict` takes an additional `overrideFailsafe` parameter.
+- See `docs/google-drive-sync.md` for the full strategy/triggers/merge workflow and the updated conflicts-and-recovery behavior.
 
-Full changelog: https://github.com/Daniel-OS01/Extensity-Plus/compare/v4.1.0...v4.2.0
+Full changelog: https://github.com/Daniel-OS01/Extensity-Plus/compare/v4.5.0...v4.6.0
 
 ## What It Looks Like
 

@@ -890,7 +890,7 @@
       }
       case "duplicate_remote_files": {
         var count = Array.isArray(conflict.duplicateFiles) ? conflict.duplicateFiles.length : 0;
-        return "Found " + count + " Google Drive sync file(s) instead of one. Remove the extra file(s) from the Drive app data folder, then click Cancel and try Sync again. Keep this device / Use Drive copy can't resolve this.";
+        return "Found " + count + " Google Drive sync files instead of one. This folder is hidden from the normal Google Drive interface, so delete the extra file(s) below, then click Cancel and try Sync again. Keep this device / Use Drive copy can't resolve this.";
       }
       case "schema_regression":
         return "The Google Drive copy uses an older data format than this device. Verify this is the correct Drive account and file, then click Cancel and try again. Keep this device / Use Drive copy can't resolve this automatically.";
@@ -1758,6 +1758,48 @@
   }
 
   /**
+   * Permanently deletes a file from the Drive app data folder, acquiring its own token.
+   * Used to let the user remove duplicate sync files directly from the extension UI,
+   * since the app data folder is not browsable in the normal Google Drive web interface.
+   * @param {string} fileId - The Drive file identifier to delete.
+   * @param {Object} [options] - Deletion configuration.
+   * @param {boolean} [options.interactive=true] - Whether interactive sign-in is allowed.
+   * @return {Object} `{ deleted: true, fileId }` on success.
+   * @throws {Error} A Drive error (e.g. `not_configured`, `auth`, `not_found`) if the delete fails.
+   */
+  async function deleteDriveFile(fileId, options) {
+    var config = options || {};
+    if (!fileId) {
+      throw createDriveError("invalid_request", "A Drive file ID is required to delete a sync file.");
+    }
+    var manifest = chrome.runtime.getManifest();
+    var preferredAuthProvider = await shouldPreferWebAuth() ? "web_fallback" : "chrome_identity";
+    if (!isDriveAuthConfigured(manifest, preferredAuthProvider)) {
+      throw createDriveError(
+        "not_configured",
+        preferredAuthProvider === "web_fallback"
+          ? "Drive sync is not configured. Add the Brave Web OAuth client ID in Dashboard → Sync Status."
+          : "Drive sync is not configured for this build."
+      );
+    }
+    var interactive = config.interactive !== false;
+    var tokenResult = await acquireDriveToken(interactive);
+    var token = tokenResult.token;
+    await retryDriveApiRequest(token, "/drive/v3/files/" + encodeURIComponent(fileId), {
+      interactive: interactive,
+      method: "DELETE",
+      operation: "delete_sync_file",
+      getFreshToken: function() {
+        return acquireDriveToken(interactive);
+      },
+      onTokenRefresh: function(nextToken) {
+        token = nextToken;
+      }
+    });
+    return { deleted: true, fileId: fileId };
+  }
+
+  /**
    * Downloads and parses a Drive sync file.
    * @param {string} fileId - The Drive file identifier.
    * @return {Object|null} The parsed file contents, or `null` if the file is empty.
@@ -2579,6 +2621,7 @@
     buildThreeWayEnvelope: buildThreeWayEnvelope,
     bumpCategoryTimestamp: bumpCategoryTimestamp,
     createDriveFile: createDriveFile,
+    deleteDriveFile: deleteDriveFile,
     mergeCategoryData: mergeCategoryData,
     describeDrivePendingConflict: describeDrivePendingConflict,
     detectConflicts: detectConflicts,

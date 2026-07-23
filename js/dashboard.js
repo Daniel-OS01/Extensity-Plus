@@ -962,6 +962,35 @@ document.addEventListener("DOMContentLoaded", function() {
     self.driveConflictResolvable = ko.pureComputed(function() {
       return ExtensityDriveSync.isDriveConflictResolvable(self.options.drivePendingConflict());
     });
+    self.driveConflictDuplicateFiles = ko.pureComputed(function() {
+      var conflict = self.options.drivePendingConflict();
+      if (!conflict || conflict.reason !== "duplicate_remote_files" || !Array.isArray(conflict.duplicateFiles)) {
+        return [];
+      }
+      return conflict.duplicateFiles.map(function(file) {
+        return {
+          id: file.id,
+          modifiedLabel: file.modifiedTime ? new Date(file.modifiedTime).toLocaleString() : "Unknown modified time",
+          name: file.name || "extensity-plus-sync.json",
+          sizeLabel: file.size ? (file.size + " bytes") : "Unknown size"
+        };
+      });
+    });
+    self.driveConflictHasDuplicates = ko.pureComputed(function() {
+      return self.driveConflictDuplicateFiles().length > 0;
+    });
+    self.driveDeleteDuplicateFile = function(file) {
+      if (!file || !file.id) {
+        return Promise.resolve();
+      }
+      self.error("");
+      return self.performAction(ExtensityApi.deleteDriveFile(file.id)).then(function() {
+        self.message("Deleted duplicate Drive sync file.");
+        return self.refreshDriveSyncStatus();
+      }).catch(function(err) {
+        self.error((err && err.message) || "Failed to delete the Drive sync file.");
+      });
+    };
     self.driveSyncStatusLabel = ko.pureComputed(function() {
       var authStatus = typeof self.options.driveAuthStatus === "function"
         ? self.options.driveAuthStatus()

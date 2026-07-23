@@ -2168,6 +2168,35 @@ importScripts(
   }
 
   /**
+   * Deletes a duplicate Drive sync file and, if it was part of the current pending
+   * conflict, removes it from the conflict's file list (or clears the conflict once
+   * only one candidate remains).
+   * @param {Object} message - Must include `fileId`, the Drive file ID to delete.
+   * @return {Object} `{ deletedFileId, state }`.
+   */
+  async function deleteDriveSyncFile(message) {
+    if (!message || !message.fileId) {
+      throw new Error("A Drive file ID is required.");
+    }
+    await driveSync.deleteDriveFile(message.fileId, { interactive: true });
+    var localState = await storage.loadLocalState();
+    var conflict = localState.drivePendingConflict;
+    if (conflict && conflict.reason === "duplicate_remote_files" && Array.isArray(conflict.duplicateFiles)) {
+      var remaining = conflict.duplicateFiles.filter(function(file) {
+        return file && file.id !== message.fileId;
+      });
+      if (remaining.length <= 1) {
+        await storage.saveLocalState({ drivePendingConflict: null });
+      } else {
+        await storage.saveLocalState({
+          drivePendingConflict: Object.assign({}, conflict, { duplicateFiles: remaining })
+        });
+      }
+    }
+    return { deletedFileId: message.fileId, state: await buildState() };
+  }
+
+  /**
    * Retrieves the current Drive sync status.
    * @returns {Promise<Object>} An object containing the current Drive sync status.
    */
@@ -2447,6 +2476,8 @@ importScripts(
             }
           )
         };
+      case "DELETE_DRIVE_FILE":
+        return await deleteDriveSyncFile(message);
       case "GET_DRIVE_SYNC_STATUS":
         return await getDriveSyncStatusNow();
       case "PREVIEW_DRIVE_SYNC":

@@ -1996,3 +1996,74 @@ test("syncDrive rejects keep_local with unsupported_resolution when a failsafe t
     }
   );
 });
+
+test("deleteDriveFile requires a file ID", async () => {
+  const root = loadDriveSync();
+
+  await assert.rejects(
+    root.ExtensityDriveSync.deleteDriveFile(null),
+    (err) => {
+      assert.equal(err.code, "invalid_request");
+      return true;
+    }
+  );
+});
+
+test("deleteDriveFile rejects with not_configured when OAuth is not set up", async () => {
+  const root = loadDriveSync({
+    chrome: {
+      runtime: {
+        getManifest() {
+          return { oauth2: { client_id: "REPLACE_WITH_OAUTH_CLIENT_ID.apps.googleusercontent.com" } };
+        }
+      }
+    }
+  });
+
+  await assert.rejects(
+    root.ExtensityDriveSync.deleteDriveFile("file-1"),
+    (err) => {
+      assert.equal(err.code, "not_configured");
+      return true;
+    }
+  );
+});
+
+test("deleteDriveFile sends a DELETE request for the given file ID and returns confirmation", async () => {
+  const requests = [];
+  const fetchImpl = async function(url, options) {
+    requests.push({ method: (options && options.method) || "GET", url: url });
+    if (url.indexOf("/drive/v3/files/dup-file-2") !== -1 && options.method === "DELETE") {
+      return { headers: { get() { return null; } }, ok: true, status: 204, text: async function() { return ""; } };
+    }
+    throw new Error("Unexpected fetch: " + options.method + " " + url);
+  };
+  const root = loadDriveSync({ fetch: fetchImpl, chrome: { identity: tokenIdentityOverrides() } });
+
+  const result = await root.ExtensityDriveSync.deleteDriveFile("dup-file-2");
+
+  assert.deepEqual(plain(result), { deleted: true, fileId: "dup-file-2" });
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0].method, "DELETE");
+  assert.match(requests[0].url, /\/drive\/v3\/files\/dup-file-2$/);
+});
+
+test("deleteDriveFile surfaces a Drive API error (e.g. file already gone) with a typed code", async () => {
+  const fetchImpl = async function() {
+    return {
+      headers: { get() { return null; } },
+      ok: false,
+      status: 404,
+      text: async function() { return "File not found"; }
+    };
+  };
+  const root = loadDriveSync({ fetch: fetchImpl, chrome: { identity: tokenIdentityOverrides() } });
+
+  await assert.rejects(
+    root.ExtensityDriveSync.deleteDriveFile("already-deleted"),
+    (err) => {
+      assert.equal(err.code, "not_found");
+      return true;
+    }
+  );
+});

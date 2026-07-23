@@ -760,6 +760,30 @@ test("ExtensityApi.resolveDriveConflict skips the preview handshake for cancel b
   ]);
 });
 
+test("ExtensityApi.deleteDriveFile sends the file ID in a DELETE_DRIVE_FILE message", async () => {
+  const sentMessages = [];
+  const windowRoot = {};
+
+  loadBrowserScript(path.join(repoRoot, "js/engine.js"), {
+    chrome: {
+      runtime: {
+        lastError: null,
+        sendMessage(message, callback) {
+          sentMessages.push(normalize(message));
+          callback({ ok: true, payload: { deletedFileId: message.fileId } });
+        }
+      }
+    },
+    ko: { extenders: {} },
+    window: windowRoot
+  });
+
+  const result = await windowRoot.ExtensityApi.deleteDriveFile("dup-file-9");
+
+  assert.deepEqual(sentMessages, [{ fileId: "dup-file-9", type: "DELETE_DRIVE_FILE" }]);
+  assert.equal(result.deletedFileId, "dup-file-9");
+});
+
 test("extension profile summary uses em dash separator and omits empty values", () => {
   function observable(initial) {
     let value = initial;
@@ -1740,6 +1764,49 @@ test("driveConflictSummary and driveConflictResolvable delegate to ExtensityDriv
   vm.options.drivePendingConflict({ reason: "failsafe" });
   assert.equal(vm.driveConflictSummary(), "stub-summary:failsafe");
   assert.equal(vm.driveConflictResolvable(), false);
+});
+
+test("driveConflictDuplicateFiles and driveConflictHasDuplicates expose duplicate file details only for that reason", () => {
+  const vm = buildDriveSyncOptionsHarness();
+
+  assert.deepEqual(normalize(vm.driveConflictDuplicateFiles()), []);
+  assert.equal(vm.driveConflictHasDuplicates(), false);
+
+  vm.options.drivePendingConflict({ reason: "divergence", categories: [] });
+  assert.deepEqual(normalize(vm.driveConflictDuplicateFiles()), []);
+  assert.equal(vm.driveConflictHasDuplicates(), false);
+
+  vm.options.drivePendingConflict({
+    reason: "duplicate_remote_files",
+    duplicateFiles: [
+      { id: "file-a", modifiedTime: "2026-07-20T10:00:00.000Z", name: "extensity-plus-sync.json", size: 512 },
+      { id: "file-b", modifiedTime: null, name: "extensity-plus-sync.json", size: null }
+    ]
+  });
+
+  const files = vm.driveConflictDuplicateFiles();
+  assert.equal(vm.driveConflictHasDuplicates(), true);
+  assert.equal(files.length, 2);
+  assert.equal(files[0].id, "file-a");
+  assert.equal(files[0].sizeLabel, "512 bytes");
+  assert.equal(files[1].id, "file-b");
+  assert.equal(files[1].modifiedLabel, "Unknown modified time");
+  assert.equal(files[1].sizeLabel, "Unknown size");
+});
+
+test("driveDeleteDuplicateFile calls ExtensityApi.deleteDriveFile with the file ID", async () => {
+  const calls = [];
+  const vm = buildDriveSyncOptionsHarness({
+    deleteDriveFile(fileId) {
+      calls.push(fileId);
+      return Promise.resolve({});
+    }
+  });
+
+  await vm.driveDeleteDuplicateFile({ id: "file-b" });
+
+  assert.deepEqual(calls, ["file-b"]);
+  assert.equal(vm.driveMessage(), "Deleted duplicate Drive sync file.");
 });
 
 test("runDriveSyncRequest defers the Drive API call until save() resolves", async () => {

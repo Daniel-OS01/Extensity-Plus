@@ -249,6 +249,14 @@
       <p class="event-meta" data-sbind="text: driveSyncStatusLabel"></p>
       <div class="field drive-conflict-panel" data-sbind="visible: driveConflictVisible">
         <p class="status error" data-sbind="text: driveConflictSummary"></p>
+        <div class="drive-conflict-duplicates" data-sbind="visible: driveConflictHasDuplicates, foreach: driveConflictDuplicateFiles">
+          <div class="drive-status-row">
+            <span class="drive-status-value event-meta" data-sbind="text: name"></span>
+            <span class="drive-status-value event-meta" data-sbind="text: modifiedLabel"></span>
+            <span class="drive-status-value event-meta" data-sbind="text: sizeLabel"></span>
+            <button type="button" title="Permanently delete this Drive sync file" data-sbind="click: $parent.driveDeleteDuplicateFile, disable: $parent.busy">Delete</button>
+          </div>
+        </div>
         <div class="action-row">
           <button type="button" title="Keep this device's data" data-sbind="click: driveResolveKeepLocal, disable: busy, visible: driveConflictResolvable">Keep this device</button>
           <button type="button" title="Use Google Drive copy" data-sbind="click: driveResolveKeepRemote, disable: busy, visible: driveConflictResolvable">Use Drive copy</button>

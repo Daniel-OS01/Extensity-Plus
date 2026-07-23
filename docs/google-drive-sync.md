@@ -89,7 +89,7 @@ The Dashboard **Sync Status** tab now also includes a Drive sync card with the c
 
 When the same item changes differently on this device and Drive, including edit-versus-delete, synchronization pauses without writing either side. **Keep this device** or **Use Drive copy** applies only to this item-level (divergence) conflict case; compatible changes remain merged. **Cancel** always performs no write and immediately clears the pause, regardless of conflict type.
 
-Multiple matching app-data files also pause sync and every candidate is reported; duplicates are never silently deleted. The UI does not expose a control to pick a canonical file among duplicates — **Keep this device** and **Use Drive copy** are hidden for this case (only **Cancel** is offered); remove the extra file(s) from the Drive app data folder, then Cancel and retry. Drive `version` is checked immediately before upload, and uploaded content is downloaded and verified before local state or the merge baseline advances. A version race is re-read and recomputed up to three times for merge runs. A verification or partial-write failure retains the transaction journal; startup restores the saved local snapshot and leaves a recovery notice before another automatic run.
+Multiple matching app-data files also pause sync and every candidate is reported; duplicates are never silently deleted. Since the app data folder is hidden from the normal Drive web UI (see below), the conflict panel lists each duplicate file (name, modified time, size) with its own **Delete** button so the extras can be removed without leaving the extension. **Keep this device** and **Use Drive copy** are hidden for this case (only **Cancel** is offered) — delete the extra file(s), then Cancel and retry. Drive `version` is checked immediately before upload, and uploaded content is downloaded and verified before local state or the merge baseline advances. A version race is re-read and recomputed up to three times for merge runs. A verification or partial-write failure retains the transaction journal; startup restores the saved local snapshot and leaves a recovery notice before another automatic run.
 
 Legacy v1 files remain readable and the first successful write snapshots data before producing v2. If a device that has written v2 later sees a v1 file, synchronization pauses as a schema regression rather than discarding deletion history; as with duplicate files, **Keep this device** / **Use Drive copy** are hidden here — verify the account/file, then Cancel and retry.
 
@@ -97,7 +97,7 @@ When a change would delete or replace an unusually large share of a category (th
 
 ## Storage details
 
-- Remote file: `extensity-plus-sync.json` in the Drive app data folder (hidden from the user’s Drive UI).
+- Remote file: `extensity-plus-sync.json` in the Drive app data folder. This folder is hidden by design in the normal Drive web UI (drive.google.com) for every app that uses it, not just Extensity Plus — there is no browsable page for it, so file management (e.g. removing a duplicate) has to go through the extension's own UI or the Drive API directly.
 - Device-local metadata: `driveSyncMeta`, `drivePendingConflict`, `driveSyncBackups`, and `driveSyncTxn` in `chrome.storage.local`.
 - Portable settings: strategy, trigger flags, failsafe settings, category selection, interval, and last-sync diagnostics in `chrome.storage.sync`.
 
@@ -111,7 +111,7 @@ When a change would delete or replace an unusually large share of a category (th
 | “Custom URI scheme is not supported on Chrome apps” in Brave | Configure the **Web application** OAuth fallback and add the two `chromiumapp.org/drive` redirect URIs. |
 | Sign-in loop / 401 | Remove the extension from [Google Account permissions](https://myaccount.google.com/permissions) and sync again. |
 | Auto-sync fails with auth-needed status | Click **Sync now** once to complete interactive sign-in; background auto-sync then resumes. |
-| Multiple same-name sync files exist | Sync pauses and reports every candidate; there is no in-UI way to pick a canonical file yet. Remove the extra file(s) from the Drive app data folder via the Drive API. |
+| Multiple same-name sync files exist | Sync pauses and reports every candidate. Delete the extra file(s) directly from the conflict panel's file list (each has its own Delete button), then click Cancel and Sync again. |
 | `preview_stale` | Local data or the Drive version changed after preview. Extensity Plus retries the resolve action once automatically; if it still fails, click the resolve button again. |
 | `drive_verification_failed` | The downloaded post-write content did not match. The recovery journal is retained; do not clear it manually. |
 | Want one side to win outright | Select an overwrite strategy or use **Push**/**Pull**; backups, preview confirmation, verification, and failsafes still apply. |

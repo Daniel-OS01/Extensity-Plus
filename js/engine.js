@@ -1009,6 +1009,9 @@
     selectDriveSyncFile: function(fileId) {
       return chromeMessage({ fileId: fileId, type: "SELECT_DRIVE_SYNC_FILE" });
     },
+    deleteDriveFile: function(fileId) {
+      return chromeMessage({ fileId: fileId, type: "DELETE_DRIVE_FILE" });
+    },
     resolveDriveConflict: async function(resolution, overrideFailsafe) {
       if (resolution === "cancel") {
         return chromeMessage({ resolution: "cancel", type: "RESOLVE_DRIVE_CONFLICT" });

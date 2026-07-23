@@ -1646,6 +1646,13 @@ importScripts(
     if (!options.driveSync || localState.drivePendingConflict || localState.driveSyncTxn) {
       return null;
     }
+    if (
+      driveSync
+      && typeof driveSync.hasPendingPreviewConfirmation === "function"
+      && await driveSync.hasPendingPreviewConfirmation()
+    ) {
+      return null;
+    }
     if (trigger === "periodic" && !options.driveTimeBasedSync) {
       return null;
     }
@@ -2192,6 +2199,14 @@ importScripts(
           drivePendingConflict: Object.assign({}, conflict, { duplicateFiles: remaining })
         });
       }
+    }
+    var meta = driveSync.normalizeDriveMeta(localState.driveSyncMeta);
+    if (meta.fileId === message.fileId) {
+      meta.fileId = null;
+      meta.fileModifiedTime = null;
+      meta.fileSize = null;
+      meta.fileVersion = null;
+      await storage.saveLocalState({ driveSyncMeta: meta });
     }
     return { deletedFileId: message.fileId, state: await buildState() };
   }

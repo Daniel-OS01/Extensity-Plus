@@ -1660,7 +1660,12 @@ importScripts(
     }
     driveChangeSyncTimer = setTimeout(function() {
       driveChangeSyncTimer = null;
-      runAutoDriveSync("change").catch(function(error) {
+      var clearAlarm = hasChromeMethod(chrome.alarms, "clear")
+        ? chromeCall(chrome.alarms, "clear", [driveChangeSyncAlarmName])
+        : Promise.resolve();
+      clearAlarm.then(function() {
+        return runAutoDriveSync("change");
+      }).catch(function(error) {
         logger.error("drive_change_sync_failed", { message: error && error.message });
       });
     }, 5000);

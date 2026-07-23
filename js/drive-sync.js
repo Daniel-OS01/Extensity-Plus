@@ -7,6 +7,7 @@
   var DRIVE_WEB_AUTH_CACHE_KEY = "driveWebAuthToken";
   var DRIVE_WEB_AUTH_PATH = "drive";
   var DRIVE_WEB_AUTH_EXPIRY_SKEW_MS = 60000;
+  var DRIVE_PREVIEW_CONFIRMATION_KEY = "drivePreviewConfirmations";
   var GOOGLE_OAUTH_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
   var CATEGORY_IDS = ["options", "profiles", "aliases", "groups", "urlRules", "history"];
   var DEFAULT_CATEGORY_FLAGS = {
@@ -46,7 +47,6 @@
   var DRIVE_FAILSAFE_ABSOLUTE_DELETIONS = 1000;
   var DRIVE_MAX_CONCURRENCY_RETRIES = 3;
   var activeSyncPromise = null;
-  var previewConfirmations = {};
 
   // Mirrors js/history-logger.js maxRecords so merged history truncation matches append truncation.
   var HISTORY_MAX_RECORDS = 500;
@@ -517,13 +517,46 @@
   }
 
   /**
-   * Create a short-lived token for confirming a Drive sync preview.
-   * @param {Object} details - Confirmation details associated with the token.
-   * @return {string} The generated confirmation token, valid for two minutes.
+   * Reads persisted preview confirmations, dropping any that have already expired.
+   * @return {Promise<Object>} A map of confirmation token to confirmation record.
    */
-  function createPreviewConfirmation(details) {
+  async function readPreviewConfirmations() {
+    var result = await storageLocalGet(DRIVE_PREVIEW_CONFIRMATION_KEY);
+    var stored = (result && result[DRIVE_PREVIEW_CONFIRMATION_KEY]) || {};
+    var now = nowMs();
+    var pruned = {};
+    Object.keys(stored).forEach(function(token) {
+      if (stored[token] && stored[token].expiresAt > now) {
+        pruned[token] = stored[token];
+      }
+    });
+    return pruned;
+  }
+
+  /**
+   * Persists the given preview confirmation map to durable storage.
+   * @param {Object} confirmations - The confirmation map to persist.
+   * @return {Promise<void>}
+   */
+  async function writePreviewConfirmations(confirmations) {
+    await storageLocalSet((function() {
+      var payload = {};
+      payload[DRIVE_PREVIEW_CONFIRMATION_KEY] = confirmations;
+      return payload;
+    })());
+  }
+
+  /**
+   * Create a short-lived token for confirming a Drive sync preview.
+   * Persisted in chrome.storage.local so the confirmation survives MV3 service-worker restarts.
+   * @param {Object} details - Confirmation details associated with the token.
+   * @return {Promise<string>} The generated confirmation token, valid for two minutes.
+   */
+  async function createPreviewConfirmation(details) {
     var token = "drive-preview-" + nowMs().toString(36) + "-" + Math.random().toString(36).slice(2);
-    previewConfirmations[token] = Object.assign({ expiresAt: nowMs() + 2 * 60 * 1000 }, details);
+    var confirmations = await readPreviewConfirmations();
+    confirmations[token] = Object.assign({ expiresAt: nowMs() + 2 * 60 * 1000 }, details);
+    await writePreviewConfirmations(confirmations);
     return token;
   }
 
@@ -533,9 +566,13 @@
    * @param {Object} expected - The current sync details that must match the preview.
    * @throws {Error} If the token is missing, expired, already consumed, or does not match the expected sync details.
    */
-  function consumePreviewConfirmation(token, expected) {
-    var record = token && previewConfirmations[token];
-    delete previewConfirmations[token];
+  async function consumePreviewConfirmation(token, expected) {
+    var confirmations = await readPreviewConfirmations();
+    var record = token && confirmations[token];
+    if (token && confirmations[token]) {
+      delete confirmations[token];
+      await writePreviewConfirmations(confirmations);
+    }
     if (!record || record.expiresAt < nowMs()) {
       throw createDriveError("preview_stale", "The Drive sync preview expired. Refresh the preview and confirm again.");
     }
@@ -2221,7 +2258,7 @@
       if (config.preview) {
         return buildSyncResult("preview", {
           changes: remoteSummary.concat(localSummary),
-          confirmationToken: createPreviewConfirmation(confirmationDetails),
+          confirmationToken: await createPreviewConfirmation(confirmationDetails),
           expiresInMs: 2 * 60 * 1000,
           failsafe: failsafe,
           local: { bytes: estimatePayloadBytes(localEnvelope) },
@@ -2234,7 +2271,7 @@
         });
       }
       if (config.requireConfirmation) {
-        consumePreviewConfirmation(config.confirmationToken, confirmationDetails);
+        await consumePreviewConfirmation(config.confirmationToken, confirmationDetails);
       }
       if (failsafe && !config.overrideFailsafe) {
         var failsafePending = buildPendingConflict(

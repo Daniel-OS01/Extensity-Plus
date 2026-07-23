@@ -81,7 +81,7 @@ Open **Options → Google Drive Sync**:
 - **Push to Drive** / **Pull from Drive** are destructive directions. The extension first produces a short-lived preview bound to the current local payload and Drive file version, then snapshots recovery data before writing.
 - **Undo last sync** restores the newest entry in the three-deep local backup ring.
 
-The Dashboard **Import / Export** tab exposes the same sync actions.
+The Dashboard **Import / Export** tab exposes only the core sync actions — **Sync Drive**, **Push to Drive**, and **Pull from Drive**. **Undo last sync** and **Save settings** are available under the Dashboard **Sync Status** tab (Undo last sync is also available on the Options page).
 
 The Dashboard **Sync Status** tab now also includes a Drive sync card with the current extension ID, install type, auth path, last sync timestamp, remote file ID, and a direct `Open Google Drive` action.
 
@@ -89,7 +89,7 @@ The Dashboard **Sync Status** tab now also includes a Drive sync card with the c
 
 When the same item changes differently on this device and Drive, including edit-versus-delete, synchronization pauses without writing either side. **Keep this device** or **Use Drive copy** applies only to conflicting items; compatible changes remain merged. **Cancel** performs no write and leaves synchronization paused.
 
-Multiple matching app-data files also pause sync. Select the canonical file explicitly; duplicates are never silently deleted. Drive `version` is checked immediately before upload, and uploaded content is downloaded and verified before local state or the merge baseline advances. A version race is re-read and recomputed up to three times for merge runs. A verification or partial-write failure retains the transaction journal; startup restores the saved local snapshot and leaves a recovery notice before another automatic run.
+Multiple matching app-data files also pause sync and every candidate is reported; duplicates are never silently deleted. The UI does not yet expose a control to pick a canonical file among duplicates — the **Keep this device** / **Use Drive copy** / **Cancel** buttons resolve only item-level conflicts, not this case. Drive `version` is checked immediately before upload, and uploaded content is downloaded and verified before local state or the merge baseline advances. A version race is re-read and recomputed up to three times for merge runs. A verification or partial-write failure retains the transaction journal; startup restores the saved local snapshot and leaves a recovery notice before another automatic run.
 
 Legacy v1 files remain readable and the first successful write snapshots data before producing v2. If a device that has written v2 later sees a v1 file, synchronization pauses as a schema regression rather than discarding deletion history.
 
@@ -109,7 +109,7 @@ Legacy v1 files remain readable and the first successful write snapshots data be
 | “Custom URI scheme is not supported on Chrome apps” in Brave | Configure the **Web application** OAuth fallback and add the two `chromiumapp.org/drive` redirect URIs. |
 | Sign-in loop / 401 | Remove the extension from [Google Account permissions](https://myaccount.google.com/permissions) and sync again. |
 | Auto-sync fails with auth-needed status | Click **Sync now** once to complete interactive sign-in; background auto-sync then resumes. |
-| Multiple same-name sync files exist | Sync pauses and reports every candidate. Select the canonical file explicitly; cleanup is separate. |
+| Multiple same-name sync files exist | Sync pauses and reports every candidate; there is no in-UI way to pick a canonical file yet. Remove the extra file(s) from the Drive app data folder via the Drive API. |
 | `preview_stale` | Local data or the Drive version changed after preview. Refresh and confirm again. |
 | `drive_verification_failed` | The downloaded post-write content did not match. The recovery journal is retained; do not clear it manually. |
 | Want one side to win outright | Select an overwrite strategy or use **Push**/**Pull**; backups, preview confirmation, verification, and failsafes still apply. |

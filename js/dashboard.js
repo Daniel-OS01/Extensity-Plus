@@ -1006,7 +1006,7 @@ document.addEventListener("DOMContentLoaded", function() {
           self.applyState(payload.state);
         }
         self.message("Drive sync settings saved.");
-      });
+      }).catch(function() {});
     };
 
     self.restoreDriveBackup = function() {
@@ -1016,7 +1016,7 @@ document.addEventListener("DOMContentLoaded", function() {
         }
         self.message("Latest Drive sync backup restored.");
         self.refreshDriveSyncStatus();
-      });
+      }).catch(function() {});
     };
 
     self.openGoogleDrive = function() {

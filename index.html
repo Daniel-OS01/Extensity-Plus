@@ -61,12 +61,12 @@
 </section>
 
 <section id="search" class="main" data-sbind="if: opts.searchBox">
-  <p><i class="fa fa-search"></i> <input type="text" data-sbind="value: search.q, valueUpdate: 'keyup'" tabindex="1" autofocus /></p>
+  <p><i class="fa fa-search" aria-hidden="true"></i> <input type="text" placeholder="Search extensions..." aria-label="Search extensions" data-sbind="value: search.q, valueUpdate: 'keyup'" tabindex="1" autofocus /></p>
 </section>
 
 <section id="search-results" class="main" data-sbind="visible: isSearching">
   <ul class="items" data-sbind="template: {name: 'item-template', foreach: searchResults}"></ul>
-  <p class="empty" data-sbind="visible: searchEmpty"><i class="fa fa-exclamation-triangle"></i><br />No results found.</p>
+  <p class="empty" data-sbind="visible: searchEmpty"><i class="fa fa-exclamation-triangle" aria-hidden="true"></i><br />No results found.</p>
 </section>
 
 <section id="content" class="main" style="display:none;" data-sbind="visible: showContent">
@@ -114,7 +114,7 @@
   </section>
 
   <section data-sbind="visible: emptyItems">
-    <p class="empty"><i class="fa fa-exclamation-triangle"></i><br />No Extensions or Apps found.</p>
+    <p class="empty"><i class="fa fa-exclamation-triangle" aria-hidden="true"></i><br />No Extensions or Apps found.</p>
   </section>
 </section>
 

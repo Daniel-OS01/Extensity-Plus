@@ -790,7 +790,15 @@ body.popup-list-style-table.list-view #content > section:not(#profiles) > ul.ite
   max-width: 50%;
 }
 
-.item-actions .fa-gear:hover {
+.options-button {
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  padding: 0;
+}
+
+.item-actions .options-button:hover {
   color: var(--accent);
 }
 

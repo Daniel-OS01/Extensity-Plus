@@ -459,8 +459,12 @@ body.profiles-portrait #profiles {
   color: inherit;
 }
 
-#profiles .sidebar .remove-profile {
+#profiles .sidebar button.remove-profile {
+  background: none;
+  border: none;
   color: var(--muted);
+  cursor: pointer;
+  padding: 0;
 }
 
 #profiles .sidebar .remove-profile:hover {

@@ -1,7 +1,7 @@
 (function(root) {
   var storage = root.ExtensityStorage;
   var supportedVersion = "2.0.0";
-  var supportedScopes = ["full", "profiles", "settings", "profiles_settings"];
+  var supportedScopes = ["full", "profiles", "settings", "profiles_settings", "url_rules"];
 
   function csvEscape(value) {
     var text = value == null ? "" : String(value);
@@ -75,6 +75,11 @@
       return payload;
     }
 
+    if (scope === "url_rules") {
+      payload.urlRules = storage.clone(state.localState.urlRules || []);
+      return payload;
+    }
+
     throw new Error("Unknown export scope: " + scope);
   }
 
@@ -86,6 +91,7 @@
     var hasProfiles = isObject(envelope.profiles);
     var hasSettings = isObject(envelope.settings);
     var hasLocalState = isObject(envelope.localState);
+    var hasUrlRules = Array.isArray(envelope.urlRules);
 
     if (hasProfiles && hasSettings && hasLocalState) {
       return "full";
@@ -99,8 +105,13 @@
     if (hasSettings) {
       return "settings";
     }
+    // Checked last so a full or profiles/settings backup that also carries urlRules is
+    // still detected by its richer scope.
+    if (hasUrlRules) {
+      return "url_rules";
+    }
 
-    throw new Error("Unrecognized backup JSON. Expected profiles and/or settings, or a full backup with localState.");
+    throw new Error("Unrecognized backup JSON. Expected profiles, settings and/or URL rules, or a full backup with localState.");
   }
 
   function normalizeFullEnvelope(envelope) {
@@ -146,6 +157,10 @@
 
     if (scope === "settings" || scope === "profiles_settings") {
       result.settings = envelope.settings;
+    }
+
+    if (scope === "url_rules") {
+      result.urlRules = Array.isArray(envelope.urlRules) ? storage.clone(envelope.urlRules) : [];
     }
 
     return result;

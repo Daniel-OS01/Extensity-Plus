@@ -682,6 +682,9 @@
     if (importScope === "profiles_settings") {
       return "Profiles and settings imported.";
     }
+    if (importScope === "url_rules") {
+      return "URL rules imported and merged with the existing rules.";
+    }
     return "Backup imported.";
   }
 

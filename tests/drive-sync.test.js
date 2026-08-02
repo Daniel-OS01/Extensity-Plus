@@ -2521,3 +2521,49 @@ test("a token refresh does not consume the transient-failure retry budget", asyn
   assert.deepEqual(result, { ok: true });
   assert.equal(fetchCalls, 4);
 });
+
+test("malformed remote category data is skipped, never applied as an empty wipe", () => {
+  // A corrupt or hand-edited Drive file must not be able to clear a device. Previously a
+  // null/wrong-typed payload either crashed (profiles, groups) or was coerced to an empty
+  // object/array and written over the user's real data (aliases, urlRules, history).
+  const root = loadDriveSync();
+  const flags = { aliases: true, groups: true, history: true, options: true, profiles: true, urlRules: true };
+  const envelope = {
+    categories: {
+      aliases: { data: null, updatedAt: 1 },
+      groups: { data: "not-an-object", updatedAt: 1 },
+      history: { data: { nope: true }, updatedAt: 1 },
+      options: { data: null, updatedAt: 1 },
+      profiles: { data: { meta: {} }, updatedAt: 1 },
+      urlRules: { data: null, updatedAt: 1 }
+    }
+  };
+
+  const patches = plain(root.ExtensityDriveSync.buildPatchesFromEnvelope(envelope, flags));
+
+  assert.deepEqual(patches, {}, "no patch may be produced from malformed category data");
+});
+
+test("well-formed category data still produces patches", () => {
+  const root = loadDriveSync();
+  const flags = { aliases: true, groups: false, history: false, options: false, profiles: false, urlRules: true };
+  const envelope = {
+    categories: {
+      aliases: { data: { ext1: "Alias" }, updatedAt: 1 },
+      urlRules: { data: [{ id: "r1" }], updatedAt: 1 }
+    }
+  };
+
+  const patches = plain(root.ExtensityDriveSync.buildPatchesFromEnvelope(envelope, flags));
+
+  assert.deepEqual(patches.localState.aliases, { ext1: "Alias" });
+  assert.deepEqual(patches.localState.urlRules, [{ id: "r1" }]);
+});
+
+test("applyCategoryToPatches rejects an unknown category instead of silently ignoring it", () => {
+  const root = loadDriveSync();
+  assert.throws(
+    () => root.ExtensityDriveSync.applyCategoryToPatches("bogus", {}, {}),
+    /Unknown Drive sync category/
+  );
+});

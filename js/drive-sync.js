@@ -1082,38 +1082,66 @@
     return conflicts;
   }
 
+  /**
+   * Reports whether a category's payload has the shape that category requires.
+   * Data that fails this check is skipped rather than applied: substituting an empty
+   * object or array for a malformed payload would clear the user's real data, and a
+   * corrupt Drive file must never be able to erase a device.
+   * @param {string} categoryId - The category to check.
+   * @param {*} categoryData - The payload to validate.
+   * @return {boolean} True when the payload can be applied safely.
+   * @throws {Error} If the category is unsupported.
+   */
+  function isApplicableCategoryData(categoryId, categoryData) {
+    if (categoryId === "options" || categoryId === "aliases") {
+      return isObject(categoryData);
+    }
+    if (categoryId === "profiles") {
+      return isObject(categoryData) && isObject(categoryData.map);
+    }
+    if (categoryId === "groups") {
+      return isObject(categoryData) && isObject(categoryData.groups);
+    }
+    if (categoryId === "urlRules" || categoryId === "history") {
+      return Array.isArray(categoryData);
+    }
+    throw new Error("Unknown Drive sync category: " + categoryId);
+  }
+
   function applyCategoryToPatches(categoryId, categoryData, patches) {
+    if (!isApplicableCategoryData(categoryId, categoryData)) {
+      return false;
+    }
     if (categoryId === "options") {
       patches.syncOptions = Object.assign(patches.syncOptions || {}, categoryData);
-      return;
+      return true;
     }
     if (categoryId === "profiles") {
       patches.profiles = {
-        map: categoryData.map || {},
-        meta: categoryData.meta || {}
+        map: categoryData.map,
+        meta: isObject(categoryData.meta) ? categoryData.meta : {}
       };
-      return;
+      return true;
     }
     if (categoryId === "aliases") {
       patches.localState = patches.localState || {};
-      patches.localState.aliases = categoryData || {};
-      return;
+      patches.localState.aliases = categoryData;
+      return true;
     }
     if (categoryId === "groups") {
       patches.localState = patches.localState || {};
       patches.localState.groupOrder = Array.isArray(categoryData.groupOrder) ? categoryData.groupOrder : [];
-      patches.localState.groups = categoryData.groups || {};
-      return;
+      patches.localState.groups = categoryData.groups;
+      return true;
     }
     if (categoryId === "urlRules") {
       patches.localState = patches.localState || {};
-      patches.localState.urlRules = Array.isArray(categoryData) ? categoryData : [];
-      return;
+      patches.localState.urlRules = categoryData;
+      return true;
     }
-    if (categoryId === "history") {
-      patches.localState = patches.localState || {};
-      patches.localState.eventHistory = Array.isArray(categoryData) ? categoryData : [];
-    }
+    patches.localState = patches.localState || {};
+    patches.localState.eventHistory = categoryData;
+    return true;
   }
 
   /**

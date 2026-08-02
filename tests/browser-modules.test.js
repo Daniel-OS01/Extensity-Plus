@@ -3648,3 +3648,46 @@ test("ExtensityLogger records nothing while the Activity & Log setting is off", 
   logger.warn("after_reenable");
   assert.equal(logger.getEntries().length, 2);
 });
+
+test("importing URL rules merges by id and never drops existing rules", async () => {
+  const saved = [];
+  const existing = [
+    { id: "r-keep", name: "Keep", urlPattern: "keep.example", active: true },
+    { id: "r-update", name: "Old Name", urlPattern: "old.example", active: true }
+  ];
+  const root = loadBackgroundModule({
+    ExtensityStorage: {
+      loadLocalState: async function() {
+        return { urlRules: existing };
+      },
+      saveLocalState: async function(patch) {
+        saved.push(patch);
+      }
+    },
+    ExtensityUrlRules: {
+      // Pass-through normalizer; rule normalization has its own tests.
+      normalizeRules(rules) {
+        return (rules || []).map((rule) => ({ ...rule }));
+      }
+    }
+  });
+
+  const result = await root.ExtensityBackground.mergeImportedUrlRules([
+    { id: "r-update", name: "New Name", urlPattern: "new.example", active: false },
+    { id: "r-added", name: "Added", urlPattern: "added.example", active: true }
+  ]);
+
+  assert.equal(result.added, 1);
+  assert.equal(result.updated, 1);
+  assert.equal(saved.length, 1);
+
+  const merged = saved[0].urlRules;
+  assert.deepEqual(merged.map((rule) => rule.id), ["r-keep", "r-update", "r-added"]);
+  // The rule the import did not mention survives untouched...
+  assert.equal(merged[0].name, "Keep");
+  // ...the matching id is replaced by the imported version...
+  assert.equal(merged[1].name, "New Name");
+  assert.equal(merged[1].urlPattern, "new.example");
+  // ...and the new rule is appended.
+  assert.equal(merged[2].name, "Added");
+});

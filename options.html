@@ -155,9 +155,10 @@
           <button type="button" title="Export profiles only as JSON" data-sbind="click: exportProfilesJson">Export Profiles JSON</button>
           <button type="button" title="Export settings only as JSON" data-sbind="click: exportSettingsJson">Export Settings JSON</button>
           <button type="button" title="Export profiles and settings as JSON" data-sbind="click: exportProfilesSettingsJson">Export Profiles + Settings JSON</button>
+          <button type="button" title="Export URL rules only as JSON" data-sbind="click: exportUrlRulesJson">Export URL Rules JSON</button>
           <button type="button" title="Export extension data as CSV" data-sbind="click: exportCsv">Export CSV</button>
         </div>
-        <div class="field"><label for="importJson">Import JSON backup (full or partial export)</label><input type="file" id="importJson" accept=".json,application/json" data-sbind="event:{change: importJson}" /></div>
+        <div class="field"><label for="importJson">Import JSON backup (full, profiles, settings or URL rules)</label><input type="file" id="importJson" accept=".json,application/json" data-sbind="event:{change: importJson}" /></div>
       </fieldset>
     </div>
 

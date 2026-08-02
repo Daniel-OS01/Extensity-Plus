@@ -235,7 +235,7 @@ test("round-trip: buildScopedExport output passes validateImportPayload for each
     profiles: { map: { Work: ["ext-1"], __always_on: [], __favorites: [] } }
   });
 
-  ["profiles", "settings", "profiles_settings"].forEach((scope) => {
+  ["profiles", "settings", "profiles_settings", "url_rules"].forEach((scope) => {
     const exported = root.ExtensityImportExport.buildScopedExport(input, scope);
     const validated = root.ExtensityImportExport.validateImportPayload(exported);
     assert.equal(validated.scope, scope);
@@ -335,4 +335,47 @@ test("buildExtensionsCsv: empty groupIds produces empty groups cell", () => {
   ]);
   // The groups column should not contain a pipe
   assert.ok(!csv.split("\n").slice(1).join("").includes("|"), "Empty groupIds must not produce pipe characters");
+});
+
+test("buildScopedExport url_rules exports only the rules", () => {
+  const root = loadImportExport();
+  const rules = [
+    { id: "r1", name: "Work", urlPattern: "work.example", active: true },
+    { id: "r2", name: "Social", urlPattern: "social.example", active: false }
+  ];
+  const input = makeInput({
+    localState: { ...makeInput().localState, urlRules: rules },
+    options: { activeProfile: "Work", sortMode: "alpha" }
+  });
+
+  const exported = root.ExtensityImportExport.buildScopedExport(input, "url_rules");
+
+  assert.equal(exported.exportScope, "url_rules");
+  assert.deepEqual(exported.urlRules.map((rule) => rule.id), ["r1", "r2"]);
+  // A URL-rules export must not leak unrelated data.
+  assert.equal(exported.settings, undefined);
+  assert.equal(exported.profiles, undefined);
+  assert.equal(exported.localState, undefined);
+});
+
+test("a url_rules payload without exportScope is still detected", () => {
+  const root = loadImportExport();
+  const validated = root.ExtensityImportExport.validateImportPayload({
+    version: "2.0.0",
+    urlRules: [{ id: "r1", name: "Work", urlPattern: "work.example" }]
+  });
+
+  assert.equal(validated.scope, "url_rules");
+  assert.deepEqual(validated.urlRules.map((rule) => rule.id), ["r1"]);
+});
+
+test("a full backup carrying urlRules is still detected as full, not url_rules", () => {
+  const root = loadImportExport();
+  const input = makeInput({
+    localState: { ...makeInput().localState, urlRules: [{ id: "r1", name: "Work", urlPattern: "w.example" }] }
+  });
+  const exported = root.ExtensityImportExport.buildScopedExport(input, "full");
+  delete exported.exportScope;
+
+  assert.equal(root.ExtensityImportExport.detectImportScope(exported), "full");
 });

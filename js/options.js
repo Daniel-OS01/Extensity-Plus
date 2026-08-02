@@ -269,6 +269,12 @@ document.addEventListener("DOMContentLoaded", function() {
       });
     };
 
+    self.exportUrlRulesJson = function() {
+      self.performAction(ExtensityApi.exportBackup("url_rules")).then(function(payload) {
+        downloadBackup(payload, "extensity-plus-url-rules");
+      });
+    };
+
     self.exportCsv = function() {
       self.performAction(ExtensityApi.getState()).then(function(payload) {
         var csv = ExtensityImportExport.buildExtensionsCsv(payload.state.extensions);

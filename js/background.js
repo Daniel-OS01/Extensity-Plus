@@ -1965,6 +1965,52 @@ importScripts(
     }
   }
 
+  /**
+   * Merges imported URL rules into the existing set, keyed by rule id.
+   * A URL-rules-only import adds and updates but never removes, matching the additive
+   * Drive sync default — importing a partial export must not silently drop rules that
+   * export did not contain.
+   * @param {Array} incoming - Rules from the import payload.
+   * @return {Promise<Object>} Counts of `added` and `updated` rules.
+   */
+  async function mergeImportedUrlRules(incoming) {
+    var localState = await storage.loadLocalState();
+    var existing = Array.isArray(localState.urlRules) ? localState.urlRules : [];
+    var normalizedIncoming = urlRules.normalizeRules(Array.isArray(incoming) ? incoming : []);
+    var byId = {};
+    existing.forEach(function(rule) {
+      if (rule && rule.id) {
+        byId[rule.id] = true;
+      }
+    });
+
+    var added = 0;
+    var updated = 0;
+    var merged = existing.map(function(rule) {
+      if (!rule || !rule.id) {
+        return rule;
+      }
+      var replacement = normalizedIncoming.find(function(candidate) {
+        return candidate.id === rule.id;
+      });
+      if (!replacement) {
+        return rule;
+      }
+      updated += 1;
+      return storage.clone(replacement);
+    });
+
+    normalizedIncoming.forEach(function(rule) {
+      if (!byId[rule.id]) {
+        added += 1;
+        merged.push(storage.clone(rule));
+      }
+    });
+
+    await storage.saveLocalState({ urlRules: urlRules.normalizeRules(merged) });
+    return { added: added, updated: updated };
+  }
+
   async function importBackup(payload) {
     var parsed = importExport.validateImportPayload(payload.envelope);
     var importScope = parsed.scope;
@@ -1987,6 +2033,17 @@ importScripts(
       await storage.saveSyncOptions(parsed.settings);
       await touchDriveCategories(["options"]);
       return { state: await buildState(), importScope: importScope };
+    }
+
+    if (parsed.scope === "url_rules") {
+      var importedRules = await mergeImportedUrlRules(parsed.urlRules);
+      await touchDriveCategories(["urlRules"]);
+      return {
+        state: await buildState(),
+        importScope: importScope,
+        urlRulesAdded: importedRules.added,
+        urlRulesUpdated: importedRules.updated
+      };
     }
 
     var envelope = parsed;
@@ -2931,6 +2988,7 @@ importScripts(
     focusOrCreateDashboardTab: focusOrCreateDashboardTab,
     isAppType: isAppType,
     loadExtensionMetadata: loadExtensionMetadata,
+    mergeImportedUrlRules: mergeImportedUrlRules,
     normalizeExtensions: normalizeExtensions,
     normalizeStoreUrl: normalizeStoreUrl,
     openDashboard: openDashboard,

@@ -39,6 +39,16 @@
     "lastDriveSync",
     "lastDriveSyncError"
   ];
+  // Options that describe *this device* rather than the user's settings. They must never
+  // enter the synced payload: every device writes its own value, so leaving them in makes
+  // the options category permanently divergent — each sync then writes to Drive, bumps the
+  // file version, and invalidates any in-flight preview confirmation.
+  // `syncWriterId` is injected into options by background.js loadDriveContext();
+  // `driveAuthStatus` is this device's OAuth state.
+  var DRIVE_DEVICE_LOCAL_OPTION_KEYS = [
+    "driveAuthStatus",
+    "syncWriterId"
+  ];
   var DRIVE_MAX_RETRIES = 3;
   var DRIVE_RETRY_BASE_DELAY_MS = 1000;
   var DRIVE_REQUEST_TIMEOUT_MS = 15000;
@@ -180,7 +190,7 @@
 
   function buildOptionsCategoryPayload(options) {
     var payload = clone(options || {});
-    DRIVE_SYNC_OPTION_KEYS.forEach(function(key) {
+    DRIVE_SYNC_OPTION_KEYS.concat(DRIVE_DEVICE_LOCAL_OPTION_KEYS).forEach(function(key) {
       delete payload[key];
     });
     delete payload._syncOptionsUpdatedAt;
@@ -486,12 +496,49 @@
   }
 
   /**
+   * Rebuilds a value with every object's keys in sorted order, leaving arrays in place.
+   * @param {*} value - The value to canonicalize.
+   * @return {*} An order-normalized copy of the value.
+   */
+  function canonicalize(value) {
+    if (Array.isArray(value)) {
+      return value.map(canonicalize);
+    }
+    if (!isObject(value)) {
+      return value;
+    }
+    var result = {};
+    Object.keys(value).sort().forEach(function(key) {
+      result[key] = canonicalize(value[key]);
+    });
+    return result;
+  }
+
+  /**
    * Serializes a value as JSON for comparison and fingerprinting.
+   * Object keys are sorted first so that two structurally identical values — one rebuilt
+   * locally, one parsed back from Drive — serialize identically. Plain `JSON.stringify`
+   * is key-order sensitive, which made unchanged data compare as changed.
    * @param {*} value - The value to serialize.
    * @return {string|undefined} The JSON representation, or `undefined` when serialization produces no result.
    */
   function stableSerialize(value) {
-    return JSON.stringify(value);
+    return JSON.stringify(canonicalize(value));
+  }
+
+  /**
+   * Computes a 32-bit FNV-1a hash of a string.
+   * @param {string} text - The text to hash.
+   * @return {string} The hash in hexadecimal form.
+   */
+  function hashText(text) {
+    var source = String(text);
+    var hash = 2166136261;
+    for (var index = 0; index < source.length; index += 1) {
+      hash ^= source.charCodeAt(index);
+      hash = Math.imul(hash, 16777619);
+    }
+    return (hash >>> 0).toString(16);
   }
 
   /**
@@ -510,32 +557,34 @@
    * @return {number} The estimated serialized size in bytes.
    */
   function estimatePayloadBytes(value) {
-    return unescape(encodeURIComponent(stableSerialize(value))).length;
+    return new TextEncoder().encode(stableSerialize(value) || "").length;
   }
 
   /**
    * Computes a deterministic hexadecimal fingerprint for a sync envelope's content.
-   * Deliberately excludes `exportedAt`, which `buildEnvelope` stamps fresh with
-   * `nowMs()` on every call — including it would make the fingerprint differ between
-   * a preview call and its matching confirm call purely from elapsed wall-clock time,
-   * even when nothing about the actual data changed, causing every preview to appear
-   * stale.
+   * Covers only each category's `data`. Everything else in an envelope moves for reasons
+   * unrelated to what the user is syncing: `exportedAt` is stamped fresh by `buildEnvelope`
+   * on every call, and each category's `updatedAt` is bumped by `touchDriveCategories` on
+   * any local change (toggling an extension, a URL rule firing, saving options). Including
+   * either made a preview's fingerprint differ from its own confirm call's fingerprint, so
+   * confirms failed with `preview_stale` even though the data was identical.
    * @param {Object|null|undefined} envelope - The envelope to fingerprint.
    * @return {string} The envelope content's hexadecimal fingerprint.
    */
   function envelopeFingerprint(envelope) {
-    var normalized = envelope ? {
-      categories: envelope.categories,
+    if (!envelope) {
+      return hashText(stableSerialize(null));
+    }
+    var categories = isObject(envelope.categories) ? envelope.categories : {};
+    var data = {};
+    Object.keys(categories).forEach(function(categoryId) {
+      data[categoryId] = categories[categoryId] ? categories[categoryId].data : null;
+    });
+    return hashText(stableSerialize({
+      categories: data,
       version: envelope.version,
       writerId: envelope.writerId
-    } : null;
-    var text = JSON.stringify(normalized);
-    var hash = 2166136261;
-    for (var index = 0; index < text.length; index += 1) {
-      hash ^= text.charCodeAt(index);
-      hash = Math.imul(hash, 16777619);
-    }
-    return (hash >>> 0).toString(16);
+    }));
   }
 
   /**
@@ -669,9 +718,20 @@
       });
       return result;
     }
-    (Array.isArray(data) ? data : []).forEach(function(item, index) {
+    // Array categories (urlRules, history). Items without an id are keyed by their content
+    // rather than their array position: with positional keys, inserting one item at the
+    // front re-keys every later item, so the three-way merge reports them all as changed on
+    // both sides and invents conflicts. Repeated identical items get a stable occurrence
+    // suffix so duplicates survive the round trip.
+    var duplicateCounts = {};
+    (Array.isArray(data) ? data : []).forEach(function(item) {
       var id = item && (item.id || item.eventId || item.timestamp);
-      result[String(id || index)] = item;
+      var key = id ? String(id) : "content:" + hashText(stableSerialize(item));
+      if (Object.prototype.hasOwnProperty.call(result, key)) {
+        duplicateCounts[key] = (duplicateCounts[key] || 1) + 1;
+        key = key + "#" + duplicateCounts[key];
+      }
+      result[key] = item;
     });
     return result;
   }
@@ -831,6 +891,9 @@
 
   /**
    * Detects whether a category change exceeds the configured failsafe limits.
+   * Only destructive changes count. Pure additions are never a violation — the safeguard is
+   * presented to users as "Protect destructive changes", and blocking a first automatic sync
+   * from a device that simply has many extensions or rules was a false positive.
    * @param {Array<Object>} summary - Category change summaries containing item counts and deletion statistics.
    * @param {Object} [options] - Failsafe settings, including threshold and automatic-trigger behavior.
    * @return {Object|null} The first violating category summary with its label and threshold, or `null` when no violation is found.
@@ -846,7 +909,6 @@
         (entry.beforeCount > 0 && entry.afterCount === 0)
         || entry.deleted >= DRIVE_FAILSAFE_ABSOLUTE_DELETIONS
         || (entry.deleted > 0 && entry.deletionPercent >= threshold)
-        || (options && options.driveAutomaticTrigger && entry.added >= 20)
         || (
           options && options.driveAutomaticTrigger
           && entry.beforeCount > 0
@@ -1690,7 +1752,9 @@
           if (typeof config.onTokenRefresh === "function") {
             config.onTokenRefresh(currentToken, nextTokenResult.authProvider);
           }
-          attempt += 1;
+          // The one-shot token refresh does not consume a retry attempt: `tokenRefreshed`
+          // already prevents a second refresh, and charging it here left only one attempt
+          // for the transient failures the retry budget exists for.
           continue;
         }
 
@@ -2241,15 +2305,7 @@
       return buildSyncResult("cancelled", { pendingConflict: null });
     }
 
-    var token;
-    var authProvider = "chrome_identity";
-    try {
-      var tokenResult = await acquireDriveToken(interactive);
-      token = tokenResult.token;
-      authProvider = tokenResult.authProvider;
-    } catch (error) {
-      throw error;
-    }
+    var token = (await acquireDriveToken(interactive)).token;
 
     /**
      * Executes a Drive API request with retries and automatic token refresh.
@@ -2265,7 +2321,6 @@
         },
         onTokenRefresh: function(nextToken) {
           token = nextToken;
-          authProvider = arguments.length > 1 ? arguments[1] : authProvider;
         }
       }));
     }
@@ -2532,7 +2587,7 @@
       });
     } catch (error) {
       if (error && error.code === "auth" && token) {
-        await clearDriveAuthToken(token, authProvider);
+        await clearDriveAuthToken(token);
       }
       throw normalizeDriveError(error, "sync_failed");
     }

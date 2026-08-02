@@ -2172,3 +2172,255 @@ test("confirming a preview succeeds even when real time passes between the two c
   );
   assert.equal(confirmResult.status, "pushed");
 });
+
+test("confirming a preview succeeds after an unrelated local change bumps a category timestamp", async () => {
+  // Regression test: the confirmation fingerprint covered each category's updatedAt, which
+  // background.js touchDriveCategories() bumps on ANY local change — toggling an extension,
+  // a URL rule firing, saving options. So a confirm issued after any such event failed with
+  // preview_stale even though the synced data was byte-for-byte identical.
+  const remoteEnvelope = {
+    version: "1.0.0",
+    categories: { urlRules: { updatedAt: 999, data: [{ id: "r-remote", name: "Remote Rule" }] } }
+  };
+  const { fetchImpl } = driveSyncFetchHarness(remoteEnvelope);
+  const root = loadDriveSync({
+    crypto: crypto,
+    fetch: fetchImpl,
+    chrome: { identity: tokenIdentityOverrides(), storage: { local: statefulLocalStorage() } }
+  });
+
+  const context = {
+    driveSyncMeta: { categoryTimestamps: { urlRules: 1 }, fileId: "file-1", lastMergedAt: {} },
+    localState: {
+      aliases: {},
+      eventHistory: [],
+      groupOrder: [],
+      groups: {},
+      urlRules: [{ id: "r-local", name: "Local Rule" }],
+      driveSyncMeta: { categoryTimestamps: { urlRules: 1 }, fileId: "file-1", lastMergedAt: {} }
+    },
+    options: {
+      driveSyncCategories: {
+        aliases: false, groups: false, history: false, options: false, profiles: false, urlRules: true
+      }
+    },
+    profiles: { map: { __always_on: [], __base: [], __favorites: [] }, meta: {} }
+  };
+  const sharedConfig = {
+    direction: "push",
+    interactive: false,
+    overrideFailsafe: true,
+    loadContext: async function() { return context; },
+    savePatches: async function() {},
+    saveDriveMeta: async function() {},
+    saveSyncOptions: async function() {}
+  };
+
+  const previewResult = await root.ExtensityDriveSync.syncDrive({ ...sharedConfig, preview: true });
+  assert.equal(previewResult.status, "preview");
+
+  // Simulate the unrelated local change: same rule data, newer category timestamp.
+  const bumped = root.ExtensityDriveSync.bumpCategoryTimestamp(context.localState.driveSyncMeta, "urlRules");
+  context.localState.driveSyncMeta = bumped;
+  context.driveSyncMeta = bumped;
+
+  const confirmResult = await root.ExtensityDriveSync.syncDrive({
+    ...sharedConfig,
+    confirmationToken: previewResult.confirmationToken,
+    requireConfirmation: true
+  });
+  assert.equal(confirmResult.status, "pushed");
+});
+
+test("buildEnvelope keeps device-local options out of the synced payload", () => {
+  const root = loadDriveSync();
+  const context = sampleContext();
+  context.options.driveAuthStatus = "authorized";
+  context.options.syncWriterId = "device-a";
+  context.options.lastDriveSync = 12345;
+  context.options.sortMode = "alpha";
+
+  const envelope = root.ExtensityDriveSync.buildEnvelope(
+    context,
+    { aliases: false, groups: false, history: false, options: true, profiles: false, urlRules: false },
+    "device-a"
+  );
+  const data = plain(envelope.categories.options.data);
+
+  // Device identity and per-device OAuth state must not travel to other devices.
+  assert.equal(Object.prototype.hasOwnProperty.call(data, "syncWriterId"), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(data, "driveAuthStatus"), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(data, "lastDriveSync"), false);
+  // Genuine user settings still sync.
+  assert.equal(data.sortMode, "alpha");
+});
+
+test("syncDrive reports noop when only device-local options differ from Drive", async () => {
+  // Regression test: syncWriterId (injected per device by background.js loadDriveContext)
+  // and driveAuthStatus used to ride along in the options category. Every device wrote its
+  // own value, so the category was permanently divergent — each sync wrote to Drive, bumped
+  // the file version, and invalidated in-flight preview confirmations. noop was unreachable.
+  const remoteEnvelope = {
+    version: "2.0.0",
+    exportedAt: 5,
+    writerId: "device-b",
+    categories: { options: { updatedAt: 500, data: { sortMode: "recent", viewMode: "list" } } }
+  };
+  const { captured, fetchImpl } = driveSyncFetchHarness(remoteEnvelope);
+  const root = loadDriveSync({ fetch: fetchImpl, chrome: { identity: tokenIdentityOverrides() } });
+
+  const context = {
+    driveSyncMeta: { categoryTimestamps: { options: 500 }, fileId: "file-1", lastMergedAt: { options: 500 } },
+    localState: {
+      aliases: {},
+      eventHistory: [],
+      groupOrder: [],
+      groups: {},
+      urlRules: [],
+      driveSyncMeta: { categoryTimestamps: { options: 500 }, fileId: "file-1", lastMergedAt: { options: 500 } }
+    },
+    options: {
+      // Same user settings as Drive; only the device-local fields differ.
+      sortMode: "recent",
+      viewMode: "list",
+      driveAuthStatus: "authorized",
+      syncWriterId: "device-a",
+      driveSyncCategories: {
+        aliases: false, groups: false, history: false, options: true, profiles: false, urlRules: false
+      }
+    },
+    profiles: { map: { __always_on: [], __base: [], __favorites: [] }, meta: {} }
+  };
+
+  const result = await root.ExtensityDriveSync.syncDrive({
+    direction: "sync",
+    interactive: false,
+    loadContext: async function() { return context; },
+    savePatches: async function() {},
+    saveDriveMeta: async function() {},
+    saveSyncOptions: async function() {}
+  });
+
+  assert.equal(result.status, "noop");
+  assert.equal(captured.uploads.length, 0);
+});
+
+test("buildChangeSummary ignores object key order when comparing category data", () => {
+  // dataEqual drives mergedDataDiffers, the change counts, and the failsafe. Plain
+  // JSON.stringify is key-order sensitive, so a locally rebuilt object compared against the
+  // same data parsed back from Drive reported phantom changes — which could trip the
+  // failsafe's (changed + deleted) / beforeCount rule and block an automatic sync.
+  const root = loadDriveSync();
+  const flags = { aliases: false, groups: true, history: false, options: false, profiles: false, urlRules: false };
+  // Same group, same content — only the key order inside the group object differs, exactly
+  // what happens when a locally rebuilt object meets the same data parsed back from Drive.
+  const before = {
+    categories: {
+      groups: {
+        updatedAt: 1,
+        data: { groupOrder: ["g1"], groups: { g1: { name: "Work", extensionIds: ["ext1"], color: "red" } } }
+      }
+    }
+  };
+  const after = {
+    categories: {
+      groups: {
+        updatedAt: 2,
+        data: { groups: { g1: { color: "red", name: "Work", extensionIds: ["ext1"] } }, groupOrder: ["g1"] }
+      }
+    }
+  };
+
+  const summary = plain(root.ExtensityDriveSync.buildChangeSummary(before, after, flags));
+
+  assert.equal(summary.length, 1);
+  assert.equal(summary[0].changed, 0);
+  assert.equal(summary[0].added, 0);
+  assert.equal(summary[0].deleted, 0);
+  // Byte estimates must be order-independent too, or they drift for identical data.
+  assert.equal(summary[0].beforeBytes, summary[0].afterBytes);
+});
+
+test("findFailsafeViolation ignores pure additions but still catches deletions", () => {
+  const root = loadDriveSync();
+  const automatic = { driveAutomaticTrigger: true, driveFailsafeThresholdPercent: 20 };
+
+  // Adding 40 items is not destructive: a first automatic sync from a device with many
+  // extensions or rules must not be blocked by the destructive-change safeguard.
+  const additions = [{
+    added: 40, afterBytes: 400, afterCount: 45, beforeBytes: 50, beforeCount: 5,
+    categoryId: "aliases", changed: 0, deleted: 0, deletionPercent: 0
+  }];
+  assert.equal(root.ExtensityDriveSync.findFailsafeViolation(additions, automatic), null);
+
+  // Deletions above the threshold still trip it.
+  const deletions = [{
+    added: 0, afterBytes: 10, afterCount: 1, beforeBytes: 100, beforeCount: 10,
+    categoryId: "aliases", changed: 0, deleted: 9, deletionPercent: 90
+  }];
+  const violation = root.ExtensityDriveSync.findFailsafeViolation(deletions, automatic);
+  assert.equal(violation.categoryId, "aliases");
+  assert.equal(violation.deleted, 9);
+});
+
+test("three-way merge keys id-less array items by content, not array position", () => {
+  // Without content keys, position is identity: prepending one remote item re-keys every
+  // later item, so the merge reports them all as changed on both sides and invents conflicts.
+  const root = loadDriveSync();
+  const flags = { aliases: false, groups: false, history: false, options: false, profiles: false, urlRules: true };
+  // Local appends one rule, remote prepends another. With positional keys the shared rules
+  // shift index, so index "2" holds the local addition on one side and an untouched base
+  // rule on the other — a phantom conflict that silently drops "Rule B".
+  const base = [{ name: "Rule A" }, { name: "Rule B" }];
+  const localEnvelope = {
+    categories: { urlRules: { data: [{ name: "Rule A" }, { name: "Rule B" }, { name: "Rule L" }], updatedAt: 20 } }
+  };
+  const remoteEnvelope = {
+    categories: { urlRules: { data: [{ name: "Rule Z" }, { name: "Rule A" }, { name: "Rule B" }], updatedAt: 30 } }
+  };
+
+  const result = root.ExtensityDriveSync.buildThreeWayEnvelope(
+    localEnvelope, remoteEnvelope, { urlRules: base }, flags, null, "device-a"
+  );
+
+  assert.deepEqual(plain(result.conflicts), []);
+  assert.deepEqual(
+    plain(result.envelope.categories.urlRules.data).map((rule) => rule.name).sort(),
+    ["Rule A", "Rule B", "Rule L", "Rule Z"]
+  );
+});
+
+test("a token refresh does not consume the transient-failure retry budget", async () => {
+  // The 401 refresh branch used to increment `attempt`, leaving only one of three attempts
+  // for the transient failures the retry budget exists for.
+  let fetchCalls = 0;
+  const root = loadDriveSync({
+    chrome: {
+      identity: {
+        getAuthToken(options, callback) { callback("fresh-token"); },
+        removeCachedAuthToken(details, callback) { callback(); }
+      }
+    },
+    fetch: async function(url, options) {
+      fetchCalls += 1;
+      if (fetchCalls === 1) {
+        return textResponse(401, "unauthorized");
+      }
+      // Two transient failures — the full DRIVE_MAX_RETRIES budget must still be available
+      // after the refresh. Charging the refresh an attempt made this exhaust and throw.
+      if (fetchCalls === 2 || fetchCalls === 3) {
+        return textResponse(503, "unavailable");
+      }
+      assert.equal(options.headers.Authorization, "Bearer fresh-token");
+      return jsonResponse(200, { ok: true });
+    }
+  });
+
+  const result = await root.ExtensityDriveSync.retryDriveApiRequest("stale-token", "/drive/v3/files", {
+    interactive: false,
+    sleep: async function() {}
+  });
+
+  assert.deepEqual(result, { ok: true });
+  assert.equal(fetchCalls, 4);
+});

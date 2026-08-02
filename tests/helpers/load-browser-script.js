@@ -5,6 +5,7 @@ function loadBrowserScript(filePath, globals = {}) {
   const code = fs.readFileSync(filePath, "utf8");
   const sandbox = {
     AbortController,
+    TextEncoder,
     URL,
     URLSearchParams,
     console,

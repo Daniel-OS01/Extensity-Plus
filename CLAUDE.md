@@ -65,7 +65,7 @@ Each HTML page loads its own Knockout.js ViewModel:
 | `js/history-logger.js` | Append-only event history |
 | `js/reminders.js` | `chrome.alarms`-based reminder scheduling |
 | `js/import-export.js` | Versioned JSON backup envelope (export and import) |
-| `js/drive-sync.js` | Google Drive sync stub — OAuth not yet configured |
+| `js/drive-sync.js` | Google Drive appdata sync: OAuth (chrome.identity + Brave web fallback), versioned envelope, three-way item merge, preview/confirm handshake, destructive-change failsafe |
 
 ### Build
 

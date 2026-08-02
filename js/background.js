@@ -2496,7 +2496,9 @@ importScripts(
       case "GET_DRIVE_SYNC_STATUS":
         return await getDriveSyncStatusNow();
       case "PREVIEW_DRIVE_SYNC":
-        return { preview: await previewDriveSync(message) };
+        // `state` is included because a preview can record a pending conflict (duplicate
+        // Drive files, schema regression), and the UI resolves those from state.
+        return { preview: await previewDriveSync(message), state: await buildState() };
       case "RESTORE_DRIVE_SYNC_BACKUP":
         return await restoreDriveSyncBackup(message);
       case "SELECT_DRIVE_SYNC_FILE":

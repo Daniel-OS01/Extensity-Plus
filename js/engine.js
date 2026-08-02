@@ -1021,8 +1021,12 @@
         resolution: resolution,
         type: "PREVIEW_DRIVE_SYNC"
       });
+      var preview = previewPayload && previewPayload.preview;
+      if (!preview || preview.status !== "preview") {
+        return { result: preview, state: previewPayload && previewPayload.state };
+      }
       return chromeMessage({
-        confirmationToken: previewPayload.preview.confirmationToken,
+        confirmationToken: preview.confirmationToken,
         overrideFailsafe: !!overrideFailsafe,
         resolution: resolution,
         type: "RESOLVE_DRIVE_CONFLICT"
@@ -1040,7 +1044,14 @@
       }
       if (payload.direction === "push" || payload.direction === "pull") {
         var previewPayload = await chromeMessage(Object.assign({}, payload, { type: "PREVIEW_DRIVE_SYNC" }));
-        payload.confirmationToken = previewPayload.preview.confirmationToken;
+        var preview = previewPayload && previewPayload.preview;
+        // A preview only mints a confirmation token when there is something to confirm.
+        // noop/conflict/cancelled previews return no token, and confirming with an absent
+        // token always fails as preview_stale — so surface the preview result instead.
+        if (!preview || preview.status !== "preview") {
+          return { result: preview, state: previewPayload && previewPayload.state };
+        }
+        payload.confirmationToken = preview.confirmationToken;
         payload.overrideFailsafe = !!(options && options.overrideFailsafe);
         payload.requireConfirmation = true;
       }

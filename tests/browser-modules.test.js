@@ -736,7 +736,7 @@ test("ExtensityApi.resolveDriveConflict skips the preview handshake for cancel b
         sendMessage(message, callback) {
           sentMessages.push(normalize(message));
           if (message.type === "PREVIEW_DRIVE_SYNC") {
-            callback({ ok: true, payload: { preview: { confirmationToken: "token-123" } } });
+            callback({ ok: true, payload: { preview: { confirmationToken: "token-123", status: "preview" } } });
             return;
           }
           callback({ ok: true, payload: { result: { status: message.resolution === "cancel" ? "cancelled" : "resolved_local" } } });
@@ -758,6 +758,47 @@ test("ExtensityApi.resolveDriveConflict skips the preview handshake for cancel b
     { direction: "sync", resolution: "keep_local", type: "PREVIEW_DRIVE_SYNC" },
     { confirmationToken: "token-123", overrideFailsafe: false, resolution: "keep_local", type: "RESOLVE_DRIVE_CONFLICT" }
   ]);
+});
+
+// A preview only mints a confirmation token when it returns status "preview". noop/conflict
+// previews return none, and confirming without a token always fails as preview_stale — which
+// is what made Push/Pull/resolve loop on "The Drive sync data changed after preview".
+[
+  { label: "noop", preview: { status: "noop", fileId: "file-1" } },
+  { label: "conflict", preview: { status: "conflict", reason: "duplicate_remote_files" } }
+].forEach(({ label, preview }) => {
+  test(`ExtensityApi skips the confirm handshake when the preview returns ${label}`, async () => {
+    const sentMessages = [];
+    const windowRoot = {};
+
+    loadBrowserScript(path.join(repoRoot, "js/engine.js"), {
+      chrome: {
+        runtime: {
+          lastError: null,
+          sendMessage(message, callback) {
+            sentMessages.push(normalize(message));
+            if (message.type === "PREVIEW_DRIVE_SYNC") {
+              callback({ ok: true, payload: { preview, state: { extensions: [] } } });
+              return;
+            }
+            callback({ ok: true, payload: { result: { status: "resolved_local" } } });
+          }
+        }
+      },
+      ko: { extenders: {} },
+      window: windowRoot
+    });
+
+    const resolved = await windowRoot.ExtensityApi.resolveDriveConflict("keep_local");
+    assert.deepEqual(sentMessages.map((message) => message.type), ["PREVIEW_DRIVE_SYNC"]);
+    assert.equal(resolved.result.status, preview.status);
+    assert.deepEqual(resolved.state, { extensions: [] });
+
+    sentMessages.length = 0;
+    const pushed = await windowRoot.ExtensityApi.syncDrive({ direction: "push" });
+    assert.deepEqual(sentMessages.map((message) => message.type), ["PREVIEW_DRIVE_SYNC"]);
+    assert.equal(pushed.result.status, preview.status);
+  });
 });
 
 test("ExtensityApi.deleteDriveFile sends the file ID in a DELETE_DRIVE_FILE message", async () => {

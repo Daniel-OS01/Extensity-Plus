@@ -223,3 +223,12 @@ test("profileMapToItems sorts reserved profiles before alphabetical user profile
   assert.ok(names.indexOf("__favorites") < names.indexOf("Aaa"), "__favorites must sort before Aaa");
   assert.ok(names.indexOf("Aaa") < names.indexOf("Zzz"), "Aaa must sort before Zzz");
 });
+
+test("new sync defaults are safe: additive deletions and activity log on", () => {
+  const root = loadStorage();
+  const defaults = root.ExtensityStorage.getSyncDefaults();
+
+  // Deleting on one device must not delete on the others unless the user opts in.
+  assert.equal(defaults.driveSyncDeletionPolicy, "additive");
+  assert.equal(defaults.activityLogEnabled, true);
+});

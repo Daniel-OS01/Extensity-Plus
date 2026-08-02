@@ -1389,7 +1389,7 @@ test("mergeCategoryData throws on unknown category", () => {
   );
 });
 
-test("three-way item merge propagates deletion while preserving opposite-side addition", () => {
+test("three-way item merge propagates deletion under the mirror policy while preserving opposite-side addition", () => {
   const root = loadDriveSync();
   const flags = { aliases: false, groups: false, history: false, options: false, profiles: false, urlRules: true };
   const base = [{ id: "A" }, { id: "B" }];
@@ -1401,11 +1401,106 @@ test("three-way item merge propagates deletion while preserving opposite-side ad
     { urlRules: base },
     flags,
     null,
-    "device-a"
+    "device-a",
+    "mirror"
   );
 
   assert.deepEqual(plain(result.conflicts), []);
   assert.deepEqual(plain(result.envelope.categories.urlRules.data).map((item) => item.id).sort(), ["A", "C"]);
+});
+
+test("the default additive policy keeps an item deleted on only one side", () => {
+  const root = loadDriveSync();
+  const flags = { aliases: false, groups: false, history: false, options: false, profiles: false, urlRules: true };
+  const base = [{ id: "A" }, { id: "B" }];
+  const localEnvelope = { categories: { urlRules: { data: [{ id: "A" }], updatedAt: 20 } } };
+  const remoteEnvelope = { categories: { urlRules: { data: [{ id: "A" }, { id: "B" }, { id: "C" }], updatedAt: 30 } } };
+
+  // No explicit policy -> additive default. "B" was deleted locally but still exists
+  // remotely, so it survives; the remote addition "C" still arrives.
+  const result = root.ExtensityDriveSync.buildThreeWayEnvelope(
+    localEnvelope, remoteEnvelope, { urlRules: base }, flags, null, "device-a"
+  );
+
+  assert.deepEqual(plain(result.conflicts), []);
+  assert.deepEqual(
+    plain(result.envelope.categories.urlRules.data).map((item) => item.id).sort(),
+    ["A", "B", "C"]
+  );
+});
+
+test("an absent remote category never deletes the local copy", () => {
+  // Reproduces the reported data loss: a device that syncs with URL Rules unchecked writes
+  // an envelope omitting the category. Every other device then read the missing category as
+  // "remote deleted everything" and silently wiped its own rules, reporting no conflict.
+  const root = loadDriveSync();
+  const flags = { aliases: true, groups: false, history: false, options: false, profiles: false, urlRules: true };
+  const rules = [{ id: "r1" }, { id: "r2" }, { id: "r3" }];
+  const localEnvelope = {
+    categories: {
+      aliases: { data: { ext1: "Alias" }, updatedAt: 900 },
+      urlRules: { data: rules, updatedAt: 500 }
+    }
+  };
+  const remoteEnvelope = { categories: { aliases: { data: { ext1: "Alias" }, updatedAt: 900 } } };
+
+  ["additive", "mirror"].forEach((policy) => {
+    const result = root.ExtensityDriveSync.buildThreeWayEnvelope(
+      localEnvelope, remoteEnvelope,
+      { aliases: { ext1: "Alias" }, urlRules: rules },
+      flags, null, "device-a", policy
+    );
+    assert.deepEqual(plain(result.conflicts), [], policy);
+    assert.deepEqual(
+      plain(result.envelope.categories.urlRules.data).map((rule) => rule.id).sort(),
+      ["r1", "r2", "r3"],
+      policy
+    );
+  });
+});
+
+test("an absent local category adopts the remote copy instead of erasing it", () => {
+  const root = loadDriveSync();
+  const flags = { aliases: false, groups: false, history: false, options: false, profiles: false, urlRules: true };
+  const localEnvelope = { categories: {} };
+  const remoteEnvelope = { categories: { urlRules: { data: [{ id: "r1" }, { id: "r2" }], updatedAt: 700 } } };
+
+  const result = root.ExtensityDriveSync.buildThreeWayEnvelope(
+    localEnvelope, remoteEnvelope, { urlRules: [{ id: "r1" }, { id: "r2" }] }, flags, null, "device-a"
+  );
+
+  assert.deepEqual(plain(result.conflicts), []);
+  assert.deepEqual(
+    plain(result.envelope.categories.urlRules.data).map((rule) => rule.id).sort(),
+    ["r1", "r2"]
+  );
+});
+
+test("each category is compared independently - one missing category cannot affect another", () => {
+  const root = loadDriveSync();
+  const flags = { aliases: true, groups: true, history: false, options: false, profiles: false, urlRules: true };
+  const localEnvelope = {
+    categories: {
+      aliases: { data: { ext1: "Local Alias" }, updatedAt: 800 },
+      groups: { data: { groupOrder: ["g1"], groups: { g1: { name: "Work" } } }, updatedAt: 800 },
+      urlRules: { data: [{ id: "r1" }], updatedAt: 500 }
+    }
+  };
+  // Remote carries only aliases, and changed it.
+  const remoteEnvelope = { categories: { aliases: { data: { ext1: "Remote Alias" }, updatedAt: 900 } } };
+
+  const result = root.ExtensityDriveSync.buildThreeWayEnvelope(
+    localEnvelope, remoteEnvelope,
+    { aliases: { ext1: "Local Alias" }, groups: { groupOrder: ["g1"], groups: { g1: { name: "Work" } } }, urlRules: [{ id: "r1" }] },
+    flags, null, "device-a"
+  );
+
+  const merged = plain(result.envelope.categories);
+  // The remote alias edit lands...
+  assert.equal(merged.aliases.data.ext1, "Remote Alias");
+  // ...without touching the categories remote never sent.
+  assert.deepEqual(merged.urlRules.data.map((rule) => rule.id), ["r1"]);
+  assert.deepEqual(Object.keys(merged.groups.data.groups), ["g1"]);
 });
 
 function tokenIdentityOverrides() {
@@ -1980,6 +2075,8 @@ test("syncDrive rejects keep_local with unsupported_resolution when a failsafe t
   context.options.driveSyncCategories = {
     aliases: true, groups: false, history: false, options: false, profiles: false, urlRules: false
   };
+  // The failsafe guards destructive changes, so this case only arises under the mirror policy.
+  context.options.driveSyncDeletionPolicy = "mirror";
 
   await assert.rejects(
     root.ExtensityDriveSync.syncDrive({

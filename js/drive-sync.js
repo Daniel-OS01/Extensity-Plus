@@ -34,6 +34,7 @@
     "driveFailsafeThresholdPercent",
     "driveSyncOnStartup",
     "driveSyncStrategy",
+    "driveSyncDeletionPolicy",
     "driveTimeBasedSync",
     "driveSyncCategories",
     "lastDriveSync",
@@ -49,6 +50,12 @@
     "driveAuthStatus",
     "syncWriterId"
   ];
+  // How a delete on one device is applied to the others.
+  // "additive"  - never remove an item that still exists on the other side (default, safest).
+  // "mirror"    - propagate deletions, so both sides converge on the same set.
+  var DELETION_POLICY_ADDITIVE = "additive";
+  var DELETION_POLICY_MIRROR = "mirror";
+  var DELETION_POLICIES = [DELETION_POLICY_ADDITIVE, DELETION_POLICY_MIRROR];
   var DRIVE_MAX_RETRIES = 3;
   var DRIVE_RETRY_BASE_DELAY_MS = 1000;
   var DRIVE_REQUEST_TIMEOUT_MS = 15000;
@@ -186,6 +193,15 @@
     var at = typeof timestamp === "number" ? timestamp : nowMs();
     next.categoryTimestamps[categoryId] = at;
     return next;
+  }
+
+  /**
+   * Normalizes a deletion-policy value, falling back to the safe additive default.
+   * @param {*} value - The configured policy.
+   * @return {string} A supported deletion policy.
+   */
+  function normalizeDeletionPolicy(value) {
+    return DELETION_POLICIES.indexOf(value) === -1 ? DELETION_POLICY_ADDITIVE : value;
   }
 
   function buildOptionsCategoryPayload(options) {
@@ -787,14 +803,38 @@
    * @param {Object} categoryFlags - Flags identifying categories to merge.
    * @param {string} resolution - Conflict resolution mode; `"keep_remote"` selects remote values for conflicts, while other modes select local values.
    * @param {string} writerId - Identifier for the envelope writer.
+   * @param {string} [deletionPolicy] - `"mirror"` propagates deletions to the other side;
+   *   anything else (including omitted) uses the safe `"additive"` default, under which an
+   *   item deleted on one side survives while the other side still has it.
    * @return {Object} An object containing `conflicts`, an array of item-level conflict records, and `envelope`, the merged envelope.
    */
-  function buildThreeWayEnvelope(localEnvelope, remoteEnvelope, baselineCategories, categoryFlags, resolution, writerId) {
+  function buildThreeWayEnvelope(localEnvelope, remoteEnvelope, baselineCategories, categoryFlags, resolution, writerId, deletionPolicy) {
     var result = { categories: {}, exportedAt: nowMs(), version: ENVELOPE_VERSION, writerId: writerId || "" };
     var conflicts = [];
+    var additiveOnly = normalizeDeletionPolicy(deletionPolicy) === DELETION_POLICY_ADDITIVE;
+    var localCategories = localEnvelope && isObject(localEnvelope.categories) ? localEnvelope.categories : {};
+    var remoteCategories = remoteEnvelope && isObject(remoteEnvelope.categories) ? remoteEnvelope.categories : {};
     enabledCategoryList(categoryFlags).forEach(function(categoryId) {
-      var localCategory = localEnvelope.categories && localEnvelope.categories[categoryId] || { data: null, updatedAt: 0 };
-      var remoteCategory = remoteEnvelope.categories && remoteEnvelope.categories[categoryId] || { data: null, updatedAt: 0 };
+      var localPresent = Object.prototype.hasOwnProperty.call(localCategories, categoryId);
+      var remotePresent = Object.prototype.hasOwnProperty.call(remoteCategories, categoryId);
+      var localCategory = localCategories[categoryId] || { data: null, updatedAt: 0 };
+      var remoteCategory = remoteCategories[categoryId] || { data: null, updatedAt: 0 };
+
+      // A category absent from one side means that device did not sync it — most often
+      // because the user unchecked it there. It must never be read as "that side deleted
+      // every item", which silently wiped the whole category on every other device.
+      if (localPresent !== remotePresent) {
+        var presentCategory = localPresent ? localCategory : remoteCategory;
+        result.categories[categoryId] = {
+          data: clone(presentCategory.data),
+          updatedAt: presentCategory.updatedAt || nowMs()
+        };
+        return;
+      }
+      if (!localPresent && !remotePresent) {
+        return;
+      }
+
       var baseData = baselineCategories && baselineCategories[categoryId];
       var baseItems = categoryItemMap(categoryId, baseData);
       var localItems = categoryItemMap(categoryId, localCategory.data);
@@ -824,6 +864,12 @@
         }
         var chosenHas = chooseRemote ? remoteHas : localChanged ? localHas : remoteHas;
         var chosenValue = chooseRemote ? remoteItems[itemId] : localChanged ? localItems[itemId] : remoteItems[itemId];
+        if (additiveOnly && !chosenHas && (localHas || remoteHas)) {
+          // Additive policy: a delete on one side never removes an item that still exists on
+          // the other. Keep the surviving copy, preferring the side that still has content.
+          chosenHas = true;
+          chosenValue = localHas ? localItems[itemId] : remoteItems[itemId];
+        }
         if (chosenHas) {
           mergedItems[itemId] = clone(chosenValue);
         }
@@ -2406,7 +2452,8 @@
           driveMeta.baselineCategories,
           categoryFlags,
           resolution,
-          syncOptions.syncWriterId || ""
+          syncOptions.syncWriterId || "",
+          syncOptions.driveSyncDeletionPolicy
         )
         : null;
       var conflicts = direction === "sync" && threeWay ? threeWay.conflicts : [];
@@ -2688,6 +2735,9 @@
     CATEGORY_IDS: CATEGORY_IDS,
     CATEGORY_LABELS: CATEGORY_LABELS,
     DEFAULT_CATEGORY_FLAGS: DEFAULT_CATEGORY_FLAGS,
+    DELETION_POLICIES: DELETION_POLICIES,
+    DELETION_POLICY_ADDITIVE: DELETION_POLICY_ADDITIVE,
+    DELETION_POLICY_MIRROR: DELETION_POLICY_MIRROR,
     DRIVE_FILE_NAME: DRIVE_FILE_NAME,
     applyCategoryToPatches: applyCategoryToPatches,
     buildCategoryData: buildCategoryData,
@@ -2715,6 +2765,7 @@
     isGoogleClientIdFormat: isGoogleClientIdFormat,
     normalizeDriveError: normalizeDriveError,
     normalizeCategoryFlags: normalizeCategoryFlags,
+    normalizeDeletionPolicy: normalizeDeletionPolicy,
     normalizeDriveMeta: normalizeDriveMeta,
     retryDriveApiRequest: retryDriveApiRequest,
     selectNewestDriveFile: selectNewestDriveFile,

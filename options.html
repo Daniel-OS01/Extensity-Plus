@@ -142,7 +142,9 @@
         <div class="field"><label for="reminderDelayMinutes">Reminder delay in minutes</label><input type="number" min="1" id="reminderDelayMinutes" data-sbind="value: options.reminderDelayMinutes" /></div>
         <div class="field"><label for="urlRuleTimeoutMinutes">URL rule auto-disable delay (minutes, 0=off)</label><input type="number" min="0" id="urlRuleTimeoutMinutes" data-sbind="value: options.urlRuleTimeoutMinutes" /></div>
         <div class="field"><input type="checkbox" id="urlRuleDisableOnClose" data-sbind="checked: options.urlRuleDisableOnClose" /><label for="urlRuleDisableOnClose">Disable URL-rule-enabled extensions when the tab closes</label></div>
-        <div class="field"><input type="checkbox" id="debugHistoryVerbose" data-sbind="checked: options.debugHistoryVerbose" /><label for="debugHistoryVerbose">Debug mode: log full rule/context details in Dashboard History</label></div>
+        <div class="field"><input type="checkbox" id="activityLogEnabled" data-sbind="checked: options.activityLogEnabled" /><label for="activityLogEnabled">Record Activity &amp; Log (Dashboard history and diagnostic log)</label></div>
+        <div class="field"><span class="muted">Turn this off to stop recording extension activity and log entries. Existing entries are kept until you clear them.</span></div>
+        <div class="field"><input type="checkbox" id="debugHistoryVerbose" data-sbind="enable: options.activityLogEnabled, checked: options.debugHistoryVerbose" /><label for="debugHistoryVerbose">Debug mode: log full rule/context details in Dashboard History</label></div>
       </fieldset>
 
       <fieldset class="settings-card">
@@ -176,13 +178,15 @@
         <div class="field"><input type="checkbox" id="driveFailsafeEnabled" data-sbind="checked: options.driveFailsafeEnabled" /><label for="driveFailsafeEnabled">Protect destructive changes</label></div>
         <div class="field"><label for="driveFailsafeThresholdPercent">Deletion failsafe (%)</label><input type="number" min="1" max="100" id="driveFailsafeThresholdPercent" data-sbind="value: options.driveFailsafeThresholdPercent" /></div>
         <div class="field"><label for="driveAutoSyncIntervalMinutes">Auto-sync interval (minutes, min 15)</label><input type="number" min="15" max="1440" id="driveAutoSyncIntervalMinutes" data-sbind="value: options.driveAutoSyncIntervalMinutes" /></div>
-        <div class="field"><span class="muted">Select which data to include in Drive sync:</span></div>
-        <div class="field"><input type="checkbox" id="driveCatOptions" data-sbind="checked: driveCategoryChecked.options" /><label for="driveCatOptions">Options</label></div>
+        <div class="field"><label for="driveSyncDeletionPolicy">When something is deleted on one device</label><select id="driveSyncDeletionPolicy" data-sbind="value: options.driveSyncDeletionPolicy"><option value="additive">Never delete — keep it on the other devices</option><option value="mirror">Delete it everywhere (mirror)</option></select></div>
+        <div class="field"><span class="muted" data-sbind="text: driveDeletionPolicyHint"></span></div>
+        <div class="field"><span class="muted">Each item below is compared and synced separately. Unchecking one on this device leaves it untouched on the others.</span></div>
+        <div class="field"><input type="checkbox" id="driveCatUrlRules" data-sbind="checked: driveCategoryChecked.urlRules" /><label for="driveCatUrlRules">URL rules</label></div>
         <div class="field"><input type="checkbox" id="driveCatProfiles" data-sbind="checked: driveCategoryChecked.profiles" /><label for="driveCatProfiles">Profiles</label></div>
         <div class="field"><input type="checkbox" id="driveCatAliases" data-sbind="checked: driveCategoryChecked.aliases" /><label for="driveCatAliases">Aliases</label></div>
         <div class="field"><input type="checkbox" id="driveCatGroups" data-sbind="checked: driveCategoryChecked.groups" /><label for="driveCatGroups">Groups</label></div>
-        <div class="field"><input type="checkbox" id="driveCatUrlRules" data-sbind="checked: driveCategoryChecked.urlRules" /><label for="driveCatUrlRules">URL rules</label></div>
-        <div class="field"><input type="checkbox" id="driveCatHistory" data-sbind="checked: driveCategoryChecked.history" /><label for="driveCatHistory">History</label></div>
+        <div class="field"><input type="checkbox" id="driveCatOptions" data-sbind="checked: driveCategoryChecked.options" /><label for="driveCatOptions">Settings</label></div>
+        <div class="field"><input type="checkbox" id="driveCatHistory" data-sbind="checked: driveCategoryChecked.history" /><label for="driveCatHistory">Activity &amp; Log</label></div>
         <div class="field" data-sbind="visible: lastDriveSyncErrorVisible"><span class="muted">Last Drive error:</span> <span class="status error" data-sbind="text: lastDriveSyncErrorLabel"></span></div>
         <div class="field action-row">
           <button type="button" title="Sync with Google Drive now" data-sbind="click: driveSyncNow, disable: busy">Sync now</button>

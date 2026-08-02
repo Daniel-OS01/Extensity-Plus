@@ -1,6 +1,7 @@
 (function(root) {
   var syncDefaults = {
     activeProfile: null,
+    activityLogEnabled: true,
     appsFirst: true,
     colorScheme: "auto",
     contrastMode: "normal",
@@ -12,6 +13,7 @@
     driveFailsafeThresholdPercent: 20,
     driveSyncOnStartup: false,
     driveSyncStrategy: "merge",
+    driveSyncDeletionPolicy: "additive",
     driveTimeBasedSync: true,
     driveSyncCategories: {
       aliases: true,

@@ -7,9 +7,58 @@
   var SHARED_KEY = "extensityLog";
   var DEFAULT_LEVEL = "warn";
 
+  var ENABLED_KEY = "activityLogEnabled";
+
   var _level = DEFAULT_LEVEL;
   var _entries = [];
   var _listeners = [];
+  var _enabled = true;
+
+  /**
+   * Enables or disables all log recording. Mirrors the `activityLogEnabled` setting into
+   * chrome.storage.local so every surface (service worker, popup, dashboard) agrees without
+   * each having to load sync options before its first log call.
+   * @param {boolean} enabled - Whether log entries should be recorded.
+   */
+  function setEnabled(enabled) {
+    _enabled = enabled !== false;
+    if (
+      typeof chrome !== "undefined" &&
+      chrome.storage &&
+      chrome.storage.local &&
+      typeof chrome.storage.local.set === "function"
+    ) {
+      var patch = {};
+      patch[ENABLED_KEY] = _enabled;
+      chrome.storage.local.set(patch);
+    }
+  }
+
+  function isEnabled() {
+    return _enabled;
+  }
+
+  function loadEnabled(callback) {
+    if (
+      typeof chrome === "undefined" ||
+      !chrome.storage ||
+      !chrome.storage.local ||
+      typeof chrome.storage.local.get !== "function"
+    ) {
+      if (typeof callback === "function") {
+        callback(_enabled);
+      }
+      return;
+    }
+    chrome.storage.local.get(ENABLED_KEY, function(result) {
+      if (result && typeof result[ENABLED_KEY] === "boolean") {
+        _enabled = result[ENABLED_KEY];
+      }
+      if (typeof callback === "function") {
+        callback(_enabled);
+      }
+    });
+  }
 
   function setLevel(level) {
     _level = LEVEL_RANK.hasOwnProperty(level) ? level : DEFAULT_LEVEL;
@@ -57,7 +106,7 @@
   }
 
   function appendEntry(level, message, data) {
-    if (!shouldLog(level)) {
+    if (!_enabled || !shouldLog(level)) {
       return;
     }
     var entry = {
@@ -166,8 +215,11 @@
     getEntries: getEntries,
     getLevel: getLevel,
     info: info,
+    isEnabled: isEnabled,
+    loadEnabled: loadEnabled,
     loadLevel: loadLevel,
     readShared: readShared,
+    setEnabled: setEnabled,
     setLevel: setLevel,
     subscribe: subscribe,
     warn: warn

@@ -34,10 +34,18 @@ importScripts(
   var _mgmtCacheEnabled = true;
   var _mgmtCacheTtlMs = 10000;
 
-  function applyCacheOptions(opts) {
+  /**
+   * Applies runtime options that live outside storage: the management cache and whether the
+   * Activity & Log timeline records anything. Called on startup and after every options save.
+   * @param {Object} opts - The current sync options.
+   */
+  function applyRuntimeOptions(opts) {
     _mgmtCacheEnabled = opts && opts.cacheManagementItems !== false;
     var ttl = opts && typeof opts.managementCacheTtlSeconds === "number" ? opts.managementCacheTtlSeconds : 10;
     _mgmtCacheTtlMs = Math.max(2, ttl) * 1000;
+    if (logger && typeof logger.setEnabled === "function") {
+      logger.setEnabled(!opts || opts.activityLogEnabled !== false);
+    }
   }
 
   function invalidateManagementCache() {
@@ -123,8 +131,26 @@ importScripts(
     };
   }
 
+  /**
+   * Appends activity records unless the user disabled the Activity & Log timeline.
+   * @param {Object} options - Sync options carrying `activityLogEnabled`.
+   * @param {Array} existing - The current event history.
+   * @param {Array} records - Records to append.
+   * @return {Array} The resulting event history, unchanged when recording is disabled.
+   */
+  function appendActivityHistory(options, existing, records) {
+    if (options && options.activityLogEnabled === false) {
+      return Array.isArray(existing) ? existing : [];
+    }
+    return history.appendHistory(existing, records);
+  }
+
   async function appendDebugHistoryRecords(records) {
     if (!records || !records.length) {
+      return;
+    }
+    var options = await storage.loadSyncOptions();
+    if (options.activityLogEnabled === false) {
       return;
     }
     var localState = await storage.loadLocalState();
@@ -1217,8 +1243,12 @@ importScripts(
 
     if (!changes.length) {
       var noChangePatch = {};
-      if (extraHistoryRecords.length) {
-        noChangePatch.eventHistory = history.appendHistory(current.localState.eventHistory, extraHistoryRecords);
+      if (extraHistoryRecords.length && current.options.activityLogEnabled !== false) {
+        noChangePatch.eventHistory = appendActivityHistory(
+          current.options,
+          current.localState.eventHistory,
+          extraHistoryRecords
+        );
       }
       if (options.localPatch) {
         Object.keys(options.localPatch).forEach(function(key) {
@@ -1235,7 +1265,8 @@ importScripts(
     }
 
     var localPatch = {
-      eventHistory: history.appendHistory(
+      eventHistory: appendActivityHistory(
+        current.options,
         current.localState.eventHistory,
         extraHistoryRecords.concat(history.createRecords(changes, Object.assign({}, context || {}, {
           action: options.action || (context && context.source) || "manual",
@@ -1543,6 +1574,10 @@ importScripts(
    * @param {Object} payload - Synchronization details, including status, direction, and trigger information.
    */
   async function appendDriveAudit(payload) {
+    var auditOptions = await storage.loadSyncOptions();
+    if (auditOptions.activityLogEnabled === false) {
+      return;
+    }
     var localState = await storage.loadLocalState();
     var record = history.createEventRecord({
       action: "drive_sync",
@@ -1586,7 +1621,7 @@ importScripts(
     try {
       if (patches.syncOptions) {
         await storage.saveSyncOptions(patches.syncOptions);
-        applyCacheOptions(await storage.loadSyncOptions());
+        applyRuntimeOptions(await storage.loadSyncOptions());
       }
       if (patches.profiles) {
         await storage.saveProfiles(patches.profiles.map, patches.profiles.meta);
@@ -1798,7 +1833,7 @@ importScripts(
   async function saveOptions(payload) {
     var previousOptions = await storage.loadSyncOptions();
     var nextOptions = await storage.saveSyncOptions(payload.options || {});
-    applyCacheOptions(nextOptions);
+    applyRuntimeOptions(nextOptions);
     if (payload.options && payload.options.syncMode && payload.options.syncMode !== previousOptions.syncMode) {
       var profilesState = await storage.loadProfiles();
       await storage.saveProfiles(profilesState.map, profilesState.meta);
@@ -2656,7 +2691,7 @@ importScripts(
     }
 
     var context = await loadContext();
-    applyCacheOptions(context.options);
+    applyRuntimeOptions(context.options);
     broadcastSyncRemoteUpdate();
   }
 
@@ -2871,7 +2906,7 @@ importScripts(
   });
 
   if (typeof storage.loadSyncOptions === "function") {
-    storage.loadSyncOptions().then(applyCacheOptions).catch(function(error) {
+    storage.loadSyncOptions().then(applyRuntimeOptions).catch(function(error) {
       logger.error("cache_options_load_failed", { message: error && error.message });
     });
   }

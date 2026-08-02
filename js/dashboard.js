@@ -1154,6 +1154,11 @@ document.addEventListener("DOMContentLoaded", function() {
     self.logEmpty = ko.pureComputed(function() { return self.logEntries().length === 0; });
 
     if (_logger) {
+      // Honour the Activity & Log setting here too, so dashboard-side logging stops
+      // recording as well - not just the service worker's.
+      if (typeof _logger.loadEnabled === "function") {
+        _logger.loadEnabled(function() {});
+      }
       _logger.loadLevel(function(level) {
         self.logLevel(level);
         if (level === "debug") { installDebugHooks(); }

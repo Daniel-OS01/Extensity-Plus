@@ -139,6 +139,10 @@ document.addEventListener("DOMContentLoaded", function() {
       ["merge", "overwrite_remote", "overwrite_local"],
       "merge"
     );
+    if (typeof ExtensityDriveSync !== "undefined" && typeof ExtensityDriveSync.normalizeDeletionPolicy === "function") {
+      normalized.driveSyncDeletionPolicy = ExtensityDriveSync.normalizeDeletionPolicy(normalized.driveSyncDeletionPolicy);
+    }
+    normalized.activityLogEnabled = normalized.activityLogEnabled !== false;
     normalized.driveSyncOnStartup = normalized.driveSyncOnStartup === true;
     normalized.driveChangeBasedSync = normalized.driveChangeBasedSync === true;
     normalized.driveTimeBasedSync = normalized.driveTimeBasedSync !== false;
@@ -329,6 +333,11 @@ document.addEventListener("DOMContentLoaded", function() {
    */
   function attachDriveSyncMethods(self) {
     self.driveCategoryChecked = buildDriveCategoryChecked(self);
+    self.driveDeletionPolicyHint = ko.pureComputed(function() {
+      return self.options.driveSyncDeletionPolicy() === "mirror"
+        ? "Deleting a profile, rule, alias or group on one device removes it from the others on the next sync."
+        : "Deletions stay on the device where you made them. Nothing is ever removed from another device by a sync.";
+    });
     self.driveConfiguredLabel = ko.observable("");
     self.driveEnvironmentLabel = ko.observable("");
     self.driveExtensionIdLabel = ko.observable("");

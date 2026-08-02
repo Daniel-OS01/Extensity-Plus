@@ -3614,3 +3614,37 @@ test("popup rows expose direct profile membership and sort handlers", async () =
 
   assert.deepEqual(normalize(saveOptionsCalls), ["alpha", "frequency"]);
 });
+
+test("ExtensityLogger records nothing while the Activity & Log setting is off", () => {
+  const stored = {};
+  const windowRoot = {};
+  loadBrowserScript(path.join(repoRoot, "js/logger.js"), {
+    chrome: {
+      storage: {
+        local: {
+          get(keys, callback) { callback(stored); },
+          set(values, callback) { Object.assign(stored, values); if (callback) { callback(); } },
+          remove(keys, callback) { if (callback) { callback(); } }
+        }
+      }
+    },
+    window: windowRoot
+  });
+  const logger = windowRoot.ExtensityLogger;
+  logger.setLevel("debug");
+
+  logger.warn("before_disable");
+  assert.equal(logger.getEntries().length, 1);
+
+  logger.setEnabled(false);
+  assert.equal(logger.isEnabled(), false);
+  logger.warn("while_disabled");
+  logger.error("also_while_disabled");
+  assert.equal(logger.getEntries().length, 1, "no entries recorded while disabled");
+  // The choice is mirrored to storage so other surfaces agree.
+  assert.equal(stored.activityLogEnabled, false);
+
+  logger.setEnabled(true);
+  logger.warn("after_reenable");
+  assert.equal(logger.getEntries().length, 2);
+});

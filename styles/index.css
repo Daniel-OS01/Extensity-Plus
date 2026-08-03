@@ -790,8 +790,9 @@ body.popup-list-style-table.list-view #content > section:not(#profiles) > ul.ite
   max-width: 50%;
 }
 
+.item-actions button:hover .fa-gear,
 .item-actions .fa-gear:hover {
-  color: var(--accent);
+  color: var(--accent) !important;
 }
 
 .compact-row {

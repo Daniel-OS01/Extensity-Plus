@@ -63,7 +63,7 @@ jobs:
       - name: Build Chrome Web Store submission bundle
         id: bundle_cws
         continue-on-error: true
-        run: pnpm run bundle:chrome-store
+        run: EXTENSITY_DRIVE_CLIENT_ID="123-abc.apps.googleusercontent.com" EXTENSITY_DRIVE_WEB_CLIENT_ID="123-abc.apps.googleusercontent.com" pnpm run bundle:chrome-store
 
       - name: Upload distribution artifact
         uses: actions/upload-artifact@v4
@@ -151,7 +151,7 @@ jobs:
       - name: Build Chrome Web Store submission bundle
         id: bundle_cws
         continue-on-error: true
-        run: pnpm run bundle:chrome-store
+        run: EXTENSITY_DRIVE_CLIENT_ID="123-abc.apps.googleusercontent.com" EXTENSITY_DRIVE_WEB_CLIENT_ID="123-abc.apps.googleusercontent.com" pnpm run bundle:chrome-store
 
       - name: Verify extension build
         run: test -f dist/dist.zip
@@ -224,7 +224,7 @@ jobs:
         id: bundle_cws
         continue-on-error: true
         run: |
-          if pnpm run bundle:chrome-store; then
+          if EXTENSITY_DRIVE_CLIENT_ID="123-abc.apps.googleusercontent.com" EXTENSITY_DRIVE_WEB_CLIENT_ID="123-abc.apps.googleusercontent.com" pnpm run bundle:chrome-store; then
             cp "artifacts/chrome-web-store/${{ steps.bump.outputs.package_name }}-v${{ steps.bump.outputs.version }}.zip" \
                "release-assets/${{ steps.bump.outputs.package_name }}-chrome-web-store-upload-v${{ steps.bump.outputs.version }}.zip"
             cp artifacts/chrome-web-store/submission-metadata.json release-assets/submission-metadata.json
@@ -306,7 +306,7 @@ jobs:
         id: bundle_cws
         continue-on-error: true
         run: |
-          if pnpm run bundle:chrome-store; then
+          if EXTENSITY_DRIVE_CLIENT_ID="123-abc.apps.googleusercontent.com" EXTENSITY_DRIVE_WEB_CLIENT_ID="123-abc.apps.googleusercontent.com" pnpm run bundle:chrome-store; then
             cp "artifacts/chrome-web-store/${{ steps.version.outputs.package_name }}-v${{ steps.version.outputs.version }}.zip" \
                "release-assets/${{ steps.version.outputs.package_name }}-chrome-web-store-upload-v${{ steps.version.outputs.version }}.zip"
             cp artifacts/chrome-web-store/submission-metadata.json release-assets/submission-metadata.json

@@ -38,25 +38,7 @@
       return navigator.clipboard.writeText(value);
     }
 
-    return new Promise(function(resolve, reject) {
-      var input = document.createElement("textarea");
-      input.value = value;
-      input.setAttribute("readonly", "readonly");
-      input.style.position = "fixed";
-      input.style.opacity = "0";
-      document.body.appendChild(input);
-      input.select();
-      try {
-        if (!document.execCommand("copy")) {
-          throw new Error("Copy command failed.");
-        }
-        resolve();
-      } catch (error) {
-        reject(error);
-      } finally {
-        document.body.removeChild(input);
-      }
-    });
+    return Promise.reject(new Error("Clipboard API not available."));
   }
 
   ko.extenders.countable = function(target) {

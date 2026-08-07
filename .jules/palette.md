@@ -1,3 +1,6 @@
 ## 2024-04-20 - Icon-Only Button Accessibility Pattern Verification
 **Learning:** Adding `aria-label` to the interactive `<button>` wrappers and explicit `aria-hidden="true"` to the inner decorative FontAwesome `<i>` tags is a clean, non-disruptive accessibility enhancement for this codebase. It perfectly avoids layout shifts or CSS selector breakage (like accidentally triggering hover/active states that rely on direct parent-child relationships) that might occur if we changed the DOM structure itself.
 **Action:** Always prefer this two-step attribute injection pattern for icon-only components in `index.html` to maintain CSS and logic parity while maximizing screen reader compatibility.
+## 2024-04-20 - Font Loading in Playwright Local Verification
+**Learning:** When using Playwright to verify visual changes locally via `file://` protocol or injected HTML, external web fonts (like FontAwesome) will not load due to local file security restrictions, causing icons to render as blank boxes in the screenshot.
+**Action:** Always navigate the Playwright page to an external URL (e.g., `https://example.com`) first, then inject the required HTML and the CDN link to the font library using `page.evaluate()` to ensure icons render correctly in verification screenshots.

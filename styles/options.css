@@ -809,3 +809,11 @@ body.profiles-portrait #profiles {
   font-size: 12px;
   padding: 5px 10px;
 }
+
+/* Wrapper button for the profile delete icon */
+#profiles .sidebar .remove-profile-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}

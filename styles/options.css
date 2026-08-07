@@ -459,11 +459,11 @@ body.profiles-portrait #profiles {
   color: inherit;
 }
 
-#profiles .sidebar .remove-profile {
+#profiles .sidebar .remove-profile-btn {
   color: var(--muted);
 }
 
-#profiles .sidebar .remove-profile:hover {
+#profiles .sidebar .remove-profile-btn:hover {
   color: var(--danger);
 }
 
@@ -808,4 +808,19 @@ body.profiles-portrait #profiles {
   flex: 0 0 auto;
   font-size: 12px;
   padding: 5px 10px;
+}
+
+.sidebar .action-icon-button.remove-profile-btn {
+  background: transparent;
+  border: none;
+  padding: 0;
+  margin: 0;
+  color: var(--muted);
+  height: auto;
+}
+
+.sidebar .action-icon-button.remove-profile-btn:hover:not([disabled]) {
+  color: var(--danger);
+  background: transparent;
+  border: none;
 }

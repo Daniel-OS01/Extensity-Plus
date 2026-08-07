@@ -790,10 +790,6 @@ body.popup-list-style-table.list-view #content > section:not(#profiles) > ul.ite
   max-width: 50%;
 }
 
-.item-actions .fa-gear:hover {
-  color: var(--accent);
-}
-
 .compact-row {
   overflow: hidden;
 }
@@ -1250,4 +1246,20 @@ body.action-layout-vertical .profile-assign-select {
 body:not(.profile-pill-icons-only) #profiles ul.items li.active .profile-count,
 body:not(.profile-pill-icons-only) #profiles ul.items li:hover .profile-count {
   color: rgba(255, 255, 255, 0.75);
+}
+
+.item-actions .action-icon-button {
+  background: transparent;
+  border: none;
+  padding: 0;
+  margin: 0;
+  color: inherit;
+  height: auto;
+  font-size: 14px;
+}
+
+.item-actions .action-icon-button:hover:not([disabled]) {
+  color: var(--accent);
+  background: transparent;
+  border: none;
 }

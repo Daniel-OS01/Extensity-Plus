@@ -1125,6 +1125,20 @@ importScripts(
     var toolbarPins = state.localState.toolbarPins || [];
     var installFirstSeenAt = state.localState.installFirstSeenAt || {};
 
+    // Performance optimization: Replace repeated array.indexOf lookups inside map loop
+    // with an ES6 Set (for presence) or Map (for index caching) to reduce time complexity
+    // from O(N*M) to O(N+M)
+    var alwaysOnSet = new Set(alwaysOn);
+    var favoritesSet = new Set(favorites);
+    var toolbarPinsSet = new Set(toolbarPins);
+    var recentMap = new Map();
+
+    for (var i = 0; i < recentList.length; i += 1) {
+      if (!recentMap.has(recentList[i])) {
+        recentMap.set(recentList[i], recentList.length - i);
+      }
+    }
+
     return items.slice().sort(function(left, right) {
       return left.name.toUpperCase().localeCompare(right.name.toUpperCase());
     }).map(function(item) {
@@ -1145,13 +1159,13 @@ importScripts(
 
       return {
         alias: aliases[item.id] || "",
-        alwaysOn: alwaysOn.indexOf(item.id) !== -1,
+        alwaysOn: alwaysOnSet.has(item.id),
         category: normalizedCategory,
         description: item.description || "",
         descriptionLine: cachedMetadata.descriptionLine || fallbackMetadata.descriptionLine,
         displayName: aliases[item.id] || item.name,
         enabled: !!item.enabled,
-        favorite: favorites.indexOf(item.id) !== -1,
+        favorite: favoritesSet.has(item.id),
         groupBadges: extensionGroups,
         groupIds: groupLookup[item.id] || [],
         homepageUrl: item.homepageUrl || "",
@@ -1160,14 +1174,14 @@ importScripts(
         installType: item.installType,
         isApp: isAppType(item.type),
         installedAt: installFirstSeenAt[item.id] || 0,
-        lastUsed: recentList.indexOf(item.id) === -1 ? 0 : (recentList.length - recentList.indexOf(item.id)),
+        lastUsed: recentMap.has(item.id) ? recentMap.get(item.id) : 0,
         mayDisable: !!item.mayDisable,
         metadataFetchedAt: cachedMetadata.fetchedAt || fallbackMetadata.fetchedAt,
         metadataSource: cachedMetadata.source || fallbackMetadata.source,
         name: item.name,
         optionsUrl: item.optionsUrl || "",
         storeUrl: normalizedStoreUrl,
-        toolbarPinned: toolbarPins.indexOf(item.id) !== -1,
+        toolbarPinned: toolbarPinsSet.has(item.id),
         type: item.type,
         usageCount: counters[item.id] || 0,
         version: item.version || ""

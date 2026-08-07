@@ -31,7 +31,10 @@ jobs:
         run: npm run drive:validate
 
       - name: Build Chrome Web Store submission bundle
-        run: npm run bundle:chrome-store
+        run: |
+          EXTENSITY_DRIVE_CLIENT_ID='123-abc.apps.googleusercontent.com' EXTENSITY_DRIVE_WEB_CLIENT_ID='123-abc.apps.googleusercontent.com' node scripts/set-drive-oauth-client-id.js
+          make dist
+          npm run bundle:chrome-store
 
       - name: Verify expected build outputs exist
         run: |

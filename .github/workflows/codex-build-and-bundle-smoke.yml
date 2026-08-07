@@ -30,6 +30,11 @@ jobs:
       - name: Build and validate distributable extension
         run: npm run drive:validate
 
+      - name: Inject dummy OAuth credentials for smoke test
+        run: |
+          sed -i 's/REPLACE_WITH_OAUTH_CLIENT_ID/dummy-client-id/g' dist/manifest.json
+          sed -i 's/REPLACE_WITH_DRIVE_WEB_CLIENT_ID/dummy-web-client-id/g' dist/js/drive-oauth-config.js
+
       - name: Build Chrome Web Store submission bundle
         run: npm run bundle:chrome-store
 

@@ -8,3 +8,6 @@
 ## 2024-05-24 - Parallelized Chrome Alarm Clearing
 **Learning:** Sequential `await` statements inside `for` loops used for Chrome API calls (like `chrome.alarms.clear`) represent a hidden I/O bottleneck in the background service worker, particularly when tearing down or rebuilding rule states.
 **Action:** Always look for loops awaiting independent Chrome extension API calls and refactor them to use `Promise.all` with `Array.prototype.map()` for concurrent execution, which drastically cuts down total execution time.
+## 2024-05-24 - Consolidated Computed Array Filters in Knockout.js
+**Learning:** Having multiple dependent `ko.computed` properties that iterate and filter over the same large collection (`self.exts.items()`) triggers redundant and expensive matching functions (`scoreExtension`) multiple times per render cycle, which causes a performance bottleneck.
+**Action:** Consolidate the multiple array filtering passes into a single `ko.computed` object that maps all categories in one `for` loop iteration, and map the individual list observables to its properties to ensure rapid single-pass recalculation.

@@ -8,3 +8,6 @@
 ## 2024-05-24 - Parallelized Chrome Alarm Clearing
 **Learning:** Sequential `await` statements inside `for` loops used for Chrome API calls (like `chrome.alarms.clear`) represent a hidden I/O bottleneck in the background service worker, particularly when tearing down or rebuilding rule states.
 **Action:** Always look for loops awaiting independent Chrome extension API calls and refactor them to use `Promise.all` with `Array.prototype.map()` for concurrent execution, which drastically cuts down total execution time.
+## 2024-05-25 - Prevent Cache Poisoning in Pattern Compilation
+**Learning:** When implementing string-keyed caches for compiled patterns (like `RegExp`), caching different types of patterns (e.g., wildcards vs. raw regexes) in the same dictionary can cause cache poisoning where a wildcard might match the raw regex string, altering core functionality. Also, complex regex literals in `replace_with_git_merge_diff` search blocks are prone to escaping errors.
+**Action:** Always use separate cache dictionaries (e.g., `regexCache` and `wildcardCache`) when there are distinct logical paths for processing string keys. When writing patches involving complex regexes, target the simpler surrounding lines instead of the regex itself to avoid patch application errors.

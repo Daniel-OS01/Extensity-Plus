@@ -1125,6 +1125,18 @@ importScripts(
     var toolbarPins = state.localState.toolbarPins || [];
     var installFirstSeenAt = state.localState.installFirstSeenAt || {};
 
+    // ⚡ Bolt: Optimize O(N^2) array indexOf lookups during extension normalization
+    // by pre-computing Maps and Sets for O(1) checks.
+    var alwaysOnSet = new Set(alwaysOn);
+    var favoritesSet = new Set(favorites);
+    var toolbarPinsSet = new Set(toolbarPins);
+    var recentListMap = new Map();
+    recentList.forEach(function(id, index) {
+      if (!recentListMap.has(id)) {
+        recentListMap.set(id, index);
+      }
+    });
+
     return items.slice().sort(function(left, right) {
       return left.name.toUpperCase().localeCompare(right.name.toUpperCase());
     }).map(function(item) {
@@ -1142,16 +1154,17 @@ importScripts(
         ? normalizeCategoryText(cachedMetadata.category)
         : fallbackMetadata.category;
       var normalizedStoreUrl = normalizeStoreUrl(cachedMetadata.storeUrl) || fallbackMetadata.storeUrl;
+      var recentIndex = recentListMap.has(item.id) ? recentListMap.get(item.id) : -1;
 
       return {
         alias: aliases[item.id] || "",
-        alwaysOn: alwaysOn.indexOf(item.id) !== -1,
+        alwaysOn: alwaysOnSet.has(item.id),
         category: normalizedCategory,
         description: item.description || "",
         descriptionLine: cachedMetadata.descriptionLine || fallbackMetadata.descriptionLine,
         displayName: aliases[item.id] || item.name,
         enabled: !!item.enabled,
-        favorite: favorites.indexOf(item.id) !== -1,
+        favorite: favoritesSet.has(item.id),
         groupBadges: extensionGroups,
         groupIds: groupLookup[item.id] || [],
         homepageUrl: item.homepageUrl || "",
@@ -1160,14 +1173,14 @@ importScripts(
         installType: item.installType,
         isApp: isAppType(item.type),
         installedAt: installFirstSeenAt[item.id] || 0,
-        lastUsed: recentList.indexOf(item.id) === -1 ? 0 : (recentList.length - recentList.indexOf(item.id)),
+        lastUsed: recentIndex === -1 ? 0 : (recentList.length - recentIndex),
         mayDisable: !!item.mayDisable,
         metadataFetchedAt: cachedMetadata.fetchedAt || fallbackMetadata.fetchedAt,
         metadataSource: cachedMetadata.source || fallbackMetadata.source,
         name: item.name,
         optionsUrl: item.optionsUrl || "",
         storeUrl: normalizedStoreUrl,
-        toolbarPinned: toolbarPins.indexOf(item.id) !== -1,
+        toolbarPinned: toolbarPinsSet.has(item.id),
         type: item.type,
         usageCount: counters[item.id] || 0,
         version: item.version || ""

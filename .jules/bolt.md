@@ -8,3 +8,6 @@
 ## 2024-05-24 - Parallelized Chrome Alarm Clearing
 **Learning:** Sequential `await` statements inside `for` loops used for Chrome API calls (like `chrome.alarms.clear`) represent a hidden I/O bottleneck in the background service worker, particularly when tearing down or rebuilding rule states.
 **Action:** Always look for loops awaiting independent Chrome extension API calls and refactor them to use `Promise.all` with `Array.prototype.map()` for concurrent execution, which drastically cuts down total execution time.
+## 2024-05-25 - [Deferred Allocation in Search Loops]
+**Learning:** Calling `.split()` inside a high-frequency search function like `scoreText` allocates large arrays and generates significant garbage. It should be lazily deferred, and unreachable fuzzy/prefix blocks that logically cannot execute (because earlier string match rules supersede them) should be removed to avoid evaluating dead branches.
+**Action:** When optimizing loop-heavy string search operations, delay allocations until absolutely required (lazy evaluation) and prune logically dead branches (e.g. word prefix checks that are implicitly covered by substring presence) to boost execution speeds.

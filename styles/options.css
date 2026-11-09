@@ -464,7 +464,7 @@ body.profiles-portrait #profiles {
 }
 
 #profiles .sidebar .remove-profile:hover {
-  color: var(--danger);
+  color: var(--danger) !important;
 }
 
 #profiles .bulk-actions,

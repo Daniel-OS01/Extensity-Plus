@@ -1347,17 +1347,20 @@ importScripts(
       return item.id;
     });
 
-    var disableIds = enabledIds.filter(function(extensionId) {
-      if (!current.options.keepAlwaysOn) {
-        return true;
+    // Performance optimization: Pre-compute Set for O(1) lookups
+    // inside the loop, replacing O(N) Array.prototype.indexOf calls.
+    // Consolidates map/filter array allocations into a single loop.
+    var alwaysOnSet = new Set(alwaysOn);
+    var disableChanges = [];
+    for (var i = 0; i < enabledIds.length; i++) {
+      var extensionId = enabledIds[i];
+      if (!current.options.keepAlwaysOn || !alwaysOnSet.has(extensionId)) {
+        disableChanges.push({ enabled: false, id: extensionId });
       }
-      return alwaysOn.indexOf(extensionId) === -1;
-    });
+    }
 
     return applyExtensionChanges(
-      disableIds.map(function(extensionId) {
-        return { enabled: false, id: extensionId };
-      }),
+      disableChanges,
       { source: "bulk" },
       {
         action: "toggle_all_disable",
@@ -1382,15 +1385,22 @@ importScripts(
 
     var alwaysOn = current.profiles.map.__always_on || [];
     var desiredIds = storage.uniqueArray(targetProfile.concat(alwaysOn));
-    var changes = current.items.filter(function(item) {
-      return item.type === "extension" && item.mayDisable;
-    }).map(function(item) {
-      return {
-        enabled: desiredIds.indexOf(item.id) !== -1,
-        id: item.id,
-        profileId: profileName
-      };
-    });
+
+    // Performance optimization: Pre-compute Set for O(1) lookups
+    // inside the loop, replacing O(N) Array.prototype.indexOf calls.
+    // Consolidates filter/map array allocations into a single loop.
+    var desiredIdsSet = new Set(desiredIds);
+    var changes = [];
+    for (var i = 0; i < current.items.length; i++) {
+      var item = current.items[i];
+      if (item.type === "extension" && item.mayDisable) {
+        changes.push({
+          enabled: desiredIdsSet.has(item.id),
+          id: item.id,
+          profileId: profileName
+        });
+      }
+    }
 
     return applyExtensionChanges(
       changes,

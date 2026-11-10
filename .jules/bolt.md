@@ -8,3 +8,6 @@
 ## 2024-05-24 - Parallelized Chrome Alarm Clearing
 **Learning:** Sequential `await` statements inside `for` loops used for Chrome API calls (like `chrome.alarms.clear`) represent a hidden I/O bottleneck in the background service worker, particularly when tearing down or rebuilding rule states.
 **Action:** Always look for loops awaiting independent Chrome extension API calls and refactor them to use `Promise.all` with `Array.prototype.map()` for concurrent execution, which drastically cuts down total execution time.
+## 2024-05-28 - Fast Path Search Strings and Array Swaps
+**Learning:** In highly called search scoring functions (`scoreText`), early O(n) native `String.prototype.indexOf` checks can short-circuit O(n) `String.prototype.split` string allocations, significantly speeding up non-matching inputs. Furthermore, iterative distance algorithms (like Levenshtein) can avoid allocating new arrays on each row by simply swapping the `previous` and `current` array references instead of allocating a `[row]` array on every pass.
+**Action:** When implementing text search algorithms, structure the early-returns around fast native substring searches to bypass expensive regex or split operations. In dynamic programming loops, reuse and swap arrays to minimize garbage collection and memory overhead.

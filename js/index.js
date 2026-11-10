@@ -114,12 +114,13 @@ document.addEventListener("DOMContentLoaded", function() {
     }
 
     var previous = [];
+    var current = [];
     for (var index = 0; index <= right.length; index += 1) {
       previous[index] = index;
     }
 
     for (var row = 1; row <= left.length; row += 1) {
-      var current = [row];
+      current[0] = row;
       var rowMin = current[0];
 
       for (var column = 1; column <= right.length; column += 1) {
@@ -135,7 +136,12 @@ document.addEventListener("DOMContentLoaded", function() {
       if (rowMin > limit) {
         return false;
       }
+
+      // Performance optimization: Swap arrays instead of reallocating
+      // 'current' on each row to reduce garbage collection overhead.
+      var temp = previous;
       previous = current;
+      current = temp;
     }
 
     return previous[right.length] <= limit;
@@ -146,21 +152,26 @@ document.addEventListener("DOMContentLoaded", function() {
   function scoreText(text, query) {
     if (!text || !query) { return 0; }
     var lower = text.toLowerCase();
-    var i, words;
 
     if (lower === query) { return 1000; }
     if (lower.indexOf(query) === 0) { return 600; }
 
-    words = lower.split(/\s+/);
-    for (i = 0; i < words.length; i++) {
-      if (words[i] === query) { return 400; }
-    }
-    if (lower.indexOf(query) !== -1) { return 200; }
-    for (i = 0; i < words.length; i++) {
-      if (words[i].indexOf(query) === 0) { return 120; }
+    var i, words;
+    // Performance optimization: Fast-path check. If indexOf === -1, exact matches
+    // and prefix matches cannot occur, skipping expensive string split allocations.
+    var hasIndexOfMatch = lower.indexOf(query) !== -1;
+
+    if (hasIndexOfMatch) {
+      words = lower.split(/\s+/);
+      for (i = 0; i < words.length; i++) {
+        if (words[i] === query) { return 400; }
+      }
+      return 200;
     }
 
     if (query.length < 3) { return 0; }
+
+    words = lower.split(/\s+/);
 
     for (i = 0; i < words.length; i++) {
       if (levenshteinWithin(words[i], query, 1)) { return 60; }

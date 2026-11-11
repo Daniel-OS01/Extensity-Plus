@@ -42,7 +42,7 @@
     <p class="status" data-sbind="visible: message, text: message"></p>
 
     <div class="permission-banner" data-sbind="visible: needsWebStorePermission">
-      <i class="fa fa-exclamation-triangle"></i>
+      <i class="fa fa-exclamation-triangle" aria-hidden="true"></i>
       <span>Grant Chrome Web Store access to enable extension metadata and store links.</span>
       <button type="button" title="Grant Chrome Web Store access" data-sbind="click: requestWebStorePermission">Grant access</button>
     </div>
@@ -123,7 +123,7 @@
       <div class="group-editor" data-sbind="foreach: groups">
         <div class="card">
           <div class="card-row">
-            <input type="text" placeholder="Group name" data-sbind="value: name" />
+            <input type="text" placeholder="Group name" aria-label="Group name" data-sbind="value: name" />
             <input type="color" data-sbind="value: color" />
             <button type="button" title="Remove this group" data-sbind="click: $parent.removeGroup">Remove</button>
           </div>
@@ -142,7 +142,7 @@
       <h2>URL Rules</h2>
       <div class="card rule-tester-card">
         <div class="card-row">
-          <input type="text" placeholder="Test URL, e.g. https://app.example.com/admin" data-sbind="value: ruleTesterUrl, valueUpdate:'afterkeydown'" />
+          <input type="text" placeholder="Test URL, e.g. https://app.example.com/admin" aria-label="Test URL" data-sbind="value: ruleTesterUrl, valueUpdate:'afterkeydown'" />
           <button type="button" data-sbind="click: testRules">Test rules</button>
           <button type="button" data-sbind="click: clearRuleSelection, visible: selectedRuleId">Clear selected rule</button>
         </div>
@@ -178,12 +178,12 @@
       <div class="rule-editor" data-sbind="foreach: rules">
         <div class="card" data-sbind="css:{selected: isSelected}">
           <div class="card-row">
-            <input type="text" placeholder="Rule name" data-sbind="value: name" />
+            <input type="text" placeholder="Rule name" aria-label="Rule name" data-sbind="value: name" />
             <select data-sbind="value: matchMethod"><option value="wildcard">Wildcard</option><option value="regex">Regex</option></select>
             <label><input type="checkbox" data-sbind="checked: active" /> Active</label>
             <button type="button" title="Remove this URL rule" data-sbind="click: $parent.removeRule">Remove</button>
           </div>
-          <div class="card-row"><input type="text" placeholder="e.g. *://github.com/*" data-sbind="value: urlPattern" /></div>
+          <div class="card-row"><input type="text" placeholder="e.g. *://github.com/*" aria-label="URL Pattern" data-sbind="value: urlPattern" /></div>
           <div class="card-row" data-sbind="visible: isDraft">
             <label><input type="checkbox" data-sbind="checked: draftWww" /> <span data-sbind="text: draftWwwLabel"></span></label>
           </div>
@@ -193,7 +193,7 @@
               <h3>Enable on match</h3>
               <div class="card-row compact-controls">
                 <span class="rule-selection-summary" data-sbind="text: enableSummary"></span>
-                <input type="text" placeholder="Search extensions" data-sbind="value: enableFilter, valueUpdate:'afterkeydown'" />
+                <input type="text" placeholder="Search extensions" aria-label="Search extensions to enable" data-sbind="value: enableFilter, valueUpdate:'afterkeydown'" />
                 <button type="button" title="Toggle enable list" data-sbind="click: toggleEnableList, text: enableToggleLabel"></button>
               </div>
               <div class="extension-grid tight-grid" data-sbind="visible: showEnable, foreach: filteredEnableExtensions">
@@ -207,7 +207,7 @@
               <h3>Disable on match</h3>
               <div class="card-row compact-controls">
                 <span class="rule-selection-summary" data-sbind="text: disableSummary"></span>
-                <input type="text" placeholder="Search extensions" data-sbind="value: disableFilter, valueUpdate:'afterkeydown'" />
+                <input type="text" placeholder="Search extensions" aria-label="Search extensions to disable" data-sbind="value: disableFilter, valueUpdate:'afterkeydown'" />
                 <button type="button" title="Toggle disable list" data-sbind="click: toggleDisableList, text: disableToggleLabel"></button>
               </div>
               <div class="extension-grid tight-grid" data-sbind="visible: showDisable, foreach: filteredDisableExtensions">
@@ -228,7 +228,7 @@
       <div class="alias-list" data-sbind="foreach: aliasRows">
         <div class="card-row">
           <span class="alias-name" data-sbind="text: name"></span>
-          <input type="text" placeholder="Alias" data-sbind="value: alias" />
+          <input type="text" placeholder="Alias" aria-label="Alias name" data-sbind="value: alias" />
         </div>
       </div>
       <div class="footer-actions"><button type="button" title="Save alias updates" data-sbind="click: saveAliases">Save aliases</button></div>

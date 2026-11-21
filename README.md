@@ -41,17 +41,15 @@
 
 ## 📸 Screenshots
 
-| Popup with profile badges | Row actions expanded |
+| Popup with profile badges | Row actions and profile menu |
 |:---:|:---:|
-| <img src="images/popup-list.jpg" alt="Popup with profile badges" width="300" /> | <img src="images/popup-expanded-actions.jpg" alt="Popup with row actions expanded" width="300" /> |
+| <img src="images/popup-list.jpg" alt="Popup with profile badges" width="300" /> | <img src="images/popup-profile-dropdown.jpg" alt="Popup row actions with the profile menu open" width="300" /> |
 
 | Profiles editor | Options |
 |:---:|:---:|
 | ![Profiles editor](images/profiles-page.jpg) | ![Options page](images/options-page.jpg) |
-| **URL rules with the live tester** | **Activity log** |
-| ![Dashboard URL rules](images/dashboard-url-rules.jpg) | ![Dashboard activity log](images/dashboard-activity.jpg) |
-
-<sub>Captured from v4.7.4 in dark mode, with demo extensions and profiles.</sub>
+| **URL rules with the live tester** | **Import / Export and Drive sync** |
+| ![Dashboard URL rules](images/dashboard-url-rules.jpg) | ![Dashboard import and export](images/dashboard-import-export.jpg) |
 
 ## ✨ Features
 

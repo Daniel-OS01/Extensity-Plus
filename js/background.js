@@ -1835,6 +1835,16 @@ importScripts(
     return buildState();
   }
 
+  async function saveProfileEdits(payload) {
+    // The map replaces every profile, so a message without one must not be read as "none".
+    if (!payload || !payload.profiles || typeof payload.profiles !== "object" || Array.isArray(payload.profiles)) {
+      throw new Error("SAVE_PROFILES requires a profiles map.");
+    }
+    await storage.saveProfiles(payload.profiles, payload.meta);
+    await touchDriveCategories(["profiles"]);
+    return buildState();
+  }
+
   async function saveUrlRules(payload) {
     await storage.saveLocalState({
       urlRules: urlRules.normalizeRules(payload.urlRules || [])
@@ -2275,6 +2285,8 @@ importScripts(
     meta.fileModifiedTime = null;
     meta.fileSize = null;
     meta.fileVersion = null;
+    // The baseline describes the previously synced file, not the one just selected.
+    meta.baselineCategories = {};
     await storage.saveLocalState({ drivePendingConflict: null, driveSyncMeta: meta });
     return { fileId: meta.fileId, state: await buildState() };
   }
@@ -2581,6 +2593,8 @@ importScripts(
         return { state: await saveGroups(message) };
       case "SAVE_OPTIONS":
         return { state: await saveOptions(message) };
+      case "SAVE_PROFILES":
+        return { state: await saveProfileEdits(message) };
       case "SAVE_URL_RULES":
         return { state: await saveUrlRules(message) };
       case "TEST_URL_RULES":

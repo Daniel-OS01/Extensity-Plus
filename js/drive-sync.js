@@ -50,6 +50,18 @@
     "driveAuthStatus",
     "syncWriterId"
   ];
+  // Options that are not the user's portable settings: `activeProfile` is what this device
+  // last applied; `profileMeta` duplicates the Profiles category; `migration` and every
+  // `migration_*` key record this install's upgrades; `syncMode`, `localProfiles` and
+  // `syncProfilesPartial` describe how this browser uses chrome.storage.sync.
+  var DRIVE_NON_SYNCED_OPTION_KEYS = [
+    "activeProfile",
+    "localProfiles",
+    "migration",
+    "profileMeta",
+    "syncMode",
+    "syncProfilesPartial"
+  ];
   // How a delete on one device is applied to the others.
   // "additive"  - never remove an item that still exists on the other side (default, safest).
   // "mirror"    - propagate deletions, so both sides converge on the same set.
@@ -62,6 +74,9 @@
   var DRIVE_RETRYABLE_HTTP_STATUSES = [429, 500, 502, 503, 504];
   var DRIVE_BACKUP_LIMIT = 3;
   var DRIVE_FAILSAFE_ABSOLUTE_DELETIONS = 1000;
+  // The percentage rules apply only once this many items would be deleted or replaced, so
+  // renaming one of two aliases is not treated as a destructive change.
+  var DRIVE_FAILSAFE_MIN_ITEMS = 5;
   var DRIVE_MAX_CONCURRENCY_RETRIES = 3;
   var activeSyncPromise = null;
 
@@ -204,13 +219,45 @@
     return DELETION_POLICIES.indexOf(value) === -1 ? DELETION_POLICY_ADDITIVE : value;
   }
 
+  /**
+   * Builds the synced Options payload. Applied to outgoing and incoming data alike, so a
+   * Drive file written by an older version cannot set these keys on this device either.
+   * @param {Object} options - Options as stored on this device or as read from Drive.
+   * @return {Object} The options that are the user's settings and belong in the payload.
+   */
   function buildOptionsCategoryPayload(options) {
     var payload = clone(options || {});
-    DRIVE_SYNC_OPTION_KEYS.concat(DRIVE_DEVICE_LOCAL_OPTION_KEYS).forEach(function(key) {
+    DRIVE_SYNC_OPTION_KEYS.concat(DRIVE_DEVICE_LOCAL_OPTION_KEYS, DRIVE_NON_SYNCED_OPTION_KEYS).forEach(function(key) {
       delete payload[key];
+    });
+    Object.keys(payload).forEach(function(key) {
+      if (key.indexOf("migration_") === 0) {
+        delete payload[key];
+      }
     });
     delete payload._syncOptionsUpdatedAt;
     return payload;
+  }
+
+  // Profile membership item keys encode the (profile name, extension ID) pair as JSON, so
+  // no character in either part can be misread. Splitting a "name:id" key on a colon
+  // corrupted profile names containing ":" and would silently move memberships already
+  // stored under such names. Keys are internal: baselines store category data, not keys.
+  var PROFILE_MEMBER_KEY_PREFIX = "member:";
+
+  function profileMemberKey(profileName, extensionId) {
+    return PROFILE_MEMBER_KEY_PREFIX + JSON.stringify([String(profileName), String(extensionId)]);
+  }
+
+  // Member order carries no meaning, so member lists travel sorted. Two devices that added
+  // members in a different order would otherwise rewrite Drive on every sync.
+  function sortedProfileMap(map) {
+    var source = isObject(map) ? map : {};
+    var sorted = {};
+    Object.keys(source).forEach(function(profileName) {
+      sorted[profileName] = Array.isArray(source[profileName]) ? source[profileName].slice().sort() : [];
+    });
+    return sorted;
   }
 
   function buildCategoryData(categoryId, context) {
@@ -223,7 +270,7 @@
     }
     if (categoryId === "profiles") {
       return {
-        map: clone(profiles.map || {}),
+        map: sortedProfileMap(profiles.map),
         meta: clone(profiles.meta || {})
       };
     }
@@ -374,7 +421,13 @@
     merged.sort(function(left, right) {
       var leftTs = typeof left.timestamp === "number" ? left.timestamp : 0;
       var rightTs = typeof right.timestamp === "number" ? right.timestamp : 0;
-      return leftTs - rightTs;
+      if (leftTs !== rightTs) {
+        return leftTs - rightTs;
+      }
+      // Ties break by id, so every device builds the same order and the same 500-record cut.
+      var leftId = String(left.id);
+      var rightId = String(right.id);
+      return leftId < rightId ? -1 : leftId > rightId ? 1 : 0;
     });
     // Keep the most recent records, mirroring history-logger.js truncation.
     return merged.slice(-HISTORY_MAX_RECORDS);
@@ -709,7 +762,14 @@
    */
   function categoryItemMap(categoryId, data) {
     var result = {};
-    if (categoryId === "options" || categoryId === "aliases") {
+    if (categoryId === "options") {
+      var options = isObject(data) ? buildOptionsCategoryPayload(data) : {};
+      Object.keys(options).forEach(function(key) {
+        result[key] = options[key];
+      });
+      return result;
+    }
+    if (categoryId === "aliases") {
       Object.keys(isObject(data) ? data : {}).forEach(function(key) {
         result[key] = data[key];
       });
@@ -717,9 +777,12 @@
     }
     if (categoryId === "profiles") {
       var profileData = isObject(data) ? data : {};
-      Object.keys(profileData.map || {}).forEach(function(profileName) {
-        (profileData.map[profileName] || []).forEach(function(extensionId) {
-          result["member:" + profileName + ":" + extensionId] = true;
+      var profileMap = isObject(profileData.map) ? profileData.map : {};
+      Object.keys(profileMap).forEach(function(profileName) {
+        // The profile itself is an item, so a profile without members still exists.
+        result["profile:" + profileName] = true;
+        (Array.isArray(profileMap[profileName]) ? profileMap[profileName] : []).forEach(function(extensionId) {
+          result[profileMemberKey(profileName, extensionId)] = true;
         });
       });
       Object.keys(profileData.meta || {}).forEach(function(profileName) {
@@ -739,17 +802,124 @@
     // front re-keys every later item, so the three-way merge reports them all as changed on
     // both sides and invents conflicts. Repeated identical items get a stable occurrence
     // suffix so duplicates survive the round trip.
+    var list = Array.isArray(data) ? data : [];
+    arrayItemKeys(list).forEach(function(key, index) {
+      result[key] = list[index];
+    });
+    return result;
+  }
+
+  /**
+   * Lists the item keys of an array category in array order, as categoryItemMap keys them.
+   * @param {*} data - The array category data.
+   * @return {string[]} One key per array entry, in the same order.
+   */
+  function arrayItemKeys(data) {
+    var keys = [];
+    var seen = {};
     var duplicateCounts = {};
     (Array.isArray(data) ? data : []).forEach(function(item) {
       var id = item && (item.id || item.eventId || item.timestamp);
       var key = id ? String(id) : "content:" + hashText(stableSerialize(item));
-      if (Object.prototype.hasOwnProperty.call(result, key)) {
+      if (Object.prototype.hasOwnProperty.call(seen, key)) {
         duplicateCounts[key] = (duplicateCounts[key] || 1) + 1;
         key = key + "#" + duplicateCounts[key];
       }
-      result[key] = item;
+      seen[key] = true;
+      keys.push(key);
     });
-    return result;
+    return keys;
+  }
+
+  /**
+   * Merges the order of an ordered collection that may have been edited on both sides.
+   * The local order wins only when this device alone reordered the items all three lists
+   * share; otherwise the Drive order wins, so two devices never keep rewriting Drive with
+   * their own order. Ids present only on the other side are placed after their nearest
+   * preceding neighbour from that side, or at the front when they have none.
+   * @param {string[]} baseOrder - Order at the last successful sync.
+   * @param {string[]} localOrder - Order on this device.
+   * @param {string[]} remoteOrder - Order in the Drive file.
+   * @return {string[]} The merged order, containing every id of both sides once.
+   */
+  function mergeOrder(baseOrder, localOrder, remoteOrder) {
+    var base = Array.isArray(baseOrder) ? baseOrder : [];
+    var local = Array.isArray(localOrder) ? localOrder : [];
+    var remote = Array.isArray(remoteOrder) ? remoteOrder : [];
+    var shared = base.filter(function(id) {
+      return local.indexOf(id) !== -1 && remote.indexOf(id) !== -1;
+    });
+    function sharedOrderOf(list) {
+      return list.filter(function(id) {
+        return shared.indexOf(id) !== -1;
+      });
+    }
+    var localReordered = !dataEqual(sharedOrderOf(local), shared);
+    var remoteReordered = !dataEqual(sharedOrderOf(remote), shared);
+    var primary = localReordered && !remoteReordered ? local : remote;
+    var secondary = primary === local ? remote : local;
+    var merged = [];
+    primary.forEach(function(id) {
+      if (merged.indexOf(id) === -1) {
+        merged.push(id);
+      }
+    });
+    secondary.forEach(function(id, index) {
+      if (merged.indexOf(id) !== -1) {
+        return;
+      }
+      var position = 0;
+      for (var back = index - 1; back >= 0; back -= 1) {
+        var neighbour = merged.indexOf(secondary[back]);
+        if (neighbour !== -1) {
+          position = neighbour + 1;
+          break;
+        }
+      }
+      merged.splice(position, 0, id);
+    });
+    return merged;
+  }
+
+  function categoryOrder(categoryId, data) {
+    if (categoryId === "groups") {
+      return isObject(data) && Array.isArray(data.groupOrder) ? data.groupOrder : [];
+    }
+    return arrayItemKeys(data);
+  }
+
+  /**
+   * Rebuilds merged category data, merging the order of ordered categories (URL rules,
+   * groups) instead of taking one side's order.
+   * @param {string} categoryId - The category being rebuilt.
+   * @param {Object} items - Merged items keyed as categoryItemMap keys them.
+   * @param {*} baseData - Category data at the last successful sync.
+   * @param {*} localData - Category data on this device.
+   * @param {*} remoteData - Category data in the Drive file.
+   * @return {Object|Array} The rebuilt category data.
+   */
+  function orderedCategoryData(categoryId, items, baseData, localData, remoteData) {
+    if (categoryId !== "urlRules" && categoryId !== "groups") {
+      return categoryDataFromItemMap(categoryId, items);
+    }
+    var order = mergeOrder(
+      categoryOrder(categoryId, baseData),
+      categoryOrder(categoryId, localData),
+      categoryOrder(categoryId, remoteData)
+    ).filter(function(key) {
+      return Object.prototype.hasOwnProperty.call(items, key);
+    });
+    Object.keys(items).forEach(function(key) {
+      if (order.indexOf(key) === -1) {
+        order.push(key);
+      }
+    });
+    if (categoryId === "groups") {
+      return categoryDataFromItemMap(categoryId, items, { groupOrder: clone(order) });
+    }
+    return clone(order.map(function(key) {
+      return items[key];
+    }));
   }
 
   /**
@@ -766,15 +936,19 @@
     if (categoryId === "profiles") {
       var profiles = { map: {}, meta: {} };
       Object.keys(items).forEach(function(key) {
-        if (key.indexOf("member:") === 0 && items[key]) {
-          var parts = key.split(":");
-          var profileName = parts[1];
-          var extensionId = parts.slice(2).join(":");
+        if (key.indexOf("profile:") === 0 && items[key]) {
+          var existingName = key.slice(8);
+          profiles.map[existingName] = profiles.map[existingName] || [];
+        } else if (key.indexOf(PROFILE_MEMBER_KEY_PREFIX) === 0 && items[key]) {
+          var member = JSON.parse(key.slice(PROFILE_MEMBER_KEY_PREFIX.length));
+          var profileName = member[0];
+          var extensionId = member[1];
           profiles.map[profileName] = (profiles.map[profileName] || []).concat([extensionId]);
         } else if (key.indexOf("meta:") === 0) {
           profiles.meta[key.slice(5)] = clone(items[key]);
         }
       });
+      profiles.map = sortedProfileMap(profiles.map);
       return profiles;
     }
     if (categoryId === "groups") {
@@ -806,17 +980,25 @@
    * @param {string} [deletionPolicy] - `"mirror"` propagates deletions to the other side;
    *   anything else (including omitted) uses the safe `"additive"` default, under which an
    *   item deleted on one side survives while the other side still has it.
-   * @return {Object} An object containing `conflicts`, an array of item-level conflict records, and `envelope`, the merged envelope.
+   * @return {Object} An object containing `conflicts`, an array of item-level conflict records;
+   *   `envelope`, the merged envelope for Drive and the baseline; and `localEnvelope`, what
+   *   this device keeps. The two differ only under the additive policy, for items this device
+   *   deleted that Drive still has: Drive keeps them for other devices, this device does not.
    */
   function buildThreeWayEnvelope(localEnvelope, remoteEnvelope, baselineCategories, categoryFlags, resolution, writerId, deletionPolicy) {
     var result = { categories: {}, exportedAt: nowMs(), version: ENVELOPE_VERSION, writerId: writerId || "" };
+    var localResult = { categories: {}, exportedAt: result.exportedAt, version: ENVELOPE_VERSION, writerId: writerId || "" };
     var conflicts = [];
     var additiveOnly = normalizeDeletionPolicy(deletionPolicy) === DELETION_POLICY_ADDITIVE;
     var localCategories = localEnvelope && isObject(localEnvelope.categories) ? localEnvelope.categories : {};
     var remoteCategories = remoteEnvelope && isObject(remoteEnvelope.categories) ? remoteEnvelope.categories : {};
     enabledCategoryList(categoryFlags).forEach(function(categoryId) {
       var localPresent = Object.prototype.hasOwnProperty.call(localCategories, categoryId);
-      var remotePresent = Object.prototype.hasOwnProperty.call(remoteCategories, categoryId);
+      // A remote category whose data has the wrong shape is treated as absent: reading it as
+      // an empty collection would delete every local item under the mirror policy.
+      var remotePresent = Object.prototype.hasOwnProperty.call(remoteCategories, categoryId)
+        && isObject(remoteCategories[categoryId])
+        && isApplicableCategoryData(categoryId, remoteCategories[categoryId].data);
       var localCategory = localCategories[categoryId] || { data: null, updatedAt: 0 };
       var remoteCategory = remoteCategories[categoryId] || { data: null, updatedAt: 0 };
 
@@ -834,12 +1016,22 @@
       if (!localPresent && !remotePresent) {
         return;
       }
+      if (categoryId === "history") {
+        // History is a rolling log: union by id, sorted by time, newest records kept.
+        // Turnover is normal for a log, so it takes no part in conflicts or deletion policy.
+        result.categories[categoryId] = {
+          data: mergeHistory(localCategory.data, remoteCategory.data),
+          updatedAt: Math.max(localCategory.updatedAt || 0, remoteCategory.updatedAt || 0) || nowMs()
+        };
+        return;
+      }
 
       var baseData = baselineCategories && baselineCategories[categoryId];
       var baseItems = categoryItemMap(categoryId, baseData);
       var localItems = categoryItemMap(categoryId, localCategory.data);
       var remoteItems = categoryItemMap(categoryId, remoteCategory.data);
       var mergedItems = {};
+      var localResultItems = {};
       var keys = Object.keys(Object.assign({}, baseItems, localItems, remoteItems));
       keys.forEach(function(itemId) {
         var baseHas = Object.prototype.hasOwnProperty.call(baseItems, itemId);
@@ -848,7 +1040,13 @@
         var localChanged = localHas !== baseHas || (localHas && !dataEqual(localItems[itemId], baseItems[itemId]));
         var remoteChanged = remoteHas !== baseHas || (remoteHas && !dataEqual(remoteItems[itemId], baseItems[itemId]));
         var chooseRemote = false;
-        if (localChanged && remoteChanged && (localHas !== remoteHas || !dataEqual(localItems[itemId], remoteItems[itemId]))) {
+        // Under the additive policy delete-versus-edit has a determined outcome (the edit
+        // survives on Drive, the deleting device stays without it), so it is not a conflict.
+        var deleteVersusEdit = additiveOnly && localHas !== remoteHas;
+        if (
+          localChanged && remoteChanged && !deleteVersusEdit
+          && (localHas !== remoteHas || !dataEqual(localItems[itemId], remoteItems[itemId]))
+        ) {
           conflicts.push({
             categoryId: categoryId,
             itemId: itemId,
@@ -873,13 +1071,46 @@
         if (chosenHas) {
           mergedItems[itemId] = clone(chosenValue);
         }
+        // Additive policy: an item this device deleted stays deleted here, even though Drive
+        // keeps it for the devices that still have it.
+        var deletedHere = additiveOnly && baseHas && !localHas;
+        if (chosenHas && !deletedHere) {
+          localResultItems[itemId] = clone(chosenValue);
+        }
       });
+      if (categoryId === "profiles" && additiveOnly) {
+        // A profile deleted here stays deleted here, even when another device has since
+        // added members or appearance settings to it.
+        Object.keys(baseItems).forEach(function(itemId) {
+          if (itemId.indexOf("profile:") !== 0 || Object.prototype.hasOwnProperty.call(localItems, itemId)) {
+            return;
+          }
+          var deletedProfileName = itemId.slice(8);
+          Object.keys(localResultItems).forEach(function(resultItemId) {
+            var isMember = resultItemId.indexOf(PROFILE_MEMBER_KEY_PREFIX) === 0
+              && JSON.parse(resultItemId.slice(PROFILE_MEMBER_KEY_PREFIX.length))[0] === deletedProfileName;
+            if (isMember || resultItemId === "meta:" + deletedProfileName) {
+              delete localResultItems[resultItemId];
+            }
+          });
+        });
+      }
+      var updatedAt = Math.max(localCategory.updatedAt || 0, remoteCategory.updatedAt || 0) || nowMs();
       result.categories[categoryId] = {
-        data: categoryDataFromItemMap(categoryId, mergedItems, localCategory.data || remoteCategory.data),
-        updatedAt: Math.max(localCategory.updatedAt || 0, remoteCategory.updatedAt || 0) || nowMs()
+        data: orderedCategoryData(categoryId, mergedItems, baseData, localCategory.data, remoteCategory.data),
+        updatedAt: updatedAt
+      };
+      localResult.categories[categoryId] = {
+        data: orderedCategoryData(categoryId, localResultItems, baseData, localCategory.data, remoteCategory.data),
+        updatedAt: updatedAt
       };
     });
-    return { conflicts: conflicts, envelope: result };
+    Object.keys(result.categories).forEach(function(categoryId) {
+      if (!Object.prototype.hasOwnProperty.call(localResult.categories, categoryId)) {
+        localResult.categories[categoryId] = clone(result.categories[categoryId]);
+      }
+    });
+    return { conflicts: conflicts, envelope: result, localEnvelope: localResult };
   }
 
   /**
@@ -951,13 +1182,18 @@
     var threshold = Math.max(1, Math.min(100, Number(options && options.driveFailsafeThresholdPercent) || 20));
     for (var index = 0; index < summary.length; index += 1) {
       var entry = summary[index];
+      // History is a rolling log capped at its newest records; turnover is not data loss.
+      if (entry.categoryId === "history") {
+        continue;
+      }
       if (
         (entry.beforeCount > 0 && entry.afterCount === 0)
         || entry.deleted >= DRIVE_FAILSAFE_ABSOLUTE_DELETIONS
-        || (entry.deleted > 0 && entry.deletionPercent >= threshold)
+        || (entry.deleted >= DRIVE_FAILSAFE_MIN_ITEMS && entry.deletionPercent >= threshold)
         || (
           options && options.driveAutomaticTrigger
           && entry.beforeCount > 0
+          && entry.changed + entry.deleted >= DRIVE_FAILSAFE_MIN_ITEMS
           && (entry.changed + entry.deleted) / entry.beforeCount * 100 >= threshold
         )
       ) {
@@ -1031,6 +1267,10 @@
           " (" + (failsafe.deletionPercent || 0) + "%, threshold " + (failsafe.thresholdPercent || 0) +
           "%). Adjust \"Protect destructive changes\" in Settings if this is intentional, then Cancel and retry.";
       }
+      case "transaction_recovered":
+        return "A sync was interrupted before it finished, so this device was restored to how it was before that sync. Click Cancel, check your data, then Sync again.";
+      case "transaction_recovery_missing_backup":
+        return "A sync was interrupted before it finished, and the backup needed to restore this device is missing. Check your data, then click Cancel and Sync again.";
       default:
         throw new Error("Unhandled Drive conflict reason: " + reason);
     }
@@ -1113,7 +1353,7 @@
       return false;
     }
     if (categoryId === "options") {
-      patches.syncOptions = Object.assign(patches.syncOptions || {}, categoryData);
+      patches.syncOptions = Object.assign(patches.syncOptions || {}, buildOptionsCategoryPayload(categoryData));
       return true;
     }
     if (categoryId === "profiles") {
@@ -1274,6 +1514,64 @@
   }
 
   /**
+   * Copies the Drive categories this device does not sync into an envelope about to be
+   * written, so unchecking a category here never removes it for the devices that sync it.
+   * @param {Object} envelope - The envelope to write.
+   * @param {Object} remoteEnvelope - The envelope currently in the Drive file.
+   * @param {Object} categoryFlags - This device's category flags.
+   * @return {Object} A copy of `envelope` that also carries those categories unchanged.
+   */
+  function withUnsyncedRemoteCategories(envelope, remoteEnvelope, categoryFlags) {
+    var enabled = enabledCategoryList(categoryFlags);
+    var remoteCategories = remoteEnvelope && isObject(remoteEnvelope.categories) ? remoteEnvelope.categories : {};
+    var next = clone(envelope);
+    next.categories = isObject(next.categories) ? next.categories : {};
+    Object.keys(remoteCategories).forEach(function(categoryId) {
+      if (enabled.indexOf(categoryId) === -1 && !Object.prototype.hasOwnProperty.call(next.categories, categoryId)) {
+        next.categories[categoryId] = clone(remoteCategories[categoryId]);
+      }
+    });
+    return next;
+  }
+
+  /**
+   * Builds what a pull leaves on this device, so repeated pulls of the same file compare
+   * equal: each enabled category in the shape it is applied in (device-only options removed,
+   * options merged over this device's own), or this device's copy when the Drive file lacks
+   * the category or holds it in an unusable shape and the pull therefore skips it.
+   * @param {Object} remoteEnvelope - The envelope read from Drive.
+   * @param {Object} localEnvelope - This device's current envelope.
+   * @param {Object} categoryFlags - This device's category flags.
+   * @return {Object} The envelope describing this device after the pull.
+   */
+  function buildPulledLocalEnvelope(remoteEnvelope, localEnvelope, categoryFlags) {
+    var remoteCategories = isObject(remoteEnvelope.categories) ? remoteEnvelope.categories : {};
+    var localCategories = localEnvelope && isObject(localEnvelope.categories) ? localEnvelope.categories : {};
+    var next = { categories: {}, exportedAt: remoteEnvelope.exportedAt, version: remoteEnvelope.version, writerId: remoteEnvelope.writerId };
+    enabledCategoryList(categoryFlags).forEach(function(categoryId) {
+      var remoteCategory = remoteCategories[categoryId];
+      var localCategory = localCategories[categoryId];
+      if (!isObject(remoteCategory) || !isApplicableCategoryData(categoryId, remoteCategory.data)) {
+        if (localCategory) {
+          next.categories[categoryId] = clone(localCategory);
+        }
+        return;
+      }
+      var data;
+      if (categoryId === "options") {
+        // Applying options merges them over this device's own, so keys the file lacks stay.
+        data = Object.assign({}, clone(localCategory ? localCategory.data : {}), buildOptionsCategoryPayload(remoteCategory.data));
+      } else if (categoryId === "aliases" || categoryId === "profiles") {
+        data = categoryDataFromItemMap(categoryId, categoryItemMap(categoryId, remoteCategory.data));
+      } else {
+        data = clone(remoteCategory.data);
+      }
+      next.categories[categoryId] = { data: data, updatedAt: remoteCategory.updatedAt };
+    });
+    return next;
+  }
+
+  /**
    * Records the applied envelope as the baseline for enabled sync categories.
    *
    * @param {Object} localMeta - Current Drive sync metadata.
@@ -1287,13 +1585,23 @@
     var timestamps = meta.categoryTimestamps;
     enabledCategoryList(categoryFlags).forEach(function(categoryId) {
       var remoteCategory = envelope.categories && envelope.categories[categoryId];
-      var remoteUpdatedAt = remoteCategory && typeof remoteCategory.updatedAt === "number"
+      // A category the applied envelope lacks (or holds in an unusable shape) was not
+      // synced in this run, so its baseline and timestamps stay as they were.
+      if (!isObject(remoteCategory) || !isApplicableCategoryData(categoryId, remoteCategory.data)) {
+        return;
+      }
+      var remoteUpdatedAt = typeof remoteCategory.updatedAt === "number"
         ? remoteCategory.updatedAt
         : timestamps[categoryId] || nowMs();
       var localUpdatedAt = timestamps[categoryId] || remoteUpdatedAt;
       mergedAt[categoryId] = Math.max(localUpdatedAt, remoteUpdatedAt, mergedAt[categoryId] || 0);
       timestamps[categoryId] = mergedAt[categoryId];
-      meta.baselineCategories[categoryId] = clone(remoteCategory && remoteCategory.data);
+      if (categoryId === "history") {
+        // History merges without a baseline, so storing one would only cost local storage.
+        delete meta.baselineCategories[categoryId];
+      } else {
+        meta.baselineCategories[categoryId] = clone(remoteCategory.data);
+      }
     });
     meta.lastMergedAt = mergedAt;
     meta.categoryTimestamps = timestamps;
@@ -2278,10 +2586,20 @@
     if (typeof config.loadContext === "function") {
       try {
         var context = await config.loadContext();
-        var categoryFlags = normalizeCategoryFlags(context.options && context.options.driveSyncCategories);
+        var contextOptions = context.options || {};
+        var categoryFlags = normalizeCategoryFlags(contextOptions.driveSyncCategories);
         var localMeta = normalizeDriveMeta(context.localState && context.localState.driveSyncMeta);
         if (remoteEnvelope) {
-          var conflicts = detectConflicts(localMeta, remoteEnvelope, categoryFlags);
+          // Same item-level comparison a real sync makes, including its baseline rule.
+          var conflicts = buildThreeWayEnvelope(
+            buildEnvelope(context, categoryFlags, contextOptions.syncWriterId || ""),
+            remoteEnvelope,
+            fileId === localMeta.fileId ? localMeta.baselineCategories : {},
+            categoryFlags,
+            null,
+            contextOptions.syncWriterId || "",
+            contextOptions.driveSyncDeletionPolicy
+          ).conflicts;
           if (conflicts.length === 0) {
             step("dry_run_conflicts", "ok", "No conflicts detected. Local and remote are in sync.");
           } else {
@@ -2444,8 +2762,14 @@
         });
       }
 
+      var lastSyncedFileId = driveMeta.fileId;
       driveMeta.fileId = selectedFileId || null;
       var remoteRead = await readRemoteEnvelope(requestDriveApi, selectedFileId);
+      if (!remoteRead.file && discoveredFile && discoveredFile.id && discoveredFile.id !== selectedFileId) {
+        // The remembered file is gone but another sync file exists: merge with that file
+        // instead of treating Drive as empty and overwriting it.
+        remoteRead = await readRemoteEnvelope(requestDriveApi, discoveredFile.id);
+      }
       var remoteEnvelope = remoteRead.envelope;
       var remoteFile = remoteRead.file || discoveredFile;
       if (remoteRead.file && remoteRead.file.id) {
@@ -2453,6 +2777,11 @@
         driveMeta.fileModifiedTime = remoteRead.file.modifiedTime || null;
         driveMeta.fileSize = remoteRead.file.size || null;
         driveMeta.fileVersion = remoteRead.file.version || null;
+      }
+      if (remoteRead.file && remoteRead.file.id !== lastSyncedFileId) {
+        // The baseline describes a different file. Reading this file against it would
+        // misread every item that file lacks as a deletion.
+        driveMeta.baselineCategories = {};
       }
 
       if (
@@ -2499,7 +2828,10 @@
           pendingConflict: pending
         });
       }
+      // resultEnvelope goes to Drive and becomes the baseline; localResultEnvelope is what this
+      // device keeps. They differ only for a merge under the additive policy.
       var resultEnvelope;
+      var localResultEnvelope;
       var status;
       var reason = null;
       if (direction === "pull") {
@@ -2507,30 +2839,48 @@
           return buildSyncResult("noop", { reason: "no_remote_file" });
         }
         resultEnvelope = remoteEnvelope;
+        localResultEnvelope = buildPulledLocalEnvelope(remoteEnvelope, localEnvelope, categoryFlags);
         status = "pulled";
       } else if (direction === "push") {
         resultEnvelope = remoteEnvelope ? localEnvelope : stampEnvelopeForInitialUpload(localEnvelope);
+        localResultEnvelope = resultEnvelope;
         status = "pushed";
       } else if (!remoteEnvelope) {
         resultEnvelope = stampEnvelopeForInitialUpload(localEnvelope);
+        localResultEnvelope = resultEnvelope;
         status = "pushed";
         reason = "initial_upload";
       } else if (conflicts.length && (resolution === "keep_local" || resolution === "keep_remote")) {
         resultEnvelope = threeWay.envelope;
+        localResultEnvelope = threeWay.localEnvelope;
         status = resolution === "keep_local" ? "resolved_local" : "resolved_remote";
       } else {
         resultEnvelope = threeWay.envelope;
+        localResultEnvelope = threeWay.localEnvelope;
         status = "merged";
       }
 
+      if (remoteEnvelope && direction !== "pull") {
+        resultEnvelope = withUnsyncedRemoteCategories(resultEnvelope, remoteEnvelope, categoryFlags);
+      }
+
       var remoteDiffers = direction !== "pull" && (!remoteEnvelope || mergedDataDiffers(resultEnvelope, remoteEnvelope, categoryFlags));
-      var localDiffers = direction !== "push" && mergedDataDiffers(resultEnvelope, localEnvelope, categoryFlags);
+      var localDiffers = direction !== "push" && mergedDataDiffers(localResultEnvelope, localEnvelope, categoryFlags);
       if (!remoteDiffers && !localDiffers) {
+        if (remoteEnvelope) {
+          // Nothing to write, but record the file and baseline this comparison was made
+          // against. Without them, a device whose data already matched Drive on its first
+          // sync would later read its own deletions as new items arriving from Drive.
+          var settledMeta = mergeEnvelopeAfterSync(driveMeta, resultEnvelope, categoryFlags);
+          if (!dataEqual(settledMeta, normalizeDriveMeta(context.localState.driveSyncMeta))) {
+            await saveDriveMeta(settledMeta);
+          }
+        }
         return buildSyncResult("noop", { fileId: driveMeta.fileId });
       }
 
       var remoteSummary = remoteDiffers ? buildChangeSummary(remoteEnvelope, resultEnvelope, categoryFlags) : [];
-      var localSummary = localDiffers ? buildChangeSummary(localEnvelope, resultEnvelope, categoryFlags) : [];
+      var localSummary = localDiffers ? buildChangeSummary(localEnvelope, localResultEnvelope, categoryFlags) : [];
       var failsafeOptions = Object.assign({}, syncOptions, {
         driveAutomaticTrigger: ["change", "periodic", "startup"].indexOf(trigger) >= 0
       });
@@ -2624,7 +2974,7 @@
         }
       }
       if (localDiffers) {
-        await savePatches(buildPatchesFromEnvelope(resultEnvelope, categoryFlags), {
+        await savePatches(buildPatchesFromEnvelope(localResultEnvelope, categoryFlags), {
           direction: direction === "pull" ? "pull" : "merge",
           source: "drive"
         });
@@ -2643,7 +2993,17 @@
       if (typeof savePendingConflict === "function") {
         await savePendingConflict(null);
       }
-      if (typeof appendAudit === "function") {
+      var changedCategoryIds = remoteSummary.concat(localSummary).filter(function(entry) {
+        return entry.added || entry.deleted || entry.changed;
+      }).map(function(entry) {
+        return entry.categoryId;
+      });
+      // An audit record is itself new history. Recording a run that only moved history
+      // would make the next sync non-idle again, forever.
+      var historyOnlyRun = changedCategoryIds.length > 0 && changedCategoryIds.every(function(categoryId) {
+        return categoryId === "history";
+      });
+      if (typeof appendAudit === "function" && !historyOnlyRun) {
         await appendAudit({
           changes: remoteSummary.concat(localSummary),
           direction: direction,

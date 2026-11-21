@@ -3,7 +3,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
 
-const repoRoot = process.env.EXTENSITY_REPO || "C:/Users/Daniel/Extensity-Plus";
+const repoRoot = path.resolve(__dirname, "..", "..");
 
 function plain(value) {
   return value === undefined ? undefined : JSON.parse(JSON.stringify(value));

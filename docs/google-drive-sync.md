@@ -74,10 +74,12 @@ Open **Options → Google Drive Sync**:
 
 - **Strategy** — merge compatible changes, use this device (overwrite Drive), or use Drive (overwrite this device). Persistent overwrite strategies never bypass failsafes.
 - **Periodic**, **Startup**, and **Changes** independently control automatic triggers. Periodic sync has a 15-minute minimum; change sync is debounced and backed by a 30-second alarm.
-- **Protect destructive changes** blocks empty replacements, large deletion percentages, 1,000-item deletions, and anomalous automatic additions or replacements. The threshold is clamped to 1–100%.
+- **Protect destructive changes** blocks empty replacements, large deletion percentages, 1,000-item deletions, and anomalous automatic additions or replacements. The threshold is clamped to 1–100%. The percentage rules apply only once at least 5 items in a category would be deleted or replaced, so renaming one of two aliases does not pause sync. History is exempt: it is a rolling log.
 - The Google Drive Sync section shows the current extension ID and whether the build is local or store.
-- Choose categories: Options, Profiles, Aliases, Groups, URL rules, History.
-- **Sync now** performs a three-way item merge against the last durable baseline. One-sided edits and deletions propagate; changes to different items merge automatically.
+- Choose categories: Options, Profiles, Aliases, Groups, URL rules, History. A category unchecked on one device is left as it is in the Drive file, so the devices that still sync it keep it.
+- **Sync now** performs a three-way item merge against the last durable baseline. One-sided edits propagate and changes to different items merge automatically. Deletions follow the deletion policy: with **Never delete** (the default) an item you delete stays deleted on this device while Drive and the other devices keep it; with **Delete it everywhere (mirror)** a one-sided deletion propagates to every device.
+- URL rule and group order syncs. If only one device reordered, its order wins; if both did, the order already on Drive wins. History merges as a log: records from all devices, in time order, newest 500 kept.
+- Options that describe one device are not synced: the active profile, migration markers, and how this browser uses Chrome sync storage (sync mode). Profile appearance settings such as colour sync with Profiles.
 - **Push to Drive** / **Pull from Drive** are destructive directions. The extension first produces a short-lived preview bound to the current local payload and Drive file version, then snapshots recovery data before writing.
 - **Undo last sync** restores the newest entry in the three-deep local backup ring.
 
@@ -87,11 +89,15 @@ The Dashboard **Sync Status** tab now also includes a Drive sync card with the c
 
 ## Conflicts and recovery
 
-When the same item changes differently on this device and Drive, including edit-versus-delete, synchronization pauses without writing either side. **Keep this device** or **Use Drive copy** applies only to this item-level (divergence) conflict case; compatible changes remain merged. **Cancel** always performs no write and immediately clears the pause, regardless of conflict type.
+When the same item changes differently on this device and Drive, synchronization pauses without writing either side. Edit-versus-delete pauses only under the mirror policy; under **Never delete** the edit is kept on Drive and the deleting device stays without the item. **Keep this device** or **Use Drive copy** applies only to this item-level (divergence) conflict case; compatible changes remain merged. **Cancel** always performs no write and immediately clears the pause, regardless of conflict type.
 
 Multiple matching app-data files also pause sync and every candidate is reported; duplicates are never silently deleted. Since the app data folder is hidden from the normal Drive web UI (see below), the conflict panel lists each duplicate file (name, modified time, size) with its own **Delete** button so the extras can be removed without leaving the extension. **Keep this device** and **Use Drive copy** are hidden for this case (only **Cancel** is offered) — delete the extra file(s), then Cancel and retry. Drive `version` is checked immediately before upload, and uploaded content is downloaded and verified before local state or the merge baseline advances. A version race is re-read and recomputed up to three times for merge runs. A verification or partial-write failure retains the transaction journal; startup restores the saved local snapshot and leaves a recovery notice before another automatic run.
 
 Legacy v1 files remain readable and the first successful write snapshots data before producing v2. If a device that has written v2 later sees a v1 file, synchronization pauses as a schema regression rather than discarding deletion history; as with duplicate files, **Keep this device** / **Use Drive copy** are hidden here — verify the account/file, then Cancel and retry.
+
+If a device's remembered sync file no longer exists but another one does (for example after a duplicate was deleted from the other device), the device merges with the remaining file as if syncing for the first time; it never overwrites it.
+
+If a sync is interrupted after it started writing, the next start of the extension restores this device from the backup taken before that sync and shows a notice saying so. Check your data, click **Cancel**, then sync again.
 
 When a change would delete or replace an unusually large share of a category (the destructive-change failsafe), synchronization also pauses. **Keep this device** / **Use Drive copy** are hidden for this case too, since the pause isn't tied to a specific conflicting item — review the change, adjust "Protect destructive changes" in Settings if it's intentional, then Cancel and retry.
 

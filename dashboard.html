@@ -58,11 +58,18 @@
     </div>
 
     <section class="dashboard-section" data-sbind="visible: historyTab">
-      <h2>Activity &amp; Log</h2>
+      <div class="section-heading">
+        <h2 id="activityLogHeading">Activity &amp; Log</h2>
+        <span class="recording-control">
+          <span id="recordingLabel">Recording</span>
+          <button type="button" role="switch" class="recording-switch" aria-labelledby="recordingLabel" title="Turn Activity &amp; Log recording on or off" data-sbind="attr:{'aria-checked': recordingAriaChecked}, css:{on: recordingEnabled}, click: toggleRecording, disable: busy, text: recordingLabel"></button>
+        </span>
+      </div>
       <div class="card-row compact-controls history-filters">
         <label for="historySourceFilter">Source</label>
         <select id="historySourceFilter" data-sbind="value: historySourceFilter">
           <option value="all">all</option>
+          <option value="off">Off</option>
           <option value="manual">manual</option>
           <option value="profile">profile</option>
           <option value="rule">rule</option>
@@ -73,6 +80,7 @@
         <label for="historyResultFilter">Result</label>
         <select id="historyResultFilter" data-sbind="value: historyResultFilter">
           <option value="all">all</option>
+          <option value="off">Off</option>
           <option value="state_changed_on">state_changed_on</option>
           <option value="state_changed_off">state_changed_off</option>
           <option value="changed">changed</option>
@@ -114,7 +122,7 @@
         </li>
         <!-- /ko -->
       </ul>
-      <p class="event-meta" data-sbind="visible: unifiedEmpty">No activity or log entries.</p>
+      <p class="event-meta" data-sbind="visible: unifiedEmpty, text: timelineEmptyMessage"></p>
     </section>
 
     <section class="dashboard-section" data-sbind="visible: groupsTab">

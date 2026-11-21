@@ -48,6 +48,42 @@ body.dark-mode {
   margin-bottom: 14px;
 }
 
+#dashboard-page .section-heading {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+#dashboard-page .section-heading h2 {
+  margin-bottom: 0;
+}
+
+#dashboard-page .recording-control {
+  align-items: center;
+  color: var(--muted);
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: bold;
+  gap: 8px;
+}
+
+#dashboard-page .recording-switch {
+  background: var(--panel);
+  border-color: var(--border);
+  color: var(--muted);
+  min-width: 56px;
+  padding: 4px 12px;
+}
+
+#dashboard-page .recording-switch.on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
 #dashboard-page .dashboard-section h3 {
   color: var(--accent);
   font-size: 14px;

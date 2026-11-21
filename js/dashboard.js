@@ -485,6 +485,69 @@ document.addEventListener("DOMContentLoaded", function() {
   }
 
   /**
+   * Applies the Source and Result view filters to Activity rows.
+   * `off` in either filter hides every Activity row; recording is not affected.
+   * @param {Array<Object>} rows - Activity rows.
+   * @param {string} sourceFilter - `all`, `off`, or a `triggeredBy` value.
+   * @param {string} resultFilter - `all`, `off`, or a `result` value.
+   * @return {Array<Object>} The rows that pass both filters.
+   */
+  function filterHistoryRows(rows, sourceFilter, resultFilter) {
+    if (sourceFilter === "off" || resultFilter === "off") {
+      return [];
+    }
+    return rows.filter(function(row) {
+      if (sourceFilter !== "all" && row.triggeredBy !== sourceFilter) {
+        return false;
+      }
+      if (resultFilter !== "all" && row.result !== resultFilter) {
+        return false;
+      }
+      return true;
+    });
+  }
+
+  /**
+   * Merges Activity and Log rows into one list, newest first.
+   * @param {Array<Object>} historyRows - Filtered Activity rows.
+   * @param {Array<Object>} logRows - Log rows.
+   * @param {boolean} errorsOnly - Keep only Log errors and Activity errors.
+   * @return {Array<Object>} Timeline rows.
+   */
+  function buildTimeline(historyRows, logRows, errorsOnly) {
+    var historyItems = historyRows.map(function(row) {
+      return Object.assign({}, row, {
+        epochTs: row.timestamp,
+        isHistoryEntry: true,
+        isLogEntry: false
+      });
+    });
+    var all = historyItems.concat(logRows);
+    if (errorsOnly) {
+      all = all.filter(function(row) {
+        return row.isLogEntry ? row.level === "error" : row.isError === true;
+      });
+    }
+    return all.sort(function(left, right) { return right.epochTs - left.epochTs; });
+  }
+
+  /**
+   * Explains why the timeline is empty.
+   * @param {boolean} recordingEnabled - Whether Activity & Log recording is on.
+   * @param {boolean} hasAnyRows - Whether any Activity or Log rows exist before filtering.
+   * @return {string} The empty-state message.
+   */
+  function buildTimelineEmptyMessage(recordingEnabled, hasAnyRows) {
+    if (!recordingEnabled) {
+      return "Recording is off. Turn it on to save new activity and log entries.";
+    }
+    if (hasAnyRows) {
+      return "No entries match the filters.";
+    }
+    return "Nothing recorded yet.";
+  }
+
+  /**
    * Formats timeline rows as plain text for the clipboard, oldest first.
    * @param {Array<Object>} rows - Activity and log rows as shown on the page.
    * @return {string} One line per row, or an empty string for no rows.
@@ -611,17 +674,7 @@ document.addEventListener("DOMContentLoaded", function() {
     });
 
     self.filteredHistoryRows = ko.pureComputed(function() {
-      var sourceFilter = self.historySourceFilter();
-      var resultFilter = self.historyResultFilter();
-      return self.historyRows().filter(function(row) {
-        if (sourceFilter !== "all" && row.triggeredBy !== sourceFilter) {
-          return false;
-        }
-        if (resultFilter !== "all" && row.result !== resultFilter) {
-          return false;
-        }
-        return true;
-      });
+      return filterHistoryRows(self.historyRows(), self.historySourceFilter(), self.historyResultFilter());
     });
 
     self.ruleTestSummary = ko.pureComputed(function() {
@@ -710,6 +763,7 @@ document.addEventListener("DOMContentLoaded", function() {
           event: historyLabelForEvent(row.event),
           extensionName: row.extensionName || row.label || "Rule event",
           id: row.id,
+          isError: row.event === "error",
           result: row.result || "",
           ruleId: row.ruleId || null,
           triggeredBy: row.triggeredBy,
@@ -1205,6 +1259,29 @@ document.addEventListener("DOMContentLoaded", function() {
     self.errorsOnly = ko.observable(false);
     self.logEmpty = ko.pureComputed(function() { return self.logEntries().length === 0; });
     self.logActionStatus = ko.observable("");
+    self.recordingEnabled = ko.pureComputed(function() {
+      return self.options.activityLogEnabled() !== false;
+    });
+    self.recordingLabel = ko.pureComputed(function() {
+      return self.recordingEnabled() ? "On" : "Off";
+    });
+    self.recordingAriaChecked = ko.pureComputed(function() {
+      return self.recordingEnabled() ? "true" : "false";
+    });
+
+    self.toggleRecording = function() {
+      var next = !self.recordingEnabled();
+      self.busy(true);
+      self.error("");
+      // Only this key is sent, so unsaved Drive fields on this page are not persisted.
+      ExtensityApi.saveOptions({ activityLogEnabled: next }).then(function() {
+        self.options.activityLogEnabled(next);
+      }).catch(function(err) {
+        self.error((err && err.message) || "Failed to change Recording.");
+      }).finally(function() {
+        self.busy(false);
+      });
+    };
 
     function showLogActionStatus(text) {
       self.logActionStatus(text);
@@ -1290,32 +1367,18 @@ document.addEventListener("DOMContentLoaded", function() {
     };
 
     self.unifiedTimeline = ko.computed(function() {
-      var historyItems = self.filteredHistoryRows().map(function(row) {
-        return {
-          isHistoryEntry: true,
-          isLogEntry: false,
-          epochTs: row.timestamp,
-          event: row.event,
-          extensionName: row.extensionName,
-          triggeredBy: row.triggeredBy,
-          details: row.details,
-          ruleId: row.ruleId,
-          badgeClass: row.badgeClass,
-          result: row.result,
-          formattedDate: row.formattedDate,
-          id: row.id
-        };
-      });
-      var logItems = self.logEntries();
-      var all = self.errorsOnly() ? logItems.filter(function(row) {
-        return row.level === "error";
-      }) : historyItems.concat(logItems);
-      all.sort(function(a, b) { return b.epochTs - a.epochTs; });
-      return all;
+      return buildTimeline(self.filteredHistoryRows(), self.logEntries(), self.errorsOnly());
     });
 
     self.unifiedEmpty = ko.pureComputed(function() {
       return self.unifiedTimeline().length === 0;
+    });
+
+    self.timelineEmptyMessage = ko.pureComputed(function() {
+      return buildTimelineEmptyMessage(
+        self.recordingEnabled(),
+        self.historyRows().length > 0 || self.logEntries().length > 0
+      );
     });
 
     self.driveConnectionReport = ko.observable(null);
@@ -1382,7 +1445,10 @@ document.addEventListener("DOMContentLoaded", function() {
       buildDriveStatusHeadline: buildDriveStatusHeadline,
       buildDriveStatusRows: buildDriveStatusRows,
       buildLogRows: buildLogRows,
+      buildTimeline: buildTimeline,
+      buildTimelineEmptyMessage: buildTimelineEmptyMessage,
       buildTimelineText: buildTimelineText,
+      filterHistoryRows: filterHistoryRows,
       parseRuleDraft: parseRuleDraft,
       resolveDraftEnableIds: resolveDraftEnableIds
     };

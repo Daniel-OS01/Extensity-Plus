@@ -646,6 +646,53 @@ test("dashboard buildLogRows replaces the list from storage, newest first", () =
   assert.deepEqual(normalize(helpers.buildLogRows(undefined)), []);
 });
 
+test("dashboard filterHistoryRows handles all, a specific value, and off", () => {
+  const helpers = loadDashboardInternals();
+  const rows = [
+    { id: "a", triggeredBy: "manual", result: "state_changed_on" },
+    { id: "b", triggeredBy: "rule", result: "state_changed_off" },
+    { id: "c", triggeredBy: "rule", result: "no_match" }
+  ];
+  const ids = (list) => normalize(list.map((row) => row.id));
+  assert.deepEqual(ids(helpers.filterHistoryRows(rows, "all", "all")), ["a", "b", "c"]);
+  assert.deepEqual(ids(helpers.filterHistoryRows(rows, "rule", "all")), ["b", "c"]);
+  assert.deepEqual(ids(helpers.filterHistoryRows(rows, "rule", "no_match")), ["c"]);
+  assert.deepEqual(ids(helpers.filterHistoryRows(rows, "off", "all")), []);
+  assert.deepEqual(ids(helpers.filterHistoryRows(rows, "all", "off")), []);
+});
+
+test("dashboard buildTimeline keeps activity errors when Errors only is on", () => {
+  const helpers = loadDashboardInternals();
+  const historyRows = [
+    { id: "h-ok", isError: false, timestamp: 1000 },
+    { id: "h-err", isError: true, timestamp: 3000 }
+  ];
+  const logRows = [
+    { isLogEntry: true, level: "warn", message: "w", epochTs: 2000 },
+    { isLogEntry: true, level: "error", message: "e", epochTs: 4000 }
+  ];
+  const all = helpers.buildTimeline(historyRows, logRows, false);
+  assert.deepEqual(normalize(all.map((row) => row.epochTs)), [4000, 3000, 2000, 1000]);
+
+  const errors = helpers.buildTimeline(historyRows, logRows, true);
+  assert.deepEqual(normalize(errors.map((row) => row.id || row.message)), ["e", "h-err"]);
+});
+
+test("dashboard buildTimelineEmptyMessage tells off, filtered, and empty apart", () => {
+  const helpers = loadDashboardInternals();
+  assert.match(helpers.buildTimelineEmptyMessage(false, true), /Recording is off/);
+  assert.match(helpers.buildTimelineEmptyMessage(true, true), /No entries match/);
+  assert.match(helpers.buildTimelineEmptyMessage(true, false), /Nothing recorded yet/);
+});
+
+test("dashboard Recording switch saves only activityLogEnabled", () => {
+  const source = fs.readFileSync(path.join(repoRoot, "js/dashboard.js"), "utf8");
+  const html = fs.readFileSync(path.join(repoRoot, "dashboard.html"), "utf8");
+  assert.match(source, /ExtensityApi\.saveOptions\(\{ activityLogEnabled: next \}\)/);
+  assert.match(html, /role="switch"[^>]*data-sbind="[^"]*click: toggleRecording/);
+  assert.match(html, /<option value="off">Off<\/option>[\s\S]*<option value="off">Off<\/option>/);
+});
+
 test("dashboard source refreshes Drive status and exposes the dashboard action", () => {
   const source = fs.readFileSync(path.join(repoRoot, "js/dashboard.js"), "utf8");
   const html = fs.readFileSync(path.join(repoRoot, "dashboard.html"), "utf8");

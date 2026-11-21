@@ -2275,6 +2275,8 @@ importScripts(
     meta.fileModifiedTime = null;
     meta.fileSize = null;
     meta.fileVersion = null;
+    // The baseline describes the previously synced file, not the one just selected.
+    meta.baselineCategories = {};
     await storage.saveLocalState({ drivePendingConflict: null, driveSyncMeta: meta });
     return { fileId: meta.fileId, state: await buildState() };
   }

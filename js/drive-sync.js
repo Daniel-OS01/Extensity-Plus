@@ -213,6 +213,17 @@
     return payload;
   }
 
+  // Member order carries no meaning, so member lists travel sorted. Two devices that added
+  // members in a different order would otherwise rewrite Drive on every sync.
+  function sortedProfileMap(map) {
+    var source = isObject(map) ? map : {};
+    var sorted = {};
+    Object.keys(source).forEach(function(profileName) {
+      sorted[profileName] = Array.isArray(source[profileName]) ? source[profileName].slice().sort() : [];
+    });
+    return sorted;
+  }
+
   function buildCategoryData(categoryId, context) {
     var options = context.options || {};
     var localState = context.localState || {};
@@ -223,7 +234,7 @@
     }
     if (categoryId === "profiles") {
       return {
-        map: clone(profiles.map || {}),
+        map: sortedProfileMap(profiles.map),
         meta: clone(profiles.meta || {})
       };
     }
@@ -717,8 +728,11 @@
     }
     if (categoryId === "profiles") {
       var profileData = isObject(data) ? data : {};
-      Object.keys(profileData.map || {}).forEach(function(profileName) {
-        (profileData.map[profileName] || []).forEach(function(extensionId) {
+      var profileMap = isObject(profileData.map) ? profileData.map : {};
+      Object.keys(profileMap).forEach(function(profileName) {
+        // The profile itself is an item, so a profile without members still exists.
+        result["profile:" + profileName] = true;
+        (Array.isArray(profileMap[profileName]) ? profileMap[profileName] : []).forEach(function(extensionId) {
           result["member:" + profileName + ":" + extensionId] = true;
         });
       });
@@ -766,15 +780,21 @@
     if (categoryId === "profiles") {
       var profiles = { map: {}, meta: {} };
       Object.keys(items).forEach(function(key) {
-        if (key.indexOf("member:") === 0 && items[key]) {
-          var parts = key.split(":");
-          var profileName = parts[1];
-          var extensionId = parts.slice(2).join(":");
+        if (key.indexOf("profile:") === 0 && items[key]) {
+          var existingName = key.slice(8);
+          profiles.map[existingName] = profiles.map[existingName] || [];
+        } else if (key.indexOf("member:") === 0 && items[key]) {
+          // Split on the last colon: extension IDs never contain one, profile names can.
+          var memberKey = key.slice(7);
+          var separator = memberKey.lastIndexOf(":");
+          var profileName = memberKey.slice(0, separator);
+          var extensionId = memberKey.slice(separator + 1);
           profiles.map[profileName] = (profiles.map[profileName] || []).concat([extensionId]);
         } else if (key.indexOf("meta:") === 0) {
           profiles.meta[key.slice(5)] = clone(items[key]);
         }
       });
+      profiles.map = sortedProfileMap(profiles.map);
       return profiles;
     }
     if (categoryId === "groups") {
@@ -816,7 +836,11 @@
     var remoteCategories = remoteEnvelope && isObject(remoteEnvelope.categories) ? remoteEnvelope.categories : {};
     enabledCategoryList(categoryFlags).forEach(function(categoryId) {
       var localPresent = Object.prototype.hasOwnProperty.call(localCategories, categoryId);
-      var remotePresent = Object.prototype.hasOwnProperty.call(remoteCategories, categoryId);
+      // A remote category whose data has the wrong shape is treated as absent: reading it as
+      // an empty collection would delete every local item under the mirror policy.
+      var remotePresent = Object.prototype.hasOwnProperty.call(remoteCategories, categoryId)
+        && isObject(remoteCategories[categoryId])
+        && isApplicableCategoryData(categoryId, remoteCategories[categoryId].data);
       var localCategory = localCategories[categoryId] || { data: null, updatedAt: 0 };
       var remoteCategory = remoteCategories[categoryId] || { data: null, updatedAt: 0 };
 
@@ -1287,13 +1311,18 @@
     var timestamps = meta.categoryTimestamps;
     enabledCategoryList(categoryFlags).forEach(function(categoryId) {
       var remoteCategory = envelope.categories && envelope.categories[categoryId];
-      var remoteUpdatedAt = remoteCategory && typeof remoteCategory.updatedAt === "number"
+      // A category the applied envelope lacks (or holds in an unusable shape) was not
+      // synced in this run, so its baseline and timestamps stay as they were.
+      if (!isObject(remoteCategory) || !isApplicableCategoryData(categoryId, remoteCategory.data)) {
+        return;
+      }
+      var remoteUpdatedAt = typeof remoteCategory.updatedAt === "number"
         ? remoteCategory.updatedAt
         : timestamps[categoryId] || nowMs();
       var localUpdatedAt = timestamps[categoryId] || remoteUpdatedAt;
       mergedAt[categoryId] = Math.max(localUpdatedAt, remoteUpdatedAt, mergedAt[categoryId] || 0);
       timestamps[categoryId] = mergedAt[categoryId];
-      meta.baselineCategories[categoryId] = clone(remoteCategory && remoteCategory.data);
+      meta.baselineCategories[categoryId] = clone(remoteCategory.data);
     });
     meta.lastMergedAt = mergedAt;
     meta.categoryTimestamps = timestamps;
@@ -2444,8 +2473,14 @@
         });
       }
 
+      var lastSyncedFileId = driveMeta.fileId;
       driveMeta.fileId = selectedFileId || null;
       var remoteRead = await readRemoteEnvelope(requestDriveApi, selectedFileId);
+      if (!remoteRead.file && discoveredFile && discoveredFile.id && discoveredFile.id !== selectedFileId) {
+        // The remembered file is gone but another sync file exists: merge with that file
+        // instead of treating Drive as empty and overwriting it.
+        remoteRead = await readRemoteEnvelope(requestDriveApi, discoveredFile.id);
+      }
       var remoteEnvelope = remoteRead.envelope;
       var remoteFile = remoteRead.file || discoveredFile;
       if (remoteRead.file && remoteRead.file.id) {
@@ -2453,6 +2488,11 @@
         driveMeta.fileModifiedTime = remoteRead.file.modifiedTime || null;
         driveMeta.fileSize = remoteRead.file.size || null;
         driveMeta.fileVersion = remoteRead.file.version || null;
+      }
+      if (remoteRead.file && remoteRead.file.id !== lastSyncedFileId) {
+        // The baseline describes a different file. Reading this file against it would
+        // misread every item that file lacks as a deletion.
+        driveMeta.baselineCategories = {};
       }
 
       if (

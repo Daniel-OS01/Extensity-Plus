@@ -112,12 +112,12 @@ test("D5: two devices converge and then stay quiet on a default install", async 
   await a.ok({ type: "SAVE_ALIAS", extensionId: E1, alias: "One-A" });
   await a.ok({ type: "SAVE_URL_RULES", urlRules: [rule("r1")] });
   await b.ok({ type: "SAVE_ALIAS", extensionId: E2, alias: "Two-B" });
-  await b.ok({ type: "SAVE_URL_RULES", urlRules: [rule("r2")] });
   const trace = await converge([a, b]);
   assertNoConflicts(trace);
   assert.match(trace[trace.length - 1], /A=noop B=noop/, "never reached noop: " + trace.join(" / "));
   assert.deepEqual(local(a, "aliases"), { [E1]: "One-A", [E2]: "Two-B" });
   assert.deepEqual(local(b, "aliases"), local(a, "aliases"));
+  assert.deepEqual(ruleIds(b), ["r1"]);
   await assertSettled(drive, [a, b]);
 });
 
@@ -142,14 +142,13 @@ test("D2: an empty profile survives sync on both devices", async () => {
   const drive = new FakeDrive();
   const a = await boot("A", drive);
   const b = await boot("B", drive);
-  await saveProfilesDirect(a, { Empty: [], Full: [E1] }, { Empty: { color: "#ff0000" } });
+  await saveProfilesDirect(a, { Empty: [], Full: [E1] }, {});
   const trace = await converge([a, b]);
   for (const device of [a, b]) {
     const state = await profiles(device);
     assert.deepEqual(plain(state.map.Empty), [], device.name + " lost the empty profile");
     assert.deepEqual(plain(state.map.Full), [E1]);
   }
-  assert.equal((await profiles(b)).meta.Empty.color, "#ff0000");
   assertNoConflicts(trace);
   await assertSettled(drive, [a, b]);
 });

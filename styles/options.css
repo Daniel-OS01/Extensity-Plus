@@ -459,12 +459,19 @@ body.profiles-portrait #profiles {
   color: inherit;
 }
 
+/* Icon-only button: undo the global button chrome so it renders like the old bare icon. */
 #profiles .sidebar .remove-profile {
+  background: none;
+  border: 0;
   color: var(--muted);
+  font-weight: normal;
+  padding: 0;
 }
 
 #profiles .sidebar .remove-profile:hover {
   color: var(--danger);
+  filter: none;
+  transform: none;
 }
 
 #profiles .bulk-actions,

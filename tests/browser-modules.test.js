@@ -2183,6 +2183,7 @@ test("profiles add decorates custom profiles without parent-context bindings", a
   assert.equal(workProfile.listVisible(), true);
   assert.equal(typeof workProfile.activate, "function");
   assert.equal(typeof workProfile.requestRemove, "function");
+  assert.equal(workProfile.removeLabel(), "Delete profile Work");
   assert.equal(workProfile.isActive(), true);
   assert.deepEqual(normalize(workProfile.items()), ["ext-1"]);
 

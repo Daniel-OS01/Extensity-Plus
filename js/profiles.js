@@ -299,6 +299,11 @@ document.addEventListener("DOMContentLoaded", function() {
         return false;
       };
 
+      // Each row's delete button names its profile so screen-reader users can tell them apart.
+      profile.removeLabel = ko.pureComputed(function() {
+        return "Delete profile " + profile.short_name();
+      });
+
       return profile;
     };
 
@@ -448,7 +453,7 @@ document.addEventListener("DOMContentLoaded", function() {
 
     self.remove = function(profile) {
       var isCurrent = profile === self.current_profile();
-      if (!window.confirm("Are you sure you want to remove this profile?")) {
+      if (!window.confirm("Are you sure you want to remove the profile \"" + profile.short_name() + "\"?")) {
         return;
       }
 

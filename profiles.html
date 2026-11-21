@@ -39,7 +39,7 @@
   <section id="content" data-sbind="css: layoutClass">
     <p class="status error" data-sbind="visible: error, text: error"></p>
     <div class="permission-banner" data-sbind="visible: needsWebStorePermission">
-      <i class="fa fa-exclamation-triangle"></i>
+      <i class="fa fa-exclamation-triangle" aria-hidden="true"></i>
       <span>Grant Chrome Web Store access to enable extension metadata and store links.</span>
       <button type="button" title="Grant Chrome Web Store access" data-sbind="click: requestWebStorePermission">Grant access</button>
     </div>
@@ -122,7 +122,7 @@
 
       <div class="sidebar">
         <form class="profile-create" data-sbind="submit: add">
-          <input type="text" id="name" placeholder="New profile name" data-sbind="value: add_name, attr:{dir: profileNameDir}" />
+          <input type="text" id="name" placeholder="New profile name" aria-label="New profile name" data-sbind="value: add_name, attr:{dir: profileNameDir}" />
           <button class="add" type="submit" title="Create a new profile" aria-label="Create a new profile"><i class="fa fa-plus-circle" aria-hidden="true"></i></button>
         </form>
 

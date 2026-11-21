@@ -11,6 +11,7 @@ const backgroundSource = fs.readFileSync(path.join(repoRoot, "js/background.js")
 // All message types the handleMessage switch must handle
 const EXPECTED_MESSAGE_TYPES = [
   "APPLY_PROFILE",
+  "CLEAR_ACTIVITY_LOG",
   "EXPORT_BACKUP",
   "GET_EXTENSION_METADATA",
   "GET_STATE",
@@ -399,6 +400,78 @@ test("management onInstalled stores installFirstSeenAt for new items immediately
       }
     }
   ]);
+});
+
+test("CLEAR_ACTIVITY_LOG empties eventHistory and the diagnostic log, then returns state", async () => {
+  let messageListener = null;
+  let localState = {
+    eventHistory: [{ id: "h1", event: "enabled", timestamp: 1 }, { id: "h2", event: "disabled", timestamp: 2 }],
+    installFirstSeenAt: { "ext-a": 1 }
+  };
+  const savedPatches = [];
+  const loggerCalls = [];
+  const root = loadBrowserScript(path.join(repoRoot, "js/background.js"), {
+    chrome: createChromeStub({
+      management: {
+        getAll(callback) { callback([]); },
+        onInstalled: { addListener() {} }
+      },
+      runtime: {
+        getManifest() { return { version: "2.0.0" }; },
+        id: "runtime-extension",
+        lastError: null,
+        onInstalled: { addListener() {} },
+        onMessage: { addListener(listener) { messageListener = listener; } },
+        onStartup: { addListener() {} }
+      }
+    }),
+    fetch: async function() { throw new Error("Unexpected fetch in unit test."); },
+    importScripts() {},
+    self: {
+      ExtensityDriveSync: {},
+      ExtensityHistory: {},
+      ExtensityImportExport: {},
+      ExtensityLogger: {
+        debug() {}, info() {}, warn() {}, error() {},
+        getLevel() { return "warn"; }, setLevel() {},
+        loadLevel(cb) { if (cb) cb("warn"); }, subscribe() {},
+        getEntries() { return []; },
+        clearEntries() { loggerCalls.push("clearEntries"); },
+        readShared(cb) { if (cb) cb([]); },
+        clearShared() { loggerCalls.push("clearShared"); },
+        LEVELS: ["none", "error", "warn", "info", "debug"]
+      },
+      ExtensityMigrations: {
+        migrateLegacyLocalStorage: async function() { return false; },
+        migratePopupListStyle: async function() { return false; },
+        migrateTo2_0_0: async function() { return false; }
+      },
+      ExtensityReminders: {},
+      ExtensityStorage: {
+        clone(value) { return JSON.parse(JSON.stringify(value)); },
+        loadLocalState: async function() { return JSON.parse(JSON.stringify(localState)); },
+        loadProfiles: async function() { return { map: {}, meta: {} }; },
+        loadSyncOptions: async function() { return {}; },
+        saveLocalState: async function(patch) {
+          savedPatches.push(JSON.parse(JSON.stringify(patch)));
+          localState = { ...localState, ...patch };
+        },
+        uniqueArray(items) { return Array.from(new Set(items || [])); }
+      },
+      ExtensityUrlRules: {}
+    }
+  });
+
+  assert.ok(root.ExtensityBackground, "background must load");
+  assert.equal(typeof messageListener, "function");
+  const response = await new Promise((resolve) => {
+    messageListener({ type: "CLEAR_ACTIVITY_LOG" }, {}, resolve);
+  });
+
+  assert.equal(response.ok, true, response.error);
+  assert.deepEqual(savedPatches.filter((patch) => "eventHistory" in patch), [{ eventHistory: [] }]);
+  assert.deepEqual(normalize(response.payload.state.localState.eventHistory), []);
+  assert.deepEqual(loggerCalls.sort(), ["clearEntries", "clearShared"]);
 });
 
 test("pinExtensionToToolbar attempts pointer input before DOM click fallback and closes temporary tabs on success", async () => {

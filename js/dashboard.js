@@ -444,6 +444,271 @@ document.addEventListener("DOMContentLoaded", function() {
     return "Chrome extension OAuth is active. Brave fallback is not configured.";
   }
 
+  var LOG_LEVEL_BADGE_CLASS = {
+    debug: "event-badge event-meta",
+    error: "event-badge event-state_changed_off",
+    info: "event-badge event-state_changed_on",
+    warn: "event-badge event-scheduled"
+  };
+
+  /**
+   * Builds one display row from a stored diagnostic log entry.
+   * Log and Activity rows share the fields the row template reads: badge, title, source, time, details.
+   * @param {Object} entry - Entry written by ExtensityLogger.
+   * @return {Object} Row for the Activity & Log timeline.
+   */
+  function buildLogRow(entry) {
+    var rawTs = entry.timestamp || "";
+    var parsedTs = rawTs ? new Date(rawTs).getTime() : Date.now();
+    var epochTs = isFinite(parsedTs) ? parsedTs : Date.now();
+    return {
+      badgeClass: LOG_LEVEL_BADGE_CLASS[entry.level] || "event-badge",
+      badgeText: String(entry.level || "").toUpperCase(),
+      details: entry.data ? JSON.stringify(entry.data) : "",
+      epochTs: epochTs,
+      formattedDate: new Date(epochTs).toLocaleString(),
+      isHistoryEntry: false,
+      isLogEntry: true,
+      level: entry.level,
+      ruleId: null,
+      ruleLinkText: "",
+      source: "log",
+      title: String(entry.message || "")
+    };
+  }
+
+  /**
+   * Summarizes a Drive sync audit payload as the categories that changed.
+   * @param {string} debugText - The audit payload as stored on the history record (JSON text).
+   * @return {string} For example `profiles: 2 added; urlRules: 1 deleted`, `no changes`, or the stored text when it is not JSON.
+   */
+  function summarizeDriveDebug(debugText) {
+    if (!debugText) {
+      return "";
+    }
+    var parsed;
+    try {
+      parsed = JSON.parse(debugText);
+    } catch (error) {
+      if (error && error.name === "SyntaxError") {
+        return debugText;
+      }
+      throw error;
+    }
+    if (!parsed || typeof parsed !== "object") {
+      return debugText;
+    }
+    var parts = [];
+    if (Array.isArray(parsed.conflicts) && parsed.conflicts.length) {
+      parts.push(parsed.conflicts.length + (parsed.conflicts.length === 1 ? " conflict" : " conflicts"));
+    }
+    if (parsed.failsafe) {
+      parts.push("failsafe stop" + (parsed.failsafe.categoryId ? ": " + parsed.failsafe.categoryId : ""));
+    }
+    (Array.isArray(parsed.changes) ? parsed.changes : []).forEach(function(change) {
+      var counts = ["added", "changed", "deleted"].filter(function(key) {
+        return change[key] > 0;
+      }).map(function(key) {
+        return change[key] + " " + key;
+      });
+      if (counts.length) {
+        parts.push(change.categoryId + ": " + counts.join(", "));
+      }
+    });
+    return parts.length ? parts.join("; ") : "no changes";
+  }
+
+  /**
+   * Builds the detail line of an Activity row.
+   * @param {Object} record - Stored event history record.
+   * @return {string} Detail fields joined with bullets.
+   */
+  function buildHistoryDetails(record) {
+    if (record.action === "drive_sync") {
+      var summary = summarizeDriveDebug(record.debug);
+      var direction = record.result || "sync";
+      return summary ? direction + ": " + summary : direction;
+    }
+    var details = [];
+    if (record.action) { details.push("action=" + record.action); }
+    if (record.ruleName && !record.ruleId) { details.push("rule=" + record.ruleName); }
+    if (record.result) { details.push("result=" + record.result); }
+    if (record.url) { details.push("url=" + record.url); }
+    if (record.tabId != null) { details.push("tab=" + record.tabId); }
+    if (typeof record.previousEnabled === "boolean" && typeof record.nextEnabled === "boolean") {
+      details.push("state=" + (record.previousEnabled ? "on" : "off") + "→" + (record.nextEnabled ? "on" : "off"));
+    }
+    if (record.debug) { details.push("debug=" + record.debug); }
+    return details.join(" • ");
+  }
+
+  /**
+   * Builds one display row from a stored event history record.
+   * @param {Object} record - Record from `localState.eventHistory`.
+   * @return {Object} Row for the Activity & Log timeline.
+   */
+  function buildHistoryRow(record) {
+    var isDriveSync = record.action === "drive_sync";
+    var title = record.extensionName || record.label || "Rule event";
+    return {
+      badgeClass: "event-badge event-" + (record.result || record.event || "unknown"),
+      badgeText: historyLabelForEvent(record.event),
+      details: buildHistoryDetails(record),
+      formattedDate: new Date(record.timestamp).toLocaleString(),
+      id: record.id,
+      isError: record.event === "error",
+      result: record.result || "",
+      ruleId: record.ruleId || null,
+      ruleLinkText: record.ruleId ? "rule: " + (record.ruleName || "open") : "",
+      source: record.triggeredBy,
+      timestamp: record.timestamp,
+      title: isDriveSync ? "Drive sync: " + (record.label || "sync") : title,
+      triggeredBy: record.triggeredBy
+    };
+  }
+
+  /**
+   * Decides whether a level picked on this page must be saved.
+   * A level that arrived from storage is already the logger's level; saving it again would echo
+   * the change back to other pages, and two quick changes would then bounce between pages forever.
+   * @param {string} pickedLevel - The level now shown in the dropdown.
+   * @param {string} loggerLevel - The logger's current level.
+   * @return {boolean} True when the level is a new choice made on this page.
+   */
+  function shouldSaveLogLevel(pickedLevel, loggerLevel) {
+    return pickedLevel !== loggerLevel;
+  }
+
+  /**
+   * Builds the full list of log rows from the stored log, newest first.
+   * The stored list is the source of truth, so a rotated log (same length, new tail) still shows its newest entry.
+   * @param {Array<Object>|undefined} entries - Stored log entries, oldest first. Missing means the log was cleared.
+   * @return {Array<Object>} Log rows, newest first.
+   */
+  function buildLogRows(entries) {
+    if (!Array.isArray(entries)) {
+      return [];
+    }
+    return entries.map(buildLogRow).reverse();
+  }
+
+  var KNOWN_HISTORY_SOURCES = ["manual", "profile", "rule", "bulk", "undo", "import"];
+  var TIMELINE_PAGE_SIZE = 100;
+
+  /**
+   * Builds the Source dropdown: the fixed sources first, then any other source found in the data
+   * (Drive sync rows carry `periodic`, `recovery`, and other triggers).
+   * @param {Array<Object>} rows - Activity rows.
+   * @return {Array<{value: string, label: string}>} Dropdown options.
+   */
+  function buildSourceOptions(rows) {
+    var extras = [];
+    rows.forEach(function(row) {
+      var source = row.triggeredBy;
+      if (source && KNOWN_HISTORY_SOURCES.indexOf(source) === -1 && extras.indexOf(source) === -1) {
+        extras.push(source);
+      }
+    });
+    extras.sort();
+    return [{ label: "all", value: "all" }, { label: "Off", value: "off" }].concat(
+      KNOWN_HISTORY_SOURCES.concat(extras).map(function(source) {
+        return { label: source, value: source };
+      })
+    );
+  }
+
+  /**
+   * Describes how many timeline rows are rendered.
+   * @param {number} total - Rows that match the filters.
+   * @param {number} limit - Rows to render.
+   * @return {{hasMore: boolean, shown: number, text: string}} Paging state; `text` is empty when every row is shown.
+   */
+  function buildPagingSummary(total, limit) {
+    var shown = Math.min(total, limit);
+    var hasMore = total > limit;
+    return {
+      hasMore: hasMore,
+      shown: shown,
+      text: hasMore ? "Showing " + shown + " of " + total : ""
+    };
+  }
+
+  /**
+   * Applies the Source and Result view filters to Activity rows.
+   * `off` in either filter hides every Activity row; recording is not affected.
+   * @param {Array<Object>} rows - Activity rows.
+   * @param {string} sourceFilter - `all`, `off`, or a `triggeredBy` value.
+   * @param {string} resultFilter - `all`, `off`, or a `result` value.
+   * @return {Array<Object>} The rows that pass both filters.
+   */
+  function filterHistoryRows(rows, sourceFilter, resultFilter) {
+    if (sourceFilter === "off" || resultFilter === "off") {
+      return [];
+    }
+    return rows.filter(function(row) {
+      if (sourceFilter !== "all" && row.triggeredBy !== sourceFilter) {
+        return false;
+      }
+      if (resultFilter !== "all" && row.result !== resultFilter) {
+        return false;
+      }
+      return true;
+    });
+  }
+
+  /**
+   * Merges Activity and Log rows into one list, newest first.
+   * @param {Array<Object>} historyRows - Filtered Activity rows.
+   * @param {Array<Object>} logRows - Log rows.
+   * @param {boolean} errorsOnly - Keep only Log errors and Activity errors.
+   * @return {Array<Object>} Timeline rows.
+   */
+  function buildTimeline(historyRows, logRows, errorsOnly) {
+    var historyItems = historyRows.map(function(row) {
+      return Object.assign({}, row, {
+        epochTs: row.timestamp,
+        isHistoryEntry: true,
+        isLogEntry: false
+      });
+    });
+    var all = historyItems.concat(logRows);
+    if (errorsOnly) {
+      all = all.filter(function(row) {
+        return row.isLogEntry ? row.level === "error" : row.isError === true;
+      });
+    }
+    return all.sort(function(left, right) { return right.epochTs - left.epochTs; });
+  }
+
+  /**
+   * Explains why the timeline is empty.
+   * @param {boolean} recordingEnabled - Whether Activity & Log recording is on.
+   * @param {boolean} hasAnyRows - Whether any Activity or Log rows exist before filtering.
+   * @return {string} The empty-state message.
+   */
+  function buildTimelineEmptyMessage(recordingEnabled, hasAnyRows) {
+    if (!recordingEnabled) {
+      return "Recording is off. Turn it on to save new activity and log entries.";
+    }
+    if (hasAnyRows) {
+      return "No entries match the filters.";
+    }
+    return "Nothing recorded yet.";
+  }
+
+  /**
+   * Formats timeline rows as plain text for the clipboard, oldest first.
+   * @param {Array<Object>} rows - Activity and log rows as shown on the page.
+   * @return {string} One line per row, or an empty string for no rows.
+   */
+  function buildTimelineText(rows) {
+    return rows.slice().sort(function(left, right) {
+      return left.epochTs - right.epochTs;
+    }).map(function(row) {
+      return [row.formattedDate, row.badgeText, row.title, row.source, row.details].filter(Boolean).join(" | ");
+    }).join("\n");
+  }
+
   /**
    * Create the dashboard's Knockout view model and initialize its state, actions, computed values, and synchronization controls.
    */
@@ -554,18 +819,12 @@ document.addEventListener("DOMContentLoaded", function() {
       return (s && s.extensionId) ? "https://" + s.extensionId + ".chromiumapp.org/drive" : "";
     });
 
+    self.historySourceOptions = ko.pureComputed(function() {
+      return buildSourceOptions(self.historyRows());
+    });
+
     self.filteredHistoryRows = ko.pureComputed(function() {
-      var sourceFilter = self.historySourceFilter();
-      var resultFilter = self.historyResultFilter();
-      return self.historyRows().filter(function(row) {
-        if (sourceFilter !== "all" && row.triggeredBy !== sourceFilter) {
-          return false;
-        }
-        if (resultFilter !== "all" && row.result !== resultFilter) {
-          return false;
-        }
-        return true;
-      });
+      return filterHistoryRows(self.historyRows(), self.historySourceFilter(), self.historyResultFilter());
     });
 
     self.ruleTestSummary = ko.pureComputed(function() {
@@ -638,6 +897,10 @@ document.addEventListener("DOMContentLoaded", function() {
       }).catch(function() {});
     };
 
+    self.applyHistory = function(eventHistory) {
+      self.historyRows(eventHistory.slice().reverse().map(buildHistoryRow));
+    };
+
     self.applyState = function(state) {
       var localState = state && state.localState ? state.localState : {};
       var extensionList = Array.isArray(state && state.extensions) ? state.extensions : [];
@@ -667,30 +930,7 @@ document.addEventListener("DOMContentLoaded", function() {
       });
       self.rules(ruleEditors);
       self.refreshPeerRules();
-      self.historyRows(eventHistory.slice().reverse().map(function(row) {
-        var details = [];
-        if (row.action) { details.push("action=" + row.action); }
-        if (row.ruleName) { details.push("rule=" + row.ruleName); }
-        if (row.result) { details.push("result=" + row.result); }
-        if (row.url) { details.push("url=" + row.url); }
-        if (row.tabId != null) { details.push("tab=" + row.tabId); }
-        if (typeof row.previousEnabled === "boolean" && typeof row.nextEnabled === "boolean") {
-          details.push("state=" + (row.previousEnabled ? "on" : "off") + "→" + (row.nextEnabled ? "on" : "off"));
-        }
-        if (row.debug) { details.push("debug=" + row.debug); }
-        return {
-          event: historyLabelForEvent(row.event),
-          extensionName: row.extensionName || row.label || "Rule event",
-          id: row.id,
-          result: row.result || "",
-          ruleId: row.ruleId || null,
-          triggeredBy: row.triggeredBy,
-          details: details.join(" • "),
-          timestamp: row.timestamp,
-          badgeClass: "event-badge event-" + (row.result || row.event || "unknown"),
-          formattedDate: new Date(row.timestamp).toLocaleString()
-        };
-      }));
+      self.applyHistory(eventHistory);
       if (self.ruleTestResult()) {
         self.ruleTestResult(null);
       }
@@ -1101,22 +1341,8 @@ document.addEventListener("DOMContentLoaded", function() {
     };
 
     var _logger = typeof window !== "undefined" && window.ExtensityLogger ? window.ExtensityLogger : null;
-    var _levelClass = { error: "event-badge event-state_changed_off", warn: "event-badge event-scheduled", info: "event-badge event-state_changed_on", debug: "event-badge event-meta" };
-
-    function buildLogRow(entry) {
-      var rawTs = entry.timestamp || "";
-      var epochTs = rawTs ? new Date(rawTs).getTime() : Date.now();
-      return {
-        isLogEntry: true,
-        isHistoryEntry: false,
-        epochTs: isFinite(epochTs) ? epochTs : Date.now(),
-        level: entry.level,
-        levelBadgeClass: _levelClass[entry.level] || "event-badge",
-        timestamp: rawTs.replace("T", " ").slice(0, 19),
-        message: entry.message,
-        dataLine: entry.data ? JSON.stringify(entry.data) : null
-      };
-    }
+    var LOG_ACTION_STATUS_MS = 3000;
+    var _logActionStatusTimer = null;
 
     var _debugOrigConsoleError = null;
     var _debugOrigConsoleWarn = null;
@@ -1158,41 +1384,75 @@ document.addEventListener("DOMContentLoaded", function() {
     self.logLevel = ko.observable(_logger ? _logger.getLevel() : "warn");
     self.errorsOnly = ko.observable(false);
     self.logEmpty = ko.pureComputed(function() { return self.logEntries().length === 0; });
+    self.logActionStatus = ko.observable("");
+    self.recordingEnabled = ko.pureComputed(function() {
+      return self.options.activityLogEnabled() !== false;
+    });
+    self.recordingLabel = ko.pureComputed(function() {
+      return self.recordingEnabled() ? "On" : "Off";
+    });
+    self.recordingAriaChecked = ko.pureComputed(function() {
+      return self.recordingEnabled() ? "true" : "false";
+    });
+
+    self.toggleRecording = function() {
+      var next = !self.recordingEnabled();
+      self.busy(true);
+      self.error("");
+      // Only this key is sent, so unsaved Drive fields on this page are not persisted.
+      ExtensityApi.saveOptions({ activityLogEnabled: next }).then(function() {
+        self.options.activityLogEnabled(next);
+      }).catch(function(err) {
+        self.error((err && err.message) || "Failed to change Recording.");
+      }).finally(function() {
+        self.busy(false);
+      });
+    };
+
+    function showLogActionStatus(text) {
+      self.logActionStatus(text);
+      if (_logActionStatusTimer !== null) {
+        clearTimeout(_logActionStatusTimer);
+      }
+      _logActionStatusTimer = setTimeout(function() {
+        _logActionStatusTimer = null;
+        self.logActionStatus("");
+      }, LOG_ACTION_STATUS_MS);
+    }
 
     if (_logger) {
-      // Honour the Activity & Log setting here too, so dashboard-side logging stops
-      // recording as well - not just the service worker's.
-      if (typeof _logger.loadEnabled === "function") {
-        _logger.loadEnabled(function() {});
-      }
       _logger.loadLevel(function(level) {
         self.logLevel(level);
         if (level === "debug") { installDebugHooks(); }
       });
-      _logger.subscribe(function(entry) {
-        self.logEntries.unshift(buildLogRow(entry));
-      });
       _logger.readShared(function(entries) {
-        var rows = entries.map(buildLogRow);
-        self.logEntries(rows.reverse().concat(self.logEntries()));
+        self.logEntries(buildLogRows(entries));
       });
     }
 
     if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.onChanged) {
       chrome.storage.onChanged.addListener(function(changes, area) {
-        if (area !== "local" || !changes.extensityLog) { return; }
-        var newList = changes.extensityLog.newValue;
-        var oldList = changes.extensityLog.oldValue || [];
-        if (!Array.isArray(newList)) { return; }
-        var added = newList.slice(oldList.length);
-        added.forEach(function(entry) {
-          self.logEntries.unshift(buildLogRow(entry));
-        });
+        if (area !== "local") { return; }
+        if (changes.extensityLog) {
+          self.logEntries(buildLogRows(changes.extensityLog.newValue));
+        }
+        if (changes.eventHistory) {
+          // Rows only: a full applyState would rebuild the editors and drop unsaved edits.
+          self.applyHistory(Array.isArray(changes.eventHistory.newValue) ? changes.eventHistory.newValue : []);
+        }
+        if (changes.logLevel && typeof changes.logLevel.newValue === "string") {
+          self.logLevel(changes.logLevel.newValue);
+        }
+        if (changes.activityLogEnabled && typeof changes.activityLogEnabled.newValue === "boolean") {
+          // The service worker mirrors the Recording setting here; keep the switch current
+          // so a later save from this page does not write a stale value back.
+          self.options.activityLogEnabled(changes.activityLogEnabled.newValue);
+        }
       });
     }
 
     self.logLevel.subscribe(function(val) {
-      if (_logger) {
+      if (_logger && shouldSaveLogLevel(val, _logger.getLevel())) {
         _logger.setLevel(val);
       }
       if (val === "debug") {
@@ -1203,49 +1463,74 @@ document.addEventListener("DOMContentLoaded", function() {
     });
 
     self.clearLog = function() {
-      if (_logger) {
-        _logger.clearEntries();
-        _logger.clearShared();
+      if (!window.confirm("Delete all activity history and the diagnostic log on this device?")) {
+        return;
       }
-      self.logEntries([]);
+      self.busy(true);
+      self.error("");
+      // Only the activity rows and the log are refreshed, so unsaved edits in other tabs survive.
+      ExtensityApi.clearActivityLog().then(function(payload) {
+        var localState = payload && payload.state && payload.state.localState ? payload.state.localState : {};
+        self.applyHistory(Array.isArray(localState.eventHistory) ? localState.eventHistory : []);
+        if (_logger) {
+          _logger.clearEntries();
+        }
+        self.logEntries([]);
+        showLogActionStatus("Cleared");
+      }).catch(function(err) {
+        self.error((err && err.message) || "Failed to clear Activity & Log.");
+      }).finally(function() {
+        self.busy(false);
+      });
     };
 
     self.copyLog = function() {
-      var text = self.logEntries().slice().reverse().map(function(row) {
-        return [row.timestamp, row.level.toUpperCase(), row.message, row.dataLine].filter(Boolean).join(" | ");
-      }).join("\n");
-      if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
-        navigator.clipboard.writeText(text);
+      var rows = self.unifiedTimeline();
+      if (!rows.length) {
+        showLogActionStatus("Nothing to copy");
+        return;
       }
+      if (!navigator.clipboard || typeof navigator.clipboard.writeText !== "function") {
+        self.error("Clipboard is not available on this page.");
+        return;
+      }
+      navigator.clipboard.writeText(buildTimelineText(rows)).then(function() {
+        showLogActionStatus("Copied " + rows.length + (rows.length === 1 ? " entry" : " entries"));
+      }).catch(function(err) {
+        self.error("Copy failed: " + ((err && err.message) || "clipboard write was rejected."));
+      });
     };
 
     self.unifiedTimeline = ko.computed(function() {
-      var historyItems = self.filteredHistoryRows().map(function(row) {
-        return {
-          isHistoryEntry: true,
-          isLogEntry: false,
-          epochTs: row.timestamp,
-          event: row.event,
-          extensionName: row.extensionName,
-          triggeredBy: row.triggeredBy,
-          details: row.details,
-          ruleId: row.ruleId,
-          badgeClass: row.badgeClass,
-          result: row.result,
-          formattedDate: row.formattedDate,
-          id: row.id
-        };
-      });
-      var logItems = self.logEntries();
-      var all = self.errorsOnly() ? logItems.filter(function(row) {
-        return row.level === "error";
-      }) : historyItems.concat(logItems);
-      all.sort(function(a, b) { return b.epochTs - a.epochTs; });
-      return all;
+      return buildTimeline(self.filteredHistoryRows(), self.logEntries(), self.errorsOnly());
     });
 
     self.unifiedEmpty = ko.pureComputed(function() {
       return self.unifiedTimeline().length === 0;
+    });
+
+    self.timelineLimit = ko.observable(TIMELINE_PAGE_SIZE);
+    self.timelinePaging = ko.pureComputed(function() {
+      return buildPagingSummary(self.unifiedTimeline().length, self.timelineLimit());
+    });
+    self.visibleTimeline = ko.pureComputed(function() {
+      return self.unifiedTimeline().slice(0, self.timelineLimit());
+    });
+    self.timelineHasMore = ko.pureComputed(function() {
+      return self.timelinePaging().hasMore;
+    });
+    self.timelineShowingText = ko.pureComputed(function() {
+      return self.timelinePaging().text;
+    });
+    self.showMoreTimeline = function() {
+      self.timelineLimit(self.timelineLimit() + TIMELINE_PAGE_SIZE);
+    };
+
+    self.timelineEmptyMessage = ko.pureComputed(function() {
+      return buildTimelineEmptyMessage(
+        self.recordingEnabled(),
+        self.historyRows().length > 0 || self.logEntries().length > 0
+      );
     });
 
     self.driveConnectionReport = ko.observable(null);
@@ -1311,8 +1596,18 @@ document.addEventListener("DOMContentLoaded", function() {
       buildDriveStatusDetails: buildDriveStatusDetails,
       buildDriveStatusHeadline: buildDriveStatusHeadline,
       buildDriveStatusRows: buildDriveStatusRows,
+      buildHistoryRow: buildHistoryRow,
+      buildLogRows: buildLogRows,
+      buildPagingSummary: buildPagingSummary,
+      buildSourceOptions: buildSourceOptions,
+      buildTimeline: buildTimeline,
+      buildTimelineEmptyMessage: buildTimelineEmptyMessage,
+      buildTimelineText: buildTimelineText,
+      filterHistoryRows: filterHistoryRows,
       parseRuleDraft: parseRuleDraft,
-      resolveDraftEnableIds: resolveDraftEnableIds
+      resolveDraftEnableIds: resolveDraftEnableIds,
+      shouldSaveLogLevel: shouldSaveLogLevel,
+      summarizeDriveDebug: summarizeDriveDebug
     };
   }
 

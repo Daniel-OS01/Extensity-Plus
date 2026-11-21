@@ -588,6 +588,236 @@ test("dashboard drive status helpers surface Brave fallback and hidden app data 
   assert.match(rows.find((row) => row.label === "Drive storage").value, /hidden appDataFolder/);
 });
 
+function loadDashboardInternals() {
+  const windowRoot = {};
+  loadBrowserScript(path.join(repoRoot, "js/dashboard.js"), {
+    _: { defer() {} },
+    document: { addEventListener(event, callback) { callback(); } },
+    window: windowRoot
+  });
+  return windowRoot.ExtensityDashboardInternals;
+}
+
+test("dashboard buildTimelineText lists activity and log rows oldest first", () => {
+  const helpers = loadDashboardInternals();
+  const historyTs = Date.UTC(2026, 10, 21, 10, 0, 1);
+  const logTs = Date.UTC(2026, 10, 21, 10, 0, 2);
+  const logRows = helpers.buildLogRows([
+    { level: "warn", message: "drive_api_retry", data: { attempt: 2 }, timestamp: new Date(logTs).toISOString() }
+  ]);
+  const historyRows = [helpers.buildHistoryRow({
+    event: "enabled",
+    extensionName: "Reader",
+    id: "h1",
+    result: "state_changed_on",
+    timestamp: historyTs,
+    triggeredBy: "manual"
+  })];
+  const text = helpers.buildTimelineText(helpers.buildTimeline(historyRows, logRows, false));
+  assert.equal(text, [
+    new Date(historyTs).toLocaleString() + " | Enabled | Reader | manual | result=state_changed_on",
+    new Date(logTs).toLocaleString() + " | WARN | drive_api_retry | log | {\"attempt\":2}"
+  ].join("\n"));
+  assert.equal(helpers.buildTimelineText([]), "");
+});
+
+test("dashboard log rows use the same local time format as Activity rows", () => {
+  const helpers = loadDashboardInternals();
+  const ts = Date.UTC(2026, 10, 21, 22, 15, 0);
+  const [row] = helpers.buildLogRows([{ level: "error", message: "boom", timestamp: new Date(ts).toISOString() }]);
+  assert.equal(row.formattedDate, new Date(ts).toLocaleString());
+  assert.equal(row.title, "boom");
+  assert.equal(row.source, "log");
+  assert.equal(row.badgeText, "ERROR");
+});
+
+test("dashboard buildHistoryRow builds a compact row with a rule link", () => {
+  const helpers = loadDashboardInternals();
+  const row = helpers.buildHistoryRow({
+    action: "url_rule",
+    event: "enabled",
+    extensionName: "max PayBack Reminder",
+    id: "h2",
+    previousEnabled: false,
+    nextEnabled: true,
+    result: "state_changed_on",
+    ruleId: "rule-1",
+    ruleName: "g2a.com (www)",
+    tabId: 7,
+    timestamp: 1000,
+    triggeredBy: "rule",
+    url: "https://www.g2a.com/x"
+  });
+  assert.equal(row.badgeText, "Enabled");
+  assert.equal(row.title, "max PayBack Reminder");
+  assert.equal(row.source, "rule");
+  assert.equal(row.ruleId, "rule-1");
+  assert.equal(row.ruleLinkText, "rule: g2a.com (www)");
+  assert.equal(row.isError, false);
+  assert.equal(row.formattedDate, new Date(1000).toLocaleString());
+  assert.doesNotMatch(row.details, /rule=/, "the rule name is shown as a link, not repeated in details");
+  assert.match(row.details, /url=https:\/\/www\.g2a\.com\/x/);
+  assert.match(row.details, /state=off→on/);
+
+  const errorRow = helpers.buildHistoryRow({ event: "error", label: "conflict", id: "h3", timestamp: 2, triggeredBy: "drive" });
+  assert.equal(errorRow.isError, true);
+  assert.equal(errorRow.ruleLinkText, "");
+});
+
+test("dashboard summarizeDriveDebug lists only non-zero changes", () => {
+  const helpers = loadDashboardInternals();
+  const zero = { added: 0, changed: 0, deleted: 0 };
+  assert.equal(helpers.summarizeDriveDebug(JSON.stringify({
+    changes: [{ ...zero, categoryId: "profiles" }, { ...zero, categoryId: "settings" }],
+    direction: "sync",
+    status: "merged"
+  })), "no changes");
+  assert.equal(helpers.summarizeDriveDebug(JSON.stringify({
+    changes: [
+      { ...zero, categoryId: "profiles", added: 2, changed: 1 },
+      { ...zero, categoryId: "settings" },
+      { ...zero, categoryId: "urlRules", deleted: 3 }
+    ],
+    status: "merged"
+  })), "profiles: 2 added, 1 changed; urlRules: 3 deleted");
+  assert.equal(helpers.summarizeDriveDebug(JSON.stringify({ conflicts: [{}, {}], status: "conflict" })), "2 conflicts");
+  assert.equal(helpers.summarizeDriveDebug(JSON.stringify({ status: "cancelled" })), "no changes");
+  assert.equal(helpers.summarizeDriveDebug("{not json"), "{not json", "malformed debug text is shown as stored");
+  assert.equal(helpers.summarizeDriveDebug(""), "");
+
+  const row = helpers.buildHistoryRow({
+    action: "drive_sync",
+    debug: JSON.stringify({ changes: [{ ...zero, categoryId: "profiles" }], status: "merged" }),
+    event: "info",
+    id: "h4",
+    label: "merged",
+    result: "sync",
+    timestamp: 5,
+    triggeredBy: "periodic"
+  });
+  assert.equal(row.title, "Drive sync: merged");
+  assert.equal(row.details, "sync: no changes");
+});
+
+test("dashboard buildLogRows replaces the list from storage, newest first", () => {
+  const helpers = loadDashboardInternals();
+  const stored = Array.from({ length: 300 }, (_, index) => ({
+    level: "warn",
+    message: "entry_" + index,
+    timestamp: new Date(Date.UTC(2026, 10, 21, 0, 0, index)).toISOString()
+  }));
+  const rows = helpers.buildLogRows(stored);
+  assert.equal(rows.length, 300);
+  assert.equal(rows[0].title, "entry_299");
+  assert.equal(rows[299].title, "entry_0");
+
+  // A full log that rotates keeps its length; the newest entry must still appear.
+  const rotated = stored.slice(1).concat([{ level: "error", message: "entry_300", timestamp: "2026-11-21T00:05:00.000Z" }]);
+  assert.equal(helpers.buildLogRows(rotated)[0].title, "entry_300");
+  assert.deepEqual(normalize(helpers.buildLogRows(undefined)), []);
+});
+
+test("dashboard filterHistoryRows handles all, a specific value, and off", () => {
+  const helpers = loadDashboardInternals();
+  const rows = [
+    { id: "a", triggeredBy: "manual", result: "state_changed_on" },
+    { id: "b", triggeredBy: "rule", result: "state_changed_off" },
+    { id: "c", triggeredBy: "rule", result: "no_match" }
+  ];
+  const ids = (list) => normalize(list.map((row) => row.id));
+  assert.deepEqual(ids(helpers.filterHistoryRows(rows, "all", "all")), ["a", "b", "c"]);
+  assert.deepEqual(ids(helpers.filterHistoryRows(rows, "rule", "all")), ["b", "c"]);
+  assert.deepEqual(ids(helpers.filterHistoryRows(rows, "rule", "no_match")), ["c"]);
+  assert.deepEqual(ids(helpers.filterHistoryRows(rows, "off", "all")), []);
+  assert.deepEqual(ids(helpers.filterHistoryRows(rows, "all", "off")), []);
+});
+
+test("dashboard buildTimeline keeps activity errors when Errors only is on", () => {
+  const helpers = loadDashboardInternals();
+  const historyRows = [
+    { id: "h-ok", isError: false, timestamp: 1000 },
+    { id: "h-err", isError: true, timestamp: 3000 }
+  ];
+  const logRows = [
+    { isLogEntry: true, level: "warn", message: "w", epochTs: 2000 },
+    { isLogEntry: true, level: "error", message: "e", epochTs: 4000 }
+  ];
+  const all = helpers.buildTimeline(historyRows, logRows, false);
+  assert.deepEqual(normalize(all.map((row) => row.epochTs)), [4000, 3000, 2000, 1000]);
+
+  const errors = helpers.buildTimeline(historyRows, logRows, true);
+  assert.deepEqual(normalize(errors.map((row) => row.id || row.message)), ["e", "h-err"]);
+});
+
+test("dashboard buildTimelineEmptyMessage tells off, filtered, and empty apart", () => {
+  const helpers = loadDashboardInternals();
+  assert.match(helpers.buildTimelineEmptyMessage(false, true), /Recording is off/);
+  assert.match(helpers.buildTimelineEmptyMessage(true, true), /No entries match/);
+  assert.match(helpers.buildTimelineEmptyMessage(true, false), /Nothing recorded yet/);
+});
+
+test("dashboard Recording switch saves only activityLogEnabled", () => {
+  const source = fs.readFileSync(path.join(repoRoot, "js/dashboard.js"), "utf8");
+  const html = fs.readFileSync(path.join(repoRoot, "dashboard.html"), "utf8");
+  assert.match(source, /ExtensityApi\.saveOptions\(\{ activityLogEnabled: next \}\)/);
+  assert.match(html, /role="switch"[^>]*data-sbind="[^"]*click: toggleRecording/);
+  // Result has a static Off option; Source gets its Off option from buildSourceOptions.
+  assert.match(html, /id="historyResultFilter"[^>]*>\s*<option value="all">all<\/option>\s*<option value="off">Off<\/option>/);
+});
+
+test("dashboard buildSourceOptions adds sources found in the data", () => {
+  const helpers = loadDashboardInternals();
+  const options = normalize(helpers.buildSourceOptions([
+    { triggeredBy: "periodic" },
+    { triggeredBy: "manual" },
+    { triggeredBy: "periodic" },
+    { triggeredBy: "recovery" },
+    { triggeredBy: "" }
+  ]));
+  const values = options.map((option) => option.value);
+  assert.deepEqual(values.slice(0, 2), ["all", "off"]);
+  assert.deepEqual(values.slice(2, 8), ["manual", "profile", "rule", "bulk", "undo", "import"]);
+  assert.deepEqual(values.slice(8), ["periodic", "recovery"]);
+  assert.equal(options[1].label, "Off");
+});
+
+test("dashboard does not save a log level that arrived from storage", () => {
+  const helpers = loadDashboardInternals();
+  assert.equal(helpers.shouldSaveLogLevel("debug", "warn"), true, "a new choice on this page is saved");
+  assert.equal(helpers.shouldSaveLogLevel("error", "error"), false, "an echo from storage is not saved again");
+  const source = fs.readFileSync(path.join(repoRoot, "js/dashboard.js"), "utf8");
+  assert.match(source, /if \(_logger && shouldSaveLogLevel\(val, _logger\.getLevel\(\)\)\) \{\s*_logger\.setLevel\(val\);/);
+  assert.match(source, /changes\.activityLogEnabled[\s\S]{0,260}self\.options\.activityLogEnabled\(changes\.activityLogEnabled\.newValue\)/);
+});
+
+test("dashboard buildPagingSummary limits rendered rows", () => {
+  const helpers = loadDashboardInternals();
+  assert.deepEqual(normalize(helpers.buildPagingSummary(412, 100)), { hasMore: true, shown: 100, text: "Showing 100 of 412" });
+  assert.deepEqual(normalize(helpers.buildPagingSummary(40, 100)), { hasMore: false, shown: 40, text: "" });
+});
+
+test("dashboard Activity & Log small wins are wired in the page", () => {
+  const source = fs.readFileSync(path.join(repoRoot, "js/dashboard.js"), "utf8");
+  const html = fs.readFileSync(path.join(repoRoot, "dashboard.html"), "utf8");
+  assert.match(html, /data-sbind="click: showTabHistory, css:\{selected: historyTab\}">Activity &amp; Log<\/button>/);
+  assert.match(html, /<option value="state_changed_on">Turned on<\/option>/);
+  assert.match(html, /<option value="state_changed_off">Turned off<\/option>/);
+  assert.match(html, /<option value="no_match">No match<\/option>/);
+  assert.match(html, /id="historySourceFilter" data-sbind="options: historySourceOptions/);
+  assert.match(html, /click: showMoreTimeline/);
+  assert.match(html, /<img src="images\/icon48\.png" alt="[^"]*"/);
+  assert.match(source, /changes\.eventHistory[\s\S]{0,120}self\.applyHistory\(/);
+});
+
+test("Makefile minifies every first-party script in js/", () => {
+  const makefile = fs.readFileSync(path.join(repoRoot, "Makefile"), "utf8");
+  const listed = makefile.match(/^JS=(.*)$/m)[1].trim().split(/\s+/);
+  const scripts = fs.readdirSync(path.join(repoRoot, "js")).filter((name) => name.endsWith(".js"));
+  for (const name of scripts) {
+    assert.ok(listed.includes(name), name + " is missing from the Makefile JS= list");
+  }
+});
+
 test("dashboard source refreshes Drive status and exposes the dashboard action", () => {
   const source = fs.readFileSync(path.join(repoRoot, "js/dashboard.js"), "utf8");
   const html = fs.readFileSync(path.join(repoRoot, "dashboard.html"), "utf8");
@@ -3648,6 +3878,73 @@ test("ExtensityLogger records nothing while the Activity & Log setting is off", 
   logger.setEnabled(true);
   logger.warn("after_reenable");
   assert.equal(logger.getEntries().length, 2);
+});
+
+function loadLoggerWithStorage(stored) {
+  const changeListeners = [];
+  const windowRoot = {};
+  loadBrowserScript(path.join(repoRoot, "js/logger.js"), {
+    chrome: {
+      storage: {
+        local: {
+          get(keys, callback) { callback({ ...stored }); },
+          set(values, callback) { Object.assign(stored, values); if (callback) { callback(); } },
+          remove(keys, callback) { if (callback) { callback(); } }
+        },
+        onChanged: {
+          addListener(listener) { changeListeners.push(listener); }
+        }
+      }
+    },
+    window: windowRoot
+  });
+  return { changeListeners, logger: windowRoot.ExtensityLogger };
+}
+
+test("ExtensityLogger level none records nothing at any level", () => {
+  const { logger } = loadLoggerWithStorage({});
+  logger.setLevel("none");
+  logger.error("e");
+  logger.warn("w");
+  logger.info("i");
+  logger.debug("d");
+  assert.equal(logger.getEntries().length, 0);
+});
+
+test("ExtensityLogger picks up the saved level and enabled flag on load", () => {
+  const quiet = loadLoggerWithStorage({ logLevel: "none" }).logger;
+  assert.equal(quiet.getLevel(), "none");
+  quiet.error("should_not_record");
+  assert.equal(quiet.getEntries().length, 0);
+
+  const off = loadLoggerWithStorage({ activityLogEnabled: false, logLevel: "debug" }).logger;
+  assert.equal(off.isEnabled(), false);
+  off.error("should_not_record");
+  assert.equal(off.getEntries().length, 0);
+});
+
+test("ExtensityLogger follows level and enabled changes made in other pages", () => {
+  const { changeListeners, logger } = loadLoggerWithStorage({ logLevel: "debug" });
+  assert.equal(changeListeners.length, 1, "logger must listen to chrome.storage.onChanged");
+  const fire = (changes, area) => changeListeners.forEach((listener) => listener(changes, area));
+
+  fire({ logLevel: { newValue: "none", oldValue: "debug" } }, "sync");
+  assert.equal(logger.getLevel(), "debug", "changes outside the local area are ignored");
+
+  fire({ logLevel: { newValue: "none", oldValue: "debug" } }, "local");
+  assert.equal(logger.getLevel(), "none");
+  logger.error("muted");
+  assert.equal(logger.getEntries().length, 0);
+
+  fire({ logLevel: { newValue: "error", oldValue: "none" } }, "local");
+  fire({ activityLogEnabled: { newValue: false, oldValue: true } }, "local");
+  assert.equal(logger.isEnabled(), false);
+  logger.error("still_muted");
+  assert.equal(logger.getEntries().length, 0);
+
+  fire({ activityLogEnabled: { newValue: true, oldValue: false } }, "local");
+  logger.error("recorded");
+  assert.equal(logger.getEntries().length, 1);
 });
 
 test("importing URL rules merges by id and never drops existing rules", async () => {

@@ -16,7 +16,7 @@
 
 ## ⚡ TL;DR
 
-- 🔌 **Toggle any extension in one click.** Turn them all off, then bring them back, with one action, and undo anything.
+- 🔌 **Toggle any extension in one click.** Turn them all off and back on with one action, and undo your last change.
 - 🗂️ **Profiles** switch between whole sets of extensions (for example *Work* or *Dev*). `Always On` extensions stay enabled.
 - 🌐 **URL rules** turn extensions on or off automatically, depending on the site you're on.
 - 🔄 **Sync** settings across devices with browser sync, or with optional Google Drive sync.
@@ -51,7 +51,7 @@
 ## ✨ Features
 
 **🔌 Popup**
-- One-click toggle, *turn all off / restore*, and undo for any toggle, bulk action or profile change.
+- One-click toggle and *turn all off / restore*. Undo reverts the last toggle, bulk action or profile change.
 - 🔎 Search by name, alias or description. Queries of 3+ characters also match typos.
 - ↕️ Sort A–Z, by most recent use, or by how often you use each one. List or grid view.
 - 📌 Pin to toolbar (automatic or manual, set in Options), and edit profile membership inline.
@@ -66,7 +66,7 @@
 - Test URLs against your rules in the dashboard first.
 
 **🧰 Dashboard**
-- 🏷️ Aliases and groups, 📈 history and usage counts, 📄 CSV export of your extensions.
+- 🏷️ Aliases and groups, history with usage counts, and a CSV export of your extensions.
 - 💾 Full or scoped JSON backups. The scopes are profiles, settings, both, or URL rules, and the scope is detected on import.
 - 🪵 Log tab (none / error / warn / info / debug) with an *Errors only* filter and copy to clipboard.
 - 🔔 Optional reminders to turn an extension back off after you enable it manually.
@@ -95,7 +95,7 @@
 - Dashboard **Sync Status** and Options **Check sync status** confirm that your settings and profiles are in this browser profile's sync storage, and show byte usage and any fallback error.
 - This check is not the browser's own sync diagnostics (`chrome://sync-internals`, `brave://sync-internals`). Those pages may not list extension data even when the check reports **Synced**.
 - When profiles outgrow the quota, the extension falls back to **local-only profiles** (`localProfiles`) and the dashboard shows it.
-- **Brave:** join the same Brave Sync chain on every desktop (`brave://settings/braveSync`), wait for the first merge, reload the extension on each device, then run the check. Brave has intermittent failures syncing *Extension settings* ([brave/brave-browser#46983](https://github.com/brave/brave-browser/issues/46983)). That is a browser problem and not something the extension can fix.
+- **Brave:** join the same Brave Sync chain on every desktop (`brave://settings/braveSync`), wait for the first merge, reload the extension on each device, then run the check. Brave has intermittent failures syncing *Extension settings* ([brave/brave-browser#46983](https://github.com/brave/brave-browser/issues/46983)). The extension cannot work around it.
 
 </details>
 
@@ -167,7 +167,7 @@ Message API and design notes: [`docs/extensity-2.0-plan.md`](docs/extensity-2.0-
 - [`ci.yml`](.github/workflows/ci.yml) runs tests, checks the manifest, and builds the extension and store bundle on every PR and every push to `main`.
 - A manual run (`workflow_dispatch`) bumps the version, tags `vX.Y.Z`, publishes a GitHub release, and uploads a `release-assets-vX.Y.Z` artifact: the extension zip, the store zip, `submission-metadata.json`, `checksums.txt` and `submission-notes.md`.
 - Pushing a `v*` tag runs [`release-chrome-web-store.yml`](.github/workflows/release-chrome-web-store.yml), which uploads a **draft** to the Chrome Web Store. Someone still publishes it by hand.
-- More workflows run focused regression suites: URL rules, storage, migration, message API, import/export, security.
+- Separate workflows run regression suites for URL rules, storage, migration, the message API, import/export and security.
 
 Details: [`docs/ci-and-release.md`](docs/ci-and-release.md) · [`docs/release-automation.md`](docs/release-automation.md)
 
@@ -193,6 +193,6 @@ Details: [`docs/ci-and-release.md`](docs/ci-and-release.md) · [`docs/release-au
 
 ## 🙏 Credits
 
-Built on the original [sergiokas/Extensity](https://github.com/sergiokas/Extensity). This is an independent evolution, not the upstream release branch. Ideas also came from [one-click-extensions-manager](https://github.com/hankxdev/one-click-extensions-manager), [auto-extension-manager](https://github.com/JasonGrass/auto-extension-manager) and [Extensity-Ultra](https://github.com/jeevan-lal/Extensity-Ultra).
+Built on the original [sergiokas/Extensity](https://github.com/sergiokas/Extensity) and developed separately from it. Ideas also came from [one-click-extensions-manager](https://github.com/hankxdev/one-click-extensions-manager), [auto-extension-manager](https://github.com/JasonGrass/auto-extension-manager) and [Extensity-Ultra](https://github.com/jeevan-lal/Extensity-Ultra).
 
 📄 License: [`LICENSE.md`](LICENSE.md)

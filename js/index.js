@@ -113,13 +113,15 @@ document.addEventListener("DOMContentLoaded", function() {
       return false;
     }
 
+    // Two rows are allocated once and swapped per row, instead of a new row array per iteration.
     var previous = [];
+    var current = [];
     for (var index = 0; index <= right.length; index += 1) {
       previous[index] = index;
     }
 
     for (var row = 1; row <= left.length; row += 1) {
-      var current = [row];
+      current[0] = row;
       var rowMin = current[0];
 
       for (var column = 1; column <= right.length; column += 1) {
@@ -135,7 +137,9 @@ document.addEventListener("DOMContentLoaded", function() {
       if (rowMin > limit) {
         return false;
       }
+      var swap = previous;
       previous = current;
+      current = swap;
     }
 
     return previous[right.length] <= limit;
@@ -149,19 +153,23 @@ document.addEventListener("DOMContentLoaded", function() {
     var i, words;
 
     if (lower === query) { return 1000; }
-    if (lower.indexOf(query) === 0) { return 600; }
+    var matchIndex = lower.indexOf(query);
+    if (matchIndex === 0) { return 600; }
 
-    words = lower.split(/\s+/);
-    for (i = 0; i < words.length; i++) {
-      if (words[i] === query) { return 400; }
-    }
-    if (lower.indexOf(query) !== -1) { return 200; }
-    for (i = 0; i < words.length; i++) {
-      if (words[i].indexOf(query) === 0) { return 120; }
+    // A whole-word match or word-prefix match implies a substring match, so the
+    // split is only needed once a substring hit is known, or for fuzzy matching.
+    // Any word-prefix hit is already a substring hit and scores 200 here.
+    if (matchIndex !== -1) {
+      words = lower.split(/\s+/);
+      for (i = 0; i < words.length; i++) {
+        if (words[i] === query) { return 400; }
+      }
+      return 200;
     }
 
     if (query.length < 3) { return 0; }
 
+    words = lower.split(/\s+/);
     for (i = 0; i < words.length; i++) {
       if (levenshteinWithin(words[i], query, 1)) { return 60; }
     }

@@ -1347,11 +1347,12 @@ importScripts(
       return item.id;
     });
 
+    var alwaysOnSet = new Set(alwaysOn);
     var disableIds = enabledIds.filter(function(extensionId) {
       if (!current.options.keepAlwaysOn) {
         return true;
       }
-      return alwaysOn.indexOf(extensionId) === -1;
+      return !alwaysOnSet.has(extensionId);
     });
 
     return applyExtensionChanges(
@@ -1381,12 +1382,12 @@ importScripts(
     }
 
     var alwaysOn = current.profiles.map.__always_on || [];
-    var desiredIds = storage.uniqueArray(targetProfile.concat(alwaysOn));
+    var desiredIdSet = new Set(storage.uniqueArray(targetProfile.concat(alwaysOn)));
     var changes = current.items.filter(function(item) {
       return item.type === "extension" && item.mayDisable;
     }).map(function(item) {
       return {
-        enabled: desiredIds.indexOf(item.id) !== -1,
+        enabled: desiredIdSet.has(item.id),
         id: item.id,
         profileId: profileName
       };

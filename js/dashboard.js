@@ -568,6 +568,18 @@ document.addEventListener("DOMContentLoaded", function() {
   }
 
   /**
+   * Decides whether a level picked on this page must be saved.
+   * A level that arrived from storage is already the logger's level; saving it again would echo
+   * the change back to other pages, and two quick changes would then bounce between pages forever.
+   * @param {string} pickedLevel - The level now shown in the dropdown.
+   * @param {string} loggerLevel - The logger's current level.
+   * @return {boolean} True when the level is a new choice made on this page.
+   */
+  function shouldSaveLogLevel(pickedLevel, loggerLevel) {
+    return pickedLevel !== loggerLevel;
+  }
+
+  /**
    * Builds the full list of log rows from the stored log, newest first.
    * The stored list is the source of truth, so a rotated log (same length, new tail) still shows its newest entry.
    * @param {Array<Object>|undefined} entries - Stored log entries, oldest first. Missing means the log was cleared.
@@ -1431,11 +1443,16 @@ document.addEventListener("DOMContentLoaded", function() {
         if (changes.logLevel && typeof changes.logLevel.newValue === "string") {
           self.logLevel(changes.logLevel.newValue);
         }
+        if (changes.activityLogEnabled && typeof changes.activityLogEnabled.newValue === "boolean") {
+          // The service worker mirrors the Recording setting here; keep the switch current
+          // so a later save from this page does not write a stale value back.
+          self.options.activityLogEnabled(changes.activityLogEnabled.newValue);
+        }
       });
     }
 
     self.logLevel.subscribe(function(val) {
-      if (_logger) {
+      if (_logger && shouldSaveLogLevel(val, _logger.getLevel())) {
         _logger.setLevel(val);
       }
       if (val === "debug") {
@@ -1589,6 +1606,7 @@ document.addEventListener("DOMContentLoaded", function() {
       filterHistoryRows: filterHistoryRows,
       parseRuleDraft: parseRuleDraft,
       resolveDraftEnableIds: resolveDraftEnableIds,
+      shouldSaveLogLevel: shouldSaveLogLevel,
       summarizeDriveDebug: summarizeDriveDebug
     };
   }

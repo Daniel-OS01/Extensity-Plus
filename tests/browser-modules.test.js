@@ -781,6 +781,15 @@ test("dashboard buildSourceOptions adds sources found in the data", () => {
   assert.equal(options[1].label, "Off");
 });
 
+test("dashboard does not save a log level that arrived from storage", () => {
+  const helpers = loadDashboardInternals();
+  assert.equal(helpers.shouldSaveLogLevel("debug", "warn"), true, "a new choice on this page is saved");
+  assert.equal(helpers.shouldSaveLogLevel("error", "error"), false, "an echo from storage is not saved again");
+  const source = fs.readFileSync(path.join(repoRoot, "js/dashboard.js"), "utf8");
+  assert.match(source, /if \(_logger && shouldSaveLogLevel\(val, _logger\.getLevel\(\)\)\) \{\s*_logger\.setLevel\(val\);/);
+  assert.match(source, /changes\.activityLogEnabled[\s\S]{0,260}self\.options\.activityLogEnabled\(changes\.activityLogEnabled\.newValue\)/);
+});
+
 test("dashboard buildPagingSummary limits rendered rows", () => {
   const helpers = loadDashboardInternals();
   assert.deepEqual(normalize(helpers.buildPagingSummary(412, 100)), { hasMore: true, shown: 100, text: "Showing 100 of 412" });

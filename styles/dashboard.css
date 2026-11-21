@@ -119,21 +119,95 @@ body.dark-mode {
 }
 
 #dashboard-page .history-list li {
-  align-items: center;
+  align-items: baseline;
   border-bottom: 1px solid var(--border);
+  display: grid;
+  gap: 4px 12px;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  padding: 8px 0;
+}
+
+#dashboard-page .history-list .row-title {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+#dashboard-page .history-list .rule-link {
+  font-size: 12px;
+  margin-left: 8px;
+}
+
+#dashboard-page .history-list .row-details {
+  grid-column: 2 / -1;
+  min-width: 0;
+}
+
+#dashboard-page .history-list .row-details summary {
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 12px;
+}
+
+#dashboard-page .history-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+#dashboard-page .toolbar-row {
+  align-items: center;
   display: flex;
   flex-wrap: wrap;
-  gap: 12px;
-  justify-content: space-between;
-  padding: 10px 0;
+  gap: 8px 14px;
 }
 
-#dashboard-page .history-list li .event-name {
-  flex: 1 1 180px;
+#dashboard-page .toolbar-row-label {
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: bold;
+  min-width: 40px;
+  text-transform: uppercase;
 }
 
-#dashboard-page .history-action {
-  flex: 0 0 auto;
+#dashboard-page .filter-field {
+  align-items: center;
+  color: var(--muted);
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: bold;
+  gap: 6px;
+}
+
+#dashboard-page .filter-field select {
+  min-height: 32px;
+  min-width: 120px;
+  padding: 4px 8px;
+  width: auto;
+}
+
+#dashboard-page .toolbar-actions {
+  align-items: center;
+  display: inline-flex;
+  gap: 8px;
+  margin-left: auto;
+}
+
+#dashboard-page .log-action-status {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+#dashboard-page button.secondary {
+  background: var(--panel);
+  border-color: var(--border);
+  color: var(--accent);
+}
+
+#dashboard-page button.danger {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #fff;
 }
 
 #dashboard-page .history-list li:last-child {
@@ -150,9 +224,10 @@ body.dark-mode {
 }
 
 #dashboard-page .event-meta.debug-line {
-  flex: 1 1 100%;
   font-family: monospace;
+  min-width: 0;
   opacity: 0.85;
+  overflow-wrap: anywhere;
 }
 
 #dashboard-page .event-badge {
@@ -229,12 +304,6 @@ body.dark-mode {
 
 #dashboard-page .compact-controls input[type="text"] {
   flex: 1 1 180px;
-}
-
-#dashboard-page .history-filters label {
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: bold;
 }
 
 #dashboard-page .rule-selection-summary {
@@ -393,6 +462,34 @@ body.dark-mode {
 #dashboard-page .drive-status-value {
   color: var(--muted);
   overflow-wrap: anywhere;
+}
+
+@media (max-width: 700px) {
+  #dashboard-page .history-list li {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  #dashboard-page .history-list .row-source,
+  #dashboard-page .history-list .row-time {
+    grid-column: 2;
+  }
+
+  #dashboard-page .history-list .row-details {
+    grid-column: 1 / -1;
+  }
+
+  #dashboard-page .toolbar-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  #dashboard-page .filter-field select {
+    flex: 1 1 auto;
+  }
+
+  #dashboard-page .toolbar-actions {
+    margin-left: 0;
+  }
 }
 
 @media (max-width: 900px) {

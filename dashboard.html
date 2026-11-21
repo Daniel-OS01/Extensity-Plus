@@ -65,62 +65,69 @@
           <button type="button" role="switch" class="recording-switch" aria-labelledby="recordingLabel" title="Turn Activity &amp; Log recording on or off" data-sbind="attr:{'aria-checked': recordingAriaChecked}, css:{on: recordingEnabled}, click: toggleRecording, disable: busy, text: recordingLabel"></button>
         </span>
       </div>
-      <div class="card-row compact-controls history-filters">
-        <label for="historySourceFilter">Source</label>
-        <select id="historySourceFilter" data-sbind="value: historySourceFilter">
-          <option value="all">all</option>
-          <option value="off">Off</option>
-          <option value="manual">manual</option>
-          <option value="profile">profile</option>
-          <option value="rule">rule</option>
-          <option value="bulk">bulk</option>
-          <option value="undo">undo</option>
-          <option value="import">import</option>
-        </select>
-        <label for="historyResultFilter">Result</label>
-        <select id="historyResultFilter" data-sbind="value: historyResultFilter">
-          <option value="all">all</option>
-          <option value="off">Off</option>
-          <option value="state_changed_on">state_changed_on</option>
-          <option value="state_changed_off">state_changed_off</option>
-          <option value="changed">changed</option>
-          <option value="no_match">no_match</option>
-          <option value="no_op">no_op</option>
-          <option value="scheduled">scheduled</option>
-          <option value="alarm_fired">alarm_fired</option>
-          <option value="closing_tab">closing_tab</option>
-        </select>
-        <label for="logLevel">Log level</label>
-        <select id="logLevel" data-sbind="value: logLevel">
-          <option value="none">None</option>
-          <option value="error">Error</option>
-          <option value="warn">Warn</option>
-          <option value="info">Info</option>
-          <option value="debug">Debug</option>
-        </select>
-        <label for="errorsOnly"><input type="checkbox" id="errorsOnly" data-sbind="checked: errorsOnly" /> Errors only</label>
-        <button type="button" title="Clear all log entries" data-sbind="click: clearLog">Clear log</button>
-        <button type="button" title="Copy log to clipboard" data-sbind="click: copyLog">Copy log</button>
+      <div class="history-toolbar">
+        <div class="toolbar-row">
+          <span class="toolbar-row-label">Show</span>
+          <label class="filter-field" for="historySourceFilter">Source
+          <select id="historySourceFilter" data-sbind="value: historySourceFilter">
+            <option value="all">all</option>
+            <option value="off">Off</option>
+            <option value="manual">manual</option>
+            <option value="profile">profile</option>
+            <option value="rule">rule</option>
+            <option value="bulk">bulk</option>
+            <option value="undo">undo</option>
+            <option value="import">import</option>
+          </select>
+          </label>
+          <label class="filter-field" for="historyResultFilter">Result
+          <select id="historyResultFilter" data-sbind="value: historyResultFilter">
+            <option value="all">all</option>
+            <option value="off">Off</option>
+            <option value="state_changed_on">state_changed_on</option>
+            <option value="state_changed_off">state_changed_off</option>
+            <option value="changed">changed</option>
+            <option value="no_match">no_match</option>
+            <option value="no_op">no_op</option>
+            <option value="scheduled">scheduled</option>
+            <option value="alarm_fired">alarm_fired</option>
+            <option value="closing_tab">closing_tab</option>
+          </select>
+          </label>
+          <label class="filter-field" for="errorsOnly"><input type="checkbox" id="errorsOnly" data-sbind="checked: errorsOnly" /> Errors only</label>
+        </div>
+        <div class="toolbar-row">
+          <span class="toolbar-row-label">Log</span>
+          <label class="filter-field" for="logLevel">Level
+          <select id="logLevel" data-sbind="value: logLevel">
+            <option value="none">None</option>
+            <option value="error">Error</option>
+            <option value="warn">Warn</option>
+            <option value="info">Info</option>
+            <option value="debug">Debug</option>
+          </select>
+          </label>
+          <span class="toolbar-actions">
+            <span class="log-action-status" role="status" data-sbind="text: logActionStatus"></span>
+            <button type="button" class="secondary" title="Copy the rows shown to the clipboard" data-sbind="click: copyLog">Copy</button>
+            <button type="button" class="danger" title="Delete all activity history and the diagnostic log on this device" data-sbind="click: clearLog, disable: busy">Clear</button>
+          </span>
+        </div>
       </div>
       <ul class="history-list" data-sbind="foreach: unifiedTimeline">
-        <!-- ko if: isLogEntry -->
-        <li class="log-row">
-          <span data-sbind="attr:{class: levelBadgeClass}, text: level"></span>
-          <span class="event-meta" data-sbind="text: timestamp"></span>
-          <span class="event-name" data-sbind="text: message"></span>
-          <span class="event-meta debug-line" data-sbind="visible: dataLine, text: dataLine"></span>
+        <li class="timeline-row">
+          <span data-sbind="attr:{class: badgeClass}, text: badgeText"></span>
+          <span class="row-title">
+            <span class="event-name" data-sbind="text: title"></span>
+            <a href="#" class="rule-link" title="Open this URL rule" data-sbind="visible: ruleId, text: ruleLinkText, click: $parent.openRelatedRule"></a>
+          </span>
+          <span class="event-meta row-source" data-sbind="text: source"></span>
+          <span class="event-meta row-time" data-sbind="text: formattedDate"></span>
+          <details class="row-details" data-sbind="visible: details">
+            <summary>Details</summary>
+            <div class="event-meta debug-line" data-sbind="text: details"></div>
+          </details>
         </li>
-        <!-- /ko -->
-        <!-- ko if: isHistoryEntry -->
-        <li class="history-row">
-          <span title="History event badge" data-sbind="attr:{class: badgeClass}, text: event"></span>
-          <span class="event-name" data-sbind="text: extensionName"></span>
-          <span class="event-meta" data-sbind="text: triggeredBy"></span>
-          <span class="event-meta debug-line" data-sbind="visible: details, text: details"></span>
-          <button type="button" class="history-action" data-sbind="visible: ruleId, click: $parent.openRelatedRule">Open related rule</button>
-          <span class="event-meta" data-sbind="text: formattedDate"></span>
-        </li>
-        <!-- /ko -->
       </ul>
       <p class="event-meta" data-sbind="visible: unifiedEmpty, text: timelineEmptyMessage"></p>
     </section>

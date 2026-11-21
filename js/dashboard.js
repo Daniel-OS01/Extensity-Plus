@@ -453,21 +453,117 @@ document.addEventListener("DOMContentLoaded", function() {
 
   /**
    * Builds one display row from a stored diagnostic log entry.
+   * Log and Activity rows share the fields the row template reads: badge, title, source, time, details.
    * @param {Object} entry - Entry written by ExtensityLogger.
    * @return {Object} Row for the Activity & Log timeline.
    */
   function buildLogRow(entry) {
     var rawTs = entry.timestamp || "";
-    var epochTs = rawTs ? new Date(rawTs).getTime() : Date.now();
+    var parsedTs = rawTs ? new Date(rawTs).getTime() : Date.now();
+    var epochTs = isFinite(parsedTs) ? parsedTs : Date.now();
     return {
-      isLogEntry: true,
+      badgeClass: LOG_LEVEL_BADGE_CLASS[entry.level] || "event-badge",
+      badgeText: String(entry.level || "").toUpperCase(),
+      details: entry.data ? JSON.stringify(entry.data) : "",
+      epochTs: epochTs,
+      formattedDate: new Date(epochTs).toLocaleString(),
       isHistoryEntry: false,
-      epochTs: isFinite(epochTs) ? epochTs : Date.now(),
+      isLogEntry: true,
       level: entry.level,
-      levelBadgeClass: LOG_LEVEL_BADGE_CLASS[entry.level] || "event-badge",
-      timestamp: rawTs.replace("T", " ").slice(0, 19),
-      message: entry.message,
-      dataLine: entry.data ? JSON.stringify(entry.data) : null
+      ruleId: null,
+      ruleLinkText: "",
+      source: "log",
+      title: String(entry.message || "")
+    };
+  }
+
+  /**
+   * Summarizes a Drive sync audit payload as the categories that changed.
+   * @param {string} debugText - The audit payload as stored on the history record (JSON text).
+   * @return {string} For example `profiles: 2 added; urlRules: 1 deleted`, `no changes`, or the stored text when it is not JSON.
+   */
+  function summarizeDriveDebug(debugText) {
+    if (!debugText) {
+      return "";
+    }
+    var parsed;
+    try {
+      parsed = JSON.parse(debugText);
+    } catch (error) {
+      if (error && error.name === "SyntaxError") {
+        return debugText;
+      }
+      throw error;
+    }
+    if (!parsed || typeof parsed !== "object") {
+      return debugText;
+    }
+    var parts = [];
+    if (Array.isArray(parsed.conflicts) && parsed.conflicts.length) {
+      parts.push(parsed.conflicts.length + (parsed.conflicts.length === 1 ? " conflict" : " conflicts"));
+    }
+    if (parsed.failsafe) {
+      parts.push("failsafe stop" + (parsed.failsafe.categoryId ? ": " + parsed.failsafe.categoryId : ""));
+    }
+    (Array.isArray(parsed.changes) ? parsed.changes : []).forEach(function(change) {
+      var counts = ["added", "changed", "deleted"].filter(function(key) {
+        return change[key] > 0;
+      }).map(function(key) {
+        return change[key] + " " + key;
+      });
+      if (counts.length) {
+        parts.push(change.categoryId + ": " + counts.join(", "));
+      }
+    });
+    return parts.length ? parts.join("; ") : "no changes";
+  }
+
+  /**
+   * Builds the detail line of an Activity row.
+   * @param {Object} record - Stored event history record.
+   * @return {string} Detail fields joined with bullets.
+   */
+  function buildHistoryDetails(record) {
+    if (record.action === "drive_sync") {
+      var summary = summarizeDriveDebug(record.debug);
+      var direction = record.result || "sync";
+      return summary ? direction + ": " + summary : direction;
+    }
+    var details = [];
+    if (record.action) { details.push("action=" + record.action); }
+    if (record.ruleName && !record.ruleId) { details.push("rule=" + record.ruleName); }
+    if (record.result) { details.push("result=" + record.result); }
+    if (record.url) { details.push("url=" + record.url); }
+    if (record.tabId != null) { details.push("tab=" + record.tabId); }
+    if (typeof record.previousEnabled === "boolean" && typeof record.nextEnabled === "boolean") {
+      details.push("state=" + (record.previousEnabled ? "on" : "off") + "→" + (record.nextEnabled ? "on" : "off"));
+    }
+    if (record.debug) { details.push("debug=" + record.debug); }
+    return details.join(" • ");
+  }
+
+  /**
+   * Builds one display row from a stored event history record.
+   * @param {Object} record - Record from `localState.eventHistory`.
+   * @return {Object} Row for the Activity & Log timeline.
+   */
+  function buildHistoryRow(record) {
+    var isDriveSync = record.action === "drive_sync";
+    var title = record.extensionName || record.label || "Rule event";
+    return {
+      badgeClass: "event-badge event-" + (record.result || record.event || "unknown"),
+      badgeText: historyLabelForEvent(record.event),
+      details: buildHistoryDetails(record),
+      formattedDate: new Date(record.timestamp).toLocaleString(),
+      id: record.id,
+      isError: record.event === "error",
+      result: record.result || "",
+      ruleId: record.ruleId || null,
+      ruleLinkText: record.ruleId ? "rule: " + (record.ruleName || "open") : "",
+      source: record.triggeredBy,
+      timestamp: record.timestamp,
+      title: isDriveSync ? "Drive sync: " + (record.label || "sync") : title,
+      triggeredBy: record.triggeredBy
     };
   }
 
@@ -556,10 +652,7 @@ document.addEventListener("DOMContentLoaded", function() {
     return rows.slice().sort(function(left, right) {
       return left.epochTs - right.epochTs;
     }).map(function(row) {
-      if (row.isLogEntry) {
-        return [row.timestamp, String(row.level || "").toUpperCase(), row.message, row.dataLine].filter(Boolean).join(" | ");
-      }
-      return [row.formattedDate, row.event, row.extensionName, row.triggeredBy, row.details].filter(Boolean).join(" | ");
+      return [row.formattedDate, row.badgeText, row.title, row.source, row.details].filter(Boolean).join(" | ");
     }).join("\n");
   }
 
@@ -748,31 +841,7 @@ document.addEventListener("DOMContentLoaded", function() {
     };
 
     self.applyHistory = function(eventHistory) {
-      self.historyRows(eventHistory.slice().reverse().map(function(row) {
-        var details = [];
-        if (row.action) { details.push("action=" + row.action); }
-        if (row.ruleName) { details.push("rule=" + row.ruleName); }
-        if (row.result) { details.push("result=" + row.result); }
-        if (row.url) { details.push("url=" + row.url); }
-        if (row.tabId != null) { details.push("tab=" + row.tabId); }
-        if (typeof row.previousEnabled === "boolean" && typeof row.nextEnabled === "boolean") {
-          details.push("state=" + (row.previousEnabled ? "on" : "off") + "→" + (row.nextEnabled ? "on" : "off"));
-        }
-        if (row.debug) { details.push("debug=" + row.debug); }
-        return {
-          event: historyLabelForEvent(row.event),
-          extensionName: row.extensionName || row.label || "Rule event",
-          id: row.id,
-          isError: row.event === "error",
-          result: row.result || "",
-          ruleId: row.ruleId || null,
-          triggeredBy: row.triggeredBy,
-          details: details.join(" • "),
-          timestamp: row.timestamp,
-          badgeClass: "event-badge event-" + (row.result || row.event || "unknown"),
-          formattedDate: new Date(row.timestamp).toLocaleString()
-        };
-      }));
+      self.historyRows(eventHistory.slice().reverse().map(buildHistoryRow));
     };
 
     self.applyState = function(state) {
@@ -1444,13 +1513,15 @@ document.addEventListener("DOMContentLoaded", function() {
       buildDriveStatusDetails: buildDriveStatusDetails,
       buildDriveStatusHeadline: buildDriveStatusHeadline,
       buildDriveStatusRows: buildDriveStatusRows,
+      buildHistoryRow: buildHistoryRow,
       buildLogRows: buildLogRows,
       buildTimeline: buildTimeline,
       buildTimelineEmptyMessage: buildTimelineEmptyMessage,
       buildTimelineText: buildTimelineText,
       filterHistoryRows: filterHistoryRows,
       parseRuleDraft: parseRuleDraft,
-      resolveDraftEnableIds: resolveDraftEnableIds
+      resolveDraftEnableIds: resolveDraftEnableIds,
+      summarizeDriveDebug: summarizeDriveDebug
     };
   }
 

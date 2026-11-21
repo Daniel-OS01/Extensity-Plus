@@ -600,32 +600,103 @@ function loadDashboardInternals() {
 
 test("dashboard buildTimelineText lists activity and log rows oldest first", () => {
   const helpers = loadDashboardInternals();
-  const text = helpers.buildTimelineText([
-    {
-      isLogEntry: true,
-      isHistoryEntry: false,
-      epochTs: 2000,
-      level: "warn",
-      timestamp: "2026-11-21 10:00:02",
-      message: "drive_api_retry",
-      dataLine: "{\"attempt\":2}"
-    },
-    {
-      isLogEntry: false,
-      isHistoryEntry: true,
-      epochTs: 1000,
-      event: "Enabled",
-      extensionName: "Reader",
-      triggeredBy: "rule",
-      details: "rule=Docs",
-      formattedDate: "11/21/2026, 10:00:01 AM"
-    }
+  const historyTs = Date.UTC(2026, 10, 21, 10, 0, 1);
+  const logTs = Date.UTC(2026, 10, 21, 10, 0, 2);
+  const logRows = helpers.buildLogRows([
+    { level: "warn", message: "drive_api_retry", data: { attempt: 2 }, timestamp: new Date(logTs).toISOString() }
   ]);
+  const historyRows = [helpers.buildHistoryRow({
+    event: "enabled",
+    extensionName: "Reader",
+    id: "h1",
+    result: "state_changed_on",
+    timestamp: historyTs,
+    triggeredBy: "manual"
+  })];
+  const text = helpers.buildTimelineText(helpers.buildTimeline(historyRows, logRows, false));
   assert.equal(text, [
-    "11/21/2026, 10:00:01 AM | Enabled | Reader | rule | rule=Docs",
-    "2026-11-21 10:00:02 | WARN | drive_api_retry | {\"attempt\":2}"
+    new Date(historyTs).toLocaleString() + " | Enabled | Reader | manual | result=state_changed_on",
+    new Date(logTs).toLocaleString() + " | WARN | drive_api_retry | log | {\"attempt\":2}"
   ].join("\n"));
   assert.equal(helpers.buildTimelineText([]), "");
+});
+
+test("dashboard log rows use the same local time format as Activity rows", () => {
+  const helpers = loadDashboardInternals();
+  const ts = Date.UTC(2026, 10, 21, 22, 15, 0);
+  const [row] = helpers.buildLogRows([{ level: "error", message: "boom", timestamp: new Date(ts).toISOString() }]);
+  assert.equal(row.formattedDate, new Date(ts).toLocaleString());
+  assert.equal(row.title, "boom");
+  assert.equal(row.source, "log");
+  assert.equal(row.badgeText, "ERROR");
+});
+
+test("dashboard buildHistoryRow builds a compact row with a rule link", () => {
+  const helpers = loadDashboardInternals();
+  const row = helpers.buildHistoryRow({
+    action: "url_rule",
+    event: "enabled",
+    extensionName: "max PayBack Reminder",
+    id: "h2",
+    previousEnabled: false,
+    nextEnabled: true,
+    result: "state_changed_on",
+    ruleId: "rule-1",
+    ruleName: "g2a.com (www)",
+    tabId: 7,
+    timestamp: 1000,
+    triggeredBy: "rule",
+    url: "https://www.g2a.com/x"
+  });
+  assert.equal(row.badgeText, "Enabled");
+  assert.equal(row.title, "max PayBack Reminder");
+  assert.equal(row.source, "rule");
+  assert.equal(row.ruleId, "rule-1");
+  assert.equal(row.ruleLinkText, "rule: g2a.com (www)");
+  assert.equal(row.isError, false);
+  assert.equal(row.formattedDate, new Date(1000).toLocaleString());
+  assert.doesNotMatch(row.details, /rule=/, "the rule name is shown as a link, not repeated in details");
+  assert.match(row.details, /url=https:\/\/www\.g2a\.com\/x/);
+  assert.match(row.details, /state=off→on/);
+
+  const errorRow = helpers.buildHistoryRow({ event: "error", label: "conflict", id: "h3", timestamp: 2, triggeredBy: "drive" });
+  assert.equal(errorRow.isError, true);
+  assert.equal(errorRow.ruleLinkText, "");
+});
+
+test("dashboard summarizeDriveDebug lists only non-zero changes", () => {
+  const helpers = loadDashboardInternals();
+  const zero = { added: 0, changed: 0, deleted: 0 };
+  assert.equal(helpers.summarizeDriveDebug(JSON.stringify({
+    changes: [{ ...zero, categoryId: "profiles" }, { ...zero, categoryId: "settings" }],
+    direction: "sync",
+    status: "merged"
+  })), "no changes");
+  assert.equal(helpers.summarizeDriveDebug(JSON.stringify({
+    changes: [
+      { ...zero, categoryId: "profiles", added: 2, changed: 1 },
+      { ...zero, categoryId: "settings" },
+      { ...zero, categoryId: "urlRules", deleted: 3 }
+    ],
+    status: "merged"
+  })), "profiles: 2 added, 1 changed; urlRules: 3 deleted");
+  assert.equal(helpers.summarizeDriveDebug(JSON.stringify({ conflicts: [{}, {}], status: "conflict" })), "2 conflicts");
+  assert.equal(helpers.summarizeDriveDebug(JSON.stringify({ status: "cancelled" })), "no changes");
+  assert.equal(helpers.summarizeDriveDebug("{not json"), "{not json", "malformed debug text is shown as stored");
+  assert.equal(helpers.summarizeDriveDebug(""), "");
+
+  const row = helpers.buildHistoryRow({
+    action: "drive_sync",
+    debug: JSON.stringify({ changes: [{ ...zero, categoryId: "profiles" }], status: "merged" }),
+    event: "info",
+    id: "h4",
+    label: "merged",
+    result: "sync",
+    timestamp: 5,
+    triggeredBy: "periodic"
+  });
+  assert.equal(row.title, "Drive sync: merged");
+  assert.equal(row.details, "sync: no changes");
 });
 
 test("dashboard buildLogRows replaces the list from storage, newest first", () => {
@@ -637,12 +708,12 @@ test("dashboard buildLogRows replaces the list from storage, newest first", () =
   }));
   const rows = helpers.buildLogRows(stored);
   assert.equal(rows.length, 300);
-  assert.equal(rows[0].message, "entry_299");
-  assert.equal(rows[299].message, "entry_0");
+  assert.equal(rows[0].title, "entry_299");
+  assert.equal(rows[299].title, "entry_0");
 
   // A full log that rotates keeps its length; the newest entry must still appear.
   const rotated = stored.slice(1).concat([{ level: "error", message: "entry_300", timestamp: "2026-11-21T00:05:00.000Z" }]);
-  assert.equal(helpers.buildLogRows(rotated)[0].message, "entry_300");
+  assert.equal(helpers.buildLogRows(rotated)[0].title, "entry_300");
   assert.deepEqual(normalize(helpers.buildLogRows(undefined)), []);
 });
 

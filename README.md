@@ -25,8 +25,9 @@
 
 ## 🆕 Releases
 
-**🔥 Latest: v4.7.4** (2026-11-21)
-- ⚡ Faster popup search and bulk toggling. ♿ The profile delete button names its profile, and inputs that had only a placeholder now have labels.
+**🔥 Latest: v4.8.0** (2026-11-21)
+- 📋 The dashboard's Activity & Log works properly. It has a Recording switch, Log level None stops logging everywhere, Clear deletes activity and log after a confirm, Copy copies the rows shown, and long rows wrap inside the card.
+- ☁️ Drive sync fixes: a deletion stays deleted on the device that made it, rule and group order sync, and per-device settings such as the active profile stay off Drive.
 
 **4️⃣ Version 4**
 - ☁️ Google Drive sync, which got safer in 4.7: you confirm a preview before each sync, a safeguard pauses changes that would delete too much, and *Undo last sync* restores the last backup. 4.x also added the Full / Smart / Minimal browser-sync modes and the dashboard Log tab.

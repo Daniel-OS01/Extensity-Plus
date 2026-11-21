@@ -4,248 +4,214 @@
   <img src="images/Extensity-Extension-Manager.png" alt="Extensity-Plus logo" width="180" />
 </p>
 
-Extensity-Plus is a Chrome Manifest V3 extension manager focused on fast popup workflows, reusable profiles, URL rules, and a full management dashboard.
+Extensity-Plus is a Manifest V3 extension manager for Chrome and Chromium-based browsers such as Brave. It keeps the original [Extensity](https://github.com/sergiokas/Extensity) idea, one click to turn extensions on or off, and adds what you need for daily use:
 
-It keeps the original Extensity idea simple, but expands it into a more complete daily-use tool:
+- a popup for fast toggling, search and sorting
+- reusable profiles, plus the special layers `Always On`, `Base` and `Favorites`
+- URL rules that enable or disable extensions as you browse
+- a dashboard for aliases, groups, rules, history, logs and backups
+- settings sync through browser sync, with optional Google Drive sync
 
-- popup-first enable/disable flows
-- special profiles like `Always On`, `Base`, and `Favorites`
-- searchable, sortable extension lists
-- profile-based extension sets
-- URL-triggered automation
-- dashboard tools for history, aliases, groups, rules, and backup
+Releases and changelogs are on the [GitHub Releases page](https://github.com/Daniel-OS01/Extensity-Plus/releases). The current version is the `version` field in [`manifest.json`](manifest.json).
 
-## Latest Release
+## Screenshots
 
-Current version: `v4.6.0` (published 2026-07-23)
-
-### What's Changed in v4.6.0
-
-- Google Drive sync now requires a **preview/confirmation** step before `push`, `pull`, or conflict-resolution writes actually apply, and adds a **deletion failsafe** (configurable 1–100% threshold) that pauses risky automatic changes.
-- Added configurable **sync strategy** (merge / use this device / use Drive) plus independent **periodic**, **startup**, and **after local changes** triggers, in both Options and the Dashboard Sync Status → Google Drive card.
-- Added **“Undo last sync”** (restores the latest verified Drive backup) and **“Save settings”** actions to the Dashboard Drive sync card and Options page.
-- Added an **“Errors only”** checkbox to the Dashboard Activity & Log timeline that filters the unified log/history view down to error-level Drive log entries.
-- Drive sync engine upgraded to envelope **v2.0.0** with item-level three-way merging, deterministic fingerprinting, optimistic-concurrency writes, and post-write verification against Drive.
-- **Breaking:** `ExtensityApi.syncDrive` and `ExtensityApi.resolveDriveConflict` are now `async` and require the preview/confirmation-token flow; `resolveDriveConflict` takes an additional `overrideFailsafe` parameter.
-- See `docs/google-drive-sync.md` for the full strategy/triggers/merge workflow and the updated conflicts-and-recovery behavior.
-
-Full changelog: https://github.com/Daniel-OS01/Extensity-Plus/compare/v4.5.0...v4.6.0
-
-## What It Looks Like
-
-### Popup: quick actions and profile-aware controls
-
-The popup is built for fast toggling, search, sorting, profile badges, and inline per-extension actions.
+**Popup: quick actions.** Toggle, search, sort, see profile badges and use per-extension actions inline.
 
 ![Popup expanded actions](images/popup-expanded-actions.jpg)
 
-### Popup: profile dropdown with special profiles
-
-Profile membership can be edited directly from the popup, including `Always On`, `Base`, `Favorites`, and custom profiles.
+**Popup: profile dropdown.** Edit profile membership, including the special profiles, without leaving the popup.
 
 ![Popup profile dropdown](images/popup-profile-dropdown.jpg)
 
-### Profiles page
-
-The Profiles page is where you shape named extension sets, review profile membership, and manage reserved profiles alongside custom ones.
+**Profiles page.** Build named extension sets and manage the special profiles alongside your own.
 
 ![Profiles page](images/profiles-page.jpg)
 
-### Options page
-
-The Options page controls popup layout, density, sorting defaults, appearance, and behavior-level settings.
+**Options page.** Popup layout, density, default sorting, appearance and behavior.
 
 ![Options page](images/options-page.jpg)
 
-### Dashboard and URL rules
-
-The Dashboard brings together history, groups, aliases, import/export, and URL rules with live rule testing.
+**Dashboard: URL rules.** Rules with a live tester, next to history, groups, aliases and import/export.
 
 ![Dashboard URL rules](images/dashboard-url-rules.jpg)
 
-## Core Features
+## Features
 
-### Popup controls
+### Popup
 
-- Enable or disable extensions from the popup.
-- Toggle all extensions off and restore them with one action.
-- Undo the last reversible toggle action.
-- Search by extension name, alias, or description.
-- Sort by A-Z, recent use, or usage frequency.
+- Enable or disable any extension in one click.
+- Turn every extension off, then restore the previous set, in one action. `Always On` extensions can be kept on.
+- Undo the last toggle, bulk action or profile change.
+- Search by name, alias or description. Queries of 3+ characters also match typos (fuzzy matching).
+- Sort alphabetically, by most recently used, or by how often each one is used.
 - Switch between list and grid views.
-- Manage profile membership directly from expanded popup rows.
-- Show profile badges, special-profile status, and keyboard-friendly controls.
+- Add an extension to a profile, or remove it, from its expanded row.
+- Pin an extension to the browser toolbar. *Automatic* mode clicks Chrome's own pin control for you and falls back to opening the extension's page. *Manual* mode always opens the page. Choose the mode in Options.
 
 ### Profiles
 
-- Save reusable extension sets as profiles.
-- Apply profiles from the popup.
-- Keep `Always On`, `Base`, and `Favorites` as special profile layers.
-- Rename custom profiles inline.
-- Select multiple profiles and bulk delete them.
-- Choose the layout used on the Profiles page.
-- Cycle profiles with Chrome keyboard shortcuts.
+- Save reusable extension sets and apply them from the popup.
+- Special layers: `Always On` (stays enabled whichever profile you apply), `Base` and `Favorites`.
+- Rename profiles inline, set each one's color and icon, and bulk-delete selected profiles.
+- Choose the layout of the Profiles page.
+- Keyboard shortcuts: `Ctrl+Shift+E` turns all extensions off or back on. The shortcuts for the next and previous profile have no default key; assign them at `chrome://extensions/shortcuts`.
+
+### URL rules
+
+- Enable or disable chosen extensions when the active tab's URL matches a pattern.
+- Patterns are either wildcards (`*://github.com/*`) or regular expressions.
+- Test URLs against your rules in the dashboard before relying on them.
+- Rules are evaluated in the background service worker.
 
 ### Dashboard
 
-- Manage aliases for installed extensions.
-- Create and edit groups.
-- Create, test, and edit URL rules.
-- Review extension event history.
-- Export inventory as CSV.
-- Import and export full backup data.
-- **Log tab** — real-time session log with four levels (none / error / warn / info), copy to clipboard.
-- **Drive connection test** — read-only diagnostic showing token acquisition, Drive API connectivity, sync file metadata, and dry-run conflict state.
+- Aliases (custom display names) and groups for installed extensions.
+- History of extension events, with usage counters.
+- Export your installed extensions as a CSV list.
+- Import and export JSON backups, either full or scoped (see [Backup files](#backup-files)).
+- **Log** tab: session log with selectable level (none / error / warn / info / debug), an *Errors only* filter, and copy to clipboard.
+- **Sync Status**: browser-sync health check and Google Drive sync controls, including a read-only Drive connection test.
 
-### Data and automation
+### Reminders
 
-- Save lightweight preferences in `chrome.storage.sync`.
-- Save larger or device-specific data in `chrome.storage.local`.
-- Track history and usage counters.
-- Schedule reminder notifications after manual enable flows.
-- Apply URL-based enable/disable rules in the background service worker.
-- Export and import a versioned backup envelope.
+- Optional notification reminding you to turn an extension back off after you enable it manually.
 
-## Architecture
+## Install from source
 
-Extensity-Plus uses a background-owned state model:
+The repository root is a loadable extension, and nothing needs to be built first.
 
-- `js/background.js` owns extension enable/disable mutations.
-- Popup, options, profiles, and dashboard pages communicate through a background message API.
-- Undo history, reminders, usage counters, and event history are updated through the same mutation path.
-- Larger collections like aliases, groups, rules, and history stay out of sync storage to avoid quota pressure.
+1. Clone the repository.
+2. Open `chrome://extensions` (or `brave://extensions`) and turn on **Developer mode**.
+3. Click **Load unpacked** and select the repository root, or `dist/` after running `make dist` for the minified build.
 
-### Browser sync status check
+The packaged `dist.zip` and the Chrome Web Store upload bundle are produced by the [release workflow](#ci-and-releases).
 
-Dashboard **Sync Status** and Options **Check sync status** call `ExtensityBrowserSync.checkBrowserSyncHealth()` in `js/engine.js`. They verify that Extensity-Plus settings and profiles are present in **`chrome.storage.sync` for the current profile**, and show sync-area byte usage plus any fallback error recorded by the extension.
+## Permissions
 
-That check is **not** the same as Chromium account sync diagnostics (`chrome://sync-internals`, `brave://sync-internals`, etc.). Those pages may not list or search extension sync data even when the extension reports **Synced**. A passing check means the extension can read its sync-area keys locally; cross-device replication still depends on the browser’s sync service.
+| Permission | Why it is needed |
+|------------|------------------|
+| `management` | List, enable and disable extensions. This is the core feature. |
+| `storage` | Settings, profiles, rules, history and backups. |
+| `tabs`, `webNavigation` | Evaluate URL rules against the active tab; open the dashboard, options and extension pages. |
+| `alarms`, `notifications` | Reminder notifications and scheduled Drive sync. |
+| `identity` | Google sign-in for the optional Drive sync. |
+| `debugger` | Only for **automatic** pin-to-toolbar: briefly attaches to the `chrome://extensions` details page to click Chrome's own pin control. It never attaches to websites. |
+| `https://www.googleapis.com/*` | Drive REST API calls, limited to the `drive.appdata` scope. |
+| `https://chromewebstore.google.com/*` (optional) | Store metadata and links. The browser asks before granting it. |
 
-### Browser sync modes
+Full rationale and Chrome Web Store wording: [`docs/chrome-web-store-privacy.md`](docs/chrome-web-store-privacy.md).
 
-Options → **Browser Sync** includes three modes:
+## Sync and backup
+
+### Browser sync
+
+Settings and profiles are stored in `chrome.storage.sync`, which the browser syncs across signed-in devices. That storage is capped at about **100 KB** in total and **8 KB** per key. Options → **Browser Sync** offers three modes:
 
 | Mode | What syncs | Best for |
 |------|------------|----------|
-| **Full** | All options + full profile memberships | Smaller profile sets; maximum portability |
-| **Smart** (default) | All options + reserved profiles (`Always On`, `Base`, `Favorites`) + metadata; large custom profiles stay local | Most users; avoids per-item quota failures |
+| **Full** | All options + full profile memberships | Small profile sets; maximum portability |
+| **Smart** (default) | All options + `Always On`, `Base`, `Favorites` + profile metadata; large custom profiles stay local | Most users; avoids per-key quota failures |
 | **Minimal** | Options + profile metadata only; memberships stay on each device | Lowest sync footprint |
 
-Dismissal banners are stored in **local** storage (not sync) to save quota.
+If profiles outgrow the quota, the extension falls back to **local-only profiles** (`localProfiles`), and the dashboard shows that it has done so. Dismissed banners are stored locally to save quota.
 
-### Brave cross-device sync setup
+**Checking sync health.** Dashboard **Sync Status** and Options **Check sync status** confirm that this browser profile's settings and profiles are present in sync storage, and show byte usage and any recorded fallback error. This is not the same as the browser's own sync diagnostics (`chrome://sync-internals`, `brave://sync-internals`), which may not list extension data even when the check reports **Synced**. Whether data reaches your other devices still depends on the browser's sync service.
 
-Extensity-Plus uses `chrome.storage.sync` (about **100 KB** total, **8 KB** per key) for settings and profiles. To sync between devices:
+**Brave.** Join the same Brave Sync chain on every desktop device (`brave://settings/braveSync`). Wait for the first merge to finish, then reload Extensity-Plus on each device and run the sync check. Brave has reported intermittent failures of the *Extension settings* sync datatype ([brave/brave-browser#46983](https://github.com/brave/brave-browser/issues/46983)). That failure is in Brave's sync service, and the extension cannot work around it.
 
-1. Join the same **Brave Sync chain** on every desktop device (`brave://settings/braveSync` or Settings → Sync).
-2. Keep **Sync enabled** and wait for the chain to finish initial merge.
-3. Reload Extensity-Plus on each device after the first successful save so all pages pick up remote revisions.
-4. Open **Sync Status** (Dashboard) or **Check sync status** (Options) and confirm sync-area bytes are below quota and `localProfiles` is not active.
+### Google Drive sync (optional)
 
-If profiles are large, the extension may switch to **local-only profiles** (`localProfiles`) when sync quota is exceeded; the dashboard will show that fallback. Brave has also reported intermittent failures for the **Extension settings** sync datatype in `brave://sync-internals` ([brave/brave-browser#46983](https://github.com/brave/brave-browser/issues/46983))—that is a browser sync backend issue, not something the extension can fix directly.
+Drive sync stores a versioned backup in the hidden app-data folder of your Google Drive. It merges changes item by item between devices. Before each push, pull or conflict resolution it shows a preview to confirm. It also has a configurable safeguard that pauses sync when a change would delete too much, and *Undo last sync* restores the latest verified backup.
 
-Main UI surfaces:
+Drive sync needs a **Chrome extension** OAuth client ID in `manifest.json` (`oauth2.client_id`). Without one, the sync actions show a configuration error. Setup, strategies, triggers and recovery are covered in [`docs/google-drive-sync.md`](docs/google-drive-sync.md).
 
-- `index.html`: popup
-- `options.html`: options page
-- `profiles.html`: profile editor
-- `dashboard.html`: management dashboard
+### Backup files
 
-Supporting modules:
+The Dashboard and Options pages export and import a versioned JSON backup. A full backup holds settings, profiles, aliases, groups, URL rules, history and usage data. Scoped exports cover only profiles, only settings, profiles and settings, or only URL rules. On import, the scope is detected automatically.
 
-- `js/storage.js`
-- `js/migration.js`
-- `js/import-export.js`
-- `js/url-rules.js`
-- `js/history-logger.js`
-- `js/reminders.js`
-- `js/logger.js`
-- `js/drive-sync.js`
+## Architecture
 
-## Build and Development
+- **One writer.** Only the background service worker (`js/background.js`) enables or disables extensions. The UI pages send messages and receive state back. That way undo history, usage counters, reminders and event history are always updated together.
+- **Split storage.** Lightweight settings and profile state live in `chrome.storage.sync`. Aliases, groups, URL rules, undo stack, history and usage counters live in `chrome.storage.local`, so they never use up sync quota.
+- **No frontend build.** Each page is plain HTML with a Knockout.js view model bound through knockout-secure-binding (`data-sbind`). Modules are IIFEs that each expose one namespace object, such as `ExtensityStorage`.
 
-Install dependencies:
+| Page | Script | Role |
+|------|--------|------|
+| `index.html` | `js/index.js` | Popup |
+| `profiles.html` | `js/profiles.js` | Profile editor |
+| `options.html` | `js/options.js` | Settings, sync and backup controls |
+| `dashboard.html` | `js/dashboard.js` | Aliases, groups, URL rules, history, logs, import/export |
 
-```bash
-npm install
-```
+| Module | Responsibility |
+|--------|----------------|
+| `js/background.js` | Service worker: message API, all extension mutations, URL rule evaluation |
+| `js/engine.js` | Shared view-model code, Knockout extenders, browser-sync health check |
+| `js/storage.js` | Schema defaults and load/save helpers for sync and local storage |
+| `js/migration.js` | Additive, versioned data migrations |
+| `js/url-rules.js` | URL pattern matching and rule evaluation |
+| `js/history-logger.js` | Append-only event history |
+| `js/reminders.js` | Reminder scheduling via `chrome.alarms` |
+| `js/import-export.js` | Versioned backup envelope |
+| `js/drive-sync.js` | Google Drive OAuth, merge, preview/confirm and safeguards |
+| `js/drive-oauth-config.js` | Web OAuth client used as a fallback sign-in in Brave |
+| `js/logger.js` | Leveled session log shown in the dashboard |
 
-Run tests:
+The message API and design decisions are documented in [`docs/extensity-2.0-plan.md`](docs/extensity-2.0-plan.md).
 
-```bash
-npm test
-```
+## Development
 
-Validate the manifest:
-
-```bash
-npm run check:manifest
-```
-
-Build the extension:
+Requirements: Node.js 18+ (CI uses 22). Building `dist/` with `make dist` also needs `make` and `python3`. On Windows, run it from WSL or another environment that provides both.
 
 ```bash
-make dist
+npm install                  # dev tools: uglify-js, sass, sharp
+npm test                     # unit tests (Node's built-in test runner)
+npm run check:manifest       # validate manifest.json and tracked versions
+make dist                    # copy, minify and zip → dist/dist.zip
+npm run bundle:chrome-store  # Chrome Web Store bundle → artifacts/chrome-web-store/ (run after make dist)
+npm run generate:icons       # regenerate extension icons from the master PNG
 ```
 
-Generate the Chrome Web Store submission bundle:
+Tests live in `tests/*.test.js`. To run one file: `node --test tests/browser-modules.test.js`.
 
-```bash
-npm run bundle:chrome-store
-```
+More build detail: [`BUILD.md`](BUILD.md).
 
-Generate the required extension icons from the master PNG source:
+## CI and releases
 
-```bash
-npm run generate:icons
-```
-
-Artifacts:
-
-- `dist/dist.zip`
-- `artifacts/chrome-web-store/`
-
-GitHub Actions release runs upload a private `release-assets-vX.Y.Z` artifact containing:
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs the tests, validates the manifest, and builds the extension and the Chrome Web Store bundle on every pull request and every push to `main`. A manual run (`workflow_dispatch`) with a semver bump performs a release: it updates the version, tags `vX.Y.Z`, publishes a GitHub release, and uploads a `release-assets-vX.Y.Z` artifact containing:
 
 - `<package>-extension-vX.Y.Z.zip`
 - `<package>-chrome-web-store-upload-vX.Y.Z.zip`
-- `submission-metadata.json`
-- `checksums.txt`
-- `submission-notes.md`
+- `submission-metadata.json`, `checksums.txt`, `submission-notes.md`
 
-## GitHub Actions
+Pushing a `v*` tag also runs [`release-chrome-web-store.yml`](.github/workflows/release-chrome-web-store.yml), which uploads a **draft** to the Chrome Web Store. Someone must still publish it manually. Further workflows run focused regression suites (URL rules, storage schema, migration, message API, import/export, security audit and more).
 
-This repository includes `.github/workflows/ci.yml`, which:
-
-- runs tests
-- validates the manifest
-- builds the extension
-- packages release artifacts
-- supports manual semver-bump releases and tag-based releases
+See [`docs/ci-and-release.md`](docs/ci-and-release.md) and [`docs/release-automation.md`](docs/release-automation.md).
 
 ## Documentation
 
-Additional project documentation lives in `docs/`:
+| Document | Contents |
+|----------|----------|
+| [`docs/google-drive-sync.md`](docs/google-drive-sync.md) | Drive sync setup, strategies, triggers, conflicts and recovery |
+| [`docs/ci-and-release.md`](docs/ci-and-release.md) | CI, packaging and the manual pre-release test pass |
+| [`docs/release-automation.md`](docs/release-automation.md) | Chrome Web Store upload automation and credentials |
+| [`docs/chrome-web-store-checklist.md`](docs/chrome-web-store-checklist.md) | Store submission checklist |
+| [`docs/chrome-web-store-privacy.md`](docs/chrome-web-store-privacy.md) | Permission justifications and privacy disclosures |
+| [`docs/extensity-2.0-plan.md`](docs/extensity-2.0-plan.md) | Architecture, message API and constraints |
+| [`docs/extensity-2.0-status.md`](docs/extensity-2.0-status.md) | What was implemented and what was deferred |
 
-- `docs/extensity-2.0-plan.md`
-- `docs/extensity-2.0-status.md`
-- `docs/ci-and-release.md`
-- `docs/chrome-web-store-checklist.md`
+## Security notes
 
-## Credits and Inspiration
+- Drive sync requires a **Chrome extension** OAuth client. **Desktop app** OAuth credentials are only for Chrome Web Store upload automation.
+- Never store or commit an OAuth `client_secret` in the extension source or docs.
+- Before publishing a fork to the Chrome Web Store, review its permissions, store listing, privacy disclosures and OAuth setup.
 
-The main inspiration for this project is the original [sergiokas/Extensity](https://github.com/sergiokas/Extensity) repo and the broader Extensity open-source lineage.
+## Credits
 
-Additional feature direction and UX ideas were informed by:
+Extensity-Plus grows out of the original [sergiokas/Extensity](https://github.com/sergiokas/Extensity) and its open-source lineage. It is an independent evolution, not the upstream release branch. Feature and UX ideas were also drawn from:
 
 - [hankxdev/one-click-extensions-manager](https://github.com/hankxdev/one-click-extensions-manager)
 - [JasonGrass/auto-extension-manager](https://github.com/JasonGrass/auto-extension-manager)
 - [jeevan-lal/Extensity-Ultra](https://github.com/jeevan-lal/Extensity-Ultra)
 
-## Notes
-
-- This repo is a local evolution of the Extensity concept, not the original upstream release branch.
-- Google Drive sync is available when `manifest.json` includes a valid `oauth2.client_id` (see `docs/google-drive-sync.md`).
-- Drive sync requires a **Chrome extension** OAuth client. Desktop OAuth credentials are only for CWS automation.
-- Never store or commit OAuth `client_secret` values in extension source or docs.
-- If you plan to publish this fork to the Chrome Web Store, review permissions, listing content, privacy disclosures, and OAuth requirements before submission.
+License: see [`LICENSE.md`](LICENSE.md).

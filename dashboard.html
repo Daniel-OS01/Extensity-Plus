@@ -22,7 +22,7 @@
   <section id="header">
     <div class="tabs">
       <h1>
-        <img src="images/icon48.png" />
+        <img src="images/icon48.png" alt="" />
         Extensity-Plus
         <span class="version-chip" data-sbind="visible: appVersion, text: appVersion"></span>
         Dashboard
@@ -48,7 +48,7 @@
     </div>
 
     <div class="dashboard-tabs">
-      <button type="button" title="View extension activity history" data-sbind="click: showTabHistory, css:{selected: historyTab}">History</button>
+      <button type="button" title="View extension activity history" data-sbind="click: showTabHistory, css:{selected: historyTab}">Activity &amp; Log</button>
       <button type="button" title="Manage extension groups and colors" data-sbind="click: showTabGroups, css:{selected: groupsTab}">Groups</button>
       <button type="button" title="Manage automatic URL-based rules" data-sbind="click: showTabRules, css:{selected: rulesTab}">URL Rules</button>
       <button type="button" title="Edit extension aliases" data-sbind="click: showTabAliases, css:{selected: aliasesTab}">Aliases</button>
@@ -69,29 +69,20 @@
         <div class="toolbar-row">
           <span class="toolbar-row-label">Show</span>
           <label class="filter-field" for="historySourceFilter">Source
-          <select id="historySourceFilter" data-sbind="value: historySourceFilter">
-            <option value="all">all</option>
-            <option value="off">Off</option>
-            <option value="manual">manual</option>
-            <option value="profile">profile</option>
-            <option value="rule">rule</option>
-            <option value="bulk">bulk</option>
-            <option value="undo">undo</option>
-            <option value="import">import</option>
-          </select>
+          <select id="historySourceFilter" data-sbind="options: historySourceOptions, optionsText: 'label', optionsValue: 'value', value: historySourceFilter"></select>
           </label>
           <label class="filter-field" for="historyResultFilter">Result
           <select id="historyResultFilter" data-sbind="value: historyResultFilter">
             <option value="all">all</option>
             <option value="off">Off</option>
-            <option value="state_changed_on">state_changed_on</option>
-            <option value="state_changed_off">state_changed_off</option>
-            <option value="changed">changed</option>
-            <option value="no_match">no_match</option>
-            <option value="no_op">no_op</option>
-            <option value="scheduled">scheduled</option>
-            <option value="alarm_fired">alarm_fired</option>
-            <option value="closing_tab">closing_tab</option>
+            <option value="state_changed_on">Turned on</option>
+            <option value="state_changed_off">Turned off</option>
+            <option value="changed">Changed</option>
+            <option value="no_match">No match</option>
+            <option value="no_op">No change</option>
+            <option value="scheduled">Scheduled</option>
+            <option value="alarm_fired">Alarm fired</option>
+            <option value="closing_tab">Closing tab</option>
           </select>
           </label>
           <label class="filter-field" for="errorsOnly"><input type="checkbox" id="errorsOnly" data-sbind="checked: errorsOnly" /> Errors only</label>
@@ -114,7 +105,7 @@
           </span>
         </div>
       </div>
-      <ul class="history-list" data-sbind="foreach: unifiedTimeline">
+      <ul class="history-list" data-sbind="foreach: visibleTimeline">
         <li class="timeline-row">
           <span data-sbind="attr:{class: badgeClass}, text: badgeText"></span>
           <span class="row-title">
@@ -129,6 +120,10 @@
           </details>
         </li>
       </ul>
+      <p class="timeline-paging" data-sbind="visible: timelineHasMore">
+        <span class="event-meta" data-sbind="text: timelineShowingText"></span>
+        <button type="button" class="secondary" title="Show the next 100 rows" data-sbind="click: showMoreTimeline">Show more</button>
+      </p>
       <p class="event-meta" data-sbind="visible: unifiedEmpty, text: timelineEmptyMessage"></p>
     </section>
 
@@ -253,14 +248,14 @@
       <h2>Import / Export</h2>
       <div class="footer-actions">
         <button type="button" title="Export all Extensity-Plus data as JSON" data-sbind="click: exportJson">Export JSON</button>
-        <button type="button" title="Export profiles only as JSON" data-sbind="click: exportProfilesJson">Export Profiles JSON</button>
-        <button type="button" title="Export settings only as JSON" data-sbind="click: exportSettingsJson">Export Settings JSON</button>
-        <button type="button" title="Export profiles and settings as JSON" data-sbind="click: exportProfilesSettingsJson">Export Profiles + Settings JSON</button>
-        <button type="button" title="Export URL rules only as JSON" data-sbind="click: exportUrlRulesJson">Export URL Rules JSON</button>
-        <button type="button" title="Export extension data as CSV" data-sbind="click: exportCsv">Export CSV</button>
+        <button type="button" class="secondary" title="Export profiles only as JSON" data-sbind="click: exportProfilesJson">Export Profiles JSON</button>
+        <button type="button" class="secondary" title="Export settings only as JSON" data-sbind="click: exportSettingsJson">Export Settings JSON</button>
+        <button type="button" class="secondary" title="Export profiles and settings as JSON" data-sbind="click: exportProfilesSettingsJson">Export Profiles + Settings JSON</button>
+        <button type="button" class="secondary" title="Export URL rules only as JSON" data-sbind="click: exportUrlRulesJson">Export URL Rules JSON</button>
+        <button type="button" class="secondary" title="Export extension data as CSV" data-sbind="click: exportCsv">Export CSV</button>
         <button type="button" title="Sync with Google Drive now" data-sbind="click: driveSyncNow, disable: busy">Sync Drive</button>
-        <button type="button" title="Upload local data to Google Drive" data-sbind="click: drivePush, disable: busy">Push to Drive</button>
-        <button type="button" title="Download data from Google Drive" data-sbind="click: drivePull, disable: busy">Pull from Drive</button>
+        <button type="button" class="secondary" title="Upload local data to Google Drive" data-sbind="click: drivePush, disable: busy">Push to Drive</button>
+        <button type="button" class="secondary" title="Download data from Google Drive" data-sbind="click: drivePull, disable: busy">Pull from Drive</button>
       </div>
       <p class="event-meta" data-sbind="text: driveSyncStatusLabel"></p>
       <div class="field drive-conflict-panel" data-sbind="visible: driveConflictVisible">
@@ -314,14 +309,14 @@
           </div>
         </div>
         <div class="action-row">
-          <button type="button" title="Refresh the Drive sync status from Google Drive" data-sbind="click: refreshDriveSyncStatus, disable: busy">Refresh Drive status</button>
-          <button type="button" title="Open Google Drive in a new tab" data-sbind="click: openGoogleDrive, disable: busy">Open Google Drive</button>
-          <button type="button" title="Test Drive connection and simulate sync (read-only)" data-sbind="click: testDriveConnection, disable: busy">Test connection</button>
+          <button type="button" class="secondary" title="Refresh the Drive sync status from Google Drive" data-sbind="click: refreshDriveSyncStatus, disable: busy">Refresh Drive status</button>
+          <button type="button" class="secondary" title="Open Google Drive in a new tab" data-sbind="click: openGoogleDrive, disable: busy">Open Google Drive</button>
+          <button type="button" class="secondary" title="Test Drive connection and simulate sync (read-only)" data-sbind="click: testDriveConnection, disable: busy">Test connection</button>
           <button type="button" title="Sync with Google Drive now" data-sbind="click: driveSyncNow, disable: busy">Sync now</button>
-          <button type="button" title="Upload local data to Google Drive" data-sbind="click: drivePush, disable: busy">Push to Drive</button>
-          <button type="button" title="Download data from Google Drive" data-sbind="click: drivePull, disable: busy">Pull from Drive</button>
+          <button type="button" class="secondary" title="Upload local data to Google Drive" data-sbind="click: drivePush, disable: busy">Push to Drive</button>
+          <button type="button" class="secondary" title="Download data from Google Drive" data-sbind="click: drivePull, disable: busy">Pull from Drive</button>
           <button type="button" title="Save Drive sync settings" data-sbind="click: saveDriveSettings, disable: busy">Save settings</button>
-          <button type="button" title="Restore the latest Drive sync backup" data-sbind="click: restoreDriveBackup, disable: busy">Undo last sync</button>
+          <button type="button" class="secondary" title="Restore the latest Drive sync backup" data-sbind="click: restoreDriveBackup, disable: busy">Undo last sync</button>
         </div>
         <div class="drive-test-report" data-sbind="if: driveConnectionReport">
           <div data-sbind="foreach: driveTestSteps">

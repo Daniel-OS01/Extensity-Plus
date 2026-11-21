@@ -580,6 +580,47 @@ document.addEventListener("DOMContentLoaded", function() {
     return entries.map(buildLogRow).reverse();
   }
 
+  var KNOWN_HISTORY_SOURCES = ["manual", "profile", "rule", "bulk", "undo", "import"];
+  var TIMELINE_PAGE_SIZE = 100;
+
+  /**
+   * Builds the Source dropdown: the fixed sources first, then any other source found in the data
+   * (Drive sync rows carry `periodic`, `recovery`, and other triggers).
+   * @param {Array<Object>} rows - Activity rows.
+   * @return {Array<{value: string, label: string}>} Dropdown options.
+   */
+  function buildSourceOptions(rows) {
+    var extras = [];
+    rows.forEach(function(row) {
+      var source = row.triggeredBy;
+      if (source && KNOWN_HISTORY_SOURCES.indexOf(source) === -1 && extras.indexOf(source) === -1) {
+        extras.push(source);
+      }
+    });
+    extras.sort();
+    return [{ label: "all", value: "all" }, { label: "Off", value: "off" }].concat(
+      KNOWN_HISTORY_SOURCES.concat(extras).map(function(source) {
+        return { label: source, value: source };
+      })
+    );
+  }
+
+  /**
+   * Describes how many timeline rows are rendered.
+   * @param {number} total - Rows that match the filters.
+   * @param {number} limit - Rows to render.
+   * @return {{hasMore: boolean, shown: number, text: string}} Paging state; `text` is empty when every row is shown.
+   */
+  function buildPagingSummary(total, limit) {
+    var shown = Math.min(total, limit);
+    var hasMore = total > limit;
+    return {
+      hasMore: hasMore,
+      shown: shown,
+      text: hasMore ? "Showing " + shown + " of " + total : ""
+    };
+  }
+
   /**
    * Applies the Source and Result view filters to Activity rows.
    * `off` in either filter hides every Activity row; recording is not affected.
@@ -764,6 +805,10 @@ document.addEventListener("DOMContentLoaded", function() {
     self.driveOAuthRedirectUri = ko.pureComputed(function() {
       var s = self.driveStatus();
       return (s && s.extensionId) ? "https://" + s.extensionId + ".chromiumapp.org/drive" : "";
+    });
+
+    self.historySourceOptions = ko.pureComputed(function() {
+      return buildSourceOptions(self.historyRows());
     });
 
     self.filteredHistoryRows = ko.pureComputed(function() {
@@ -1379,6 +1424,10 @@ document.addEventListener("DOMContentLoaded", function() {
         if (changes.extensityLog) {
           self.logEntries(buildLogRows(changes.extensityLog.newValue));
         }
+        if (changes.eventHistory) {
+          // Rows only: a full applyState would rebuild the editors and drop unsaved edits.
+          self.applyHistory(Array.isArray(changes.eventHistory.newValue) ? changes.eventHistory.newValue : []);
+        }
         if (changes.logLevel && typeof changes.logLevel.newValue === "string") {
           self.logLevel(changes.logLevel.newValue);
         }
@@ -1442,6 +1491,23 @@ document.addEventListener("DOMContentLoaded", function() {
     self.unifiedEmpty = ko.pureComputed(function() {
       return self.unifiedTimeline().length === 0;
     });
+
+    self.timelineLimit = ko.observable(TIMELINE_PAGE_SIZE);
+    self.timelinePaging = ko.pureComputed(function() {
+      return buildPagingSummary(self.unifiedTimeline().length, self.timelineLimit());
+    });
+    self.visibleTimeline = ko.pureComputed(function() {
+      return self.unifiedTimeline().slice(0, self.timelineLimit());
+    });
+    self.timelineHasMore = ko.pureComputed(function() {
+      return self.timelinePaging().hasMore;
+    });
+    self.timelineShowingText = ko.pureComputed(function() {
+      return self.timelinePaging().text;
+    });
+    self.showMoreTimeline = function() {
+      self.timelineLimit(self.timelineLimit() + TIMELINE_PAGE_SIZE);
+    };
 
     self.timelineEmptyMessage = ko.pureComputed(function() {
       return buildTimelineEmptyMessage(
@@ -1515,6 +1581,8 @@ document.addEventListener("DOMContentLoaded", function() {
       buildDriveStatusRows: buildDriveStatusRows,
       buildHistoryRow: buildHistoryRow,
       buildLogRows: buildLogRows,
+      buildPagingSummary: buildPagingSummary,
+      buildSourceOptions: buildSourceOptions,
       buildTimeline: buildTimeline,
       buildTimelineEmptyMessage: buildTimelineEmptyMessage,
       buildTimelineText: buildTimelineText,

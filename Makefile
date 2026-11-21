@@ -2,7 +2,7 @@
 FILES=dashboard.html index.html options.html profiles.html manifest.json
 DIRS=images styles js fonts
 DIST=dist
-JS=background.js dashboard.js drive-oauth-config.js drive-sync.js engine.js history-logger.js import-export.js index.js migration.js options.js profiles.js reminders.js storage.js url-rules.js
+JS=background.js dashboard.js drive-oauth-config.js drive-sync.js engine.js history-logger.js import-export.js index.js logger.js migration.js options.js profiles.js reminders.js storage.js url-rules.js
 CSS=dashboard.css index.css options.css normalize.css
 JSMIN=npx --no-install uglify-js --compress --mangle
 CSSMIN=npx --no-install sass --stdin --style=compressed

@@ -761,7 +761,52 @@ test("dashboard Recording switch saves only activityLogEnabled", () => {
   const html = fs.readFileSync(path.join(repoRoot, "dashboard.html"), "utf8");
   assert.match(source, /ExtensityApi\.saveOptions\(\{ activityLogEnabled: next \}\)/);
   assert.match(html, /role="switch"[^>]*data-sbind="[^"]*click: toggleRecording/);
-  assert.match(html, /<option value="off">Off<\/option>[\s\S]*<option value="off">Off<\/option>/);
+  // Result has a static Off option; Source gets its Off option from buildSourceOptions.
+  assert.match(html, /id="historyResultFilter"[^>]*>\s*<option value="all">all<\/option>\s*<option value="off">Off<\/option>/);
+});
+
+test("dashboard buildSourceOptions adds sources found in the data", () => {
+  const helpers = loadDashboardInternals();
+  const options = normalize(helpers.buildSourceOptions([
+    { triggeredBy: "periodic" },
+    { triggeredBy: "manual" },
+    { triggeredBy: "periodic" },
+    { triggeredBy: "recovery" },
+    { triggeredBy: "" }
+  ]));
+  const values = options.map((option) => option.value);
+  assert.deepEqual(values.slice(0, 2), ["all", "off"]);
+  assert.deepEqual(values.slice(2, 8), ["manual", "profile", "rule", "bulk", "undo", "import"]);
+  assert.deepEqual(values.slice(8), ["periodic", "recovery"]);
+  assert.equal(options[1].label, "Off");
+});
+
+test("dashboard buildPagingSummary limits rendered rows", () => {
+  const helpers = loadDashboardInternals();
+  assert.deepEqual(normalize(helpers.buildPagingSummary(412, 100)), { hasMore: true, shown: 100, text: "Showing 100 of 412" });
+  assert.deepEqual(normalize(helpers.buildPagingSummary(40, 100)), { hasMore: false, shown: 40, text: "" });
+});
+
+test("dashboard Activity & Log small wins are wired in the page", () => {
+  const source = fs.readFileSync(path.join(repoRoot, "js/dashboard.js"), "utf8");
+  const html = fs.readFileSync(path.join(repoRoot, "dashboard.html"), "utf8");
+  assert.match(html, /data-sbind="click: showTabHistory, css:\{selected: historyTab\}">Activity &amp; Log<\/button>/);
+  assert.match(html, /<option value="state_changed_on">Turned on<\/option>/);
+  assert.match(html, /<option value="state_changed_off">Turned off<\/option>/);
+  assert.match(html, /<option value="no_match">No match<\/option>/);
+  assert.match(html, /id="historySourceFilter" data-sbind="options: historySourceOptions/);
+  assert.match(html, /click: showMoreTimeline/);
+  assert.match(html, /<img src="images\/icon48\.png" alt="[^"]*"/);
+  assert.match(source, /changes\.eventHistory[\s\S]{0,120}self\.applyHistory\(/);
+});
+
+test("Makefile minifies every first-party script in js/", () => {
+  const makefile = fs.readFileSync(path.join(repoRoot, "Makefile"), "utf8");
+  const listed = makefile.match(/^JS=(.*)$/m)[1].trim().split(/\s+/);
+  const scripts = fs.readdirSync(path.join(repoRoot, "js")).filter((name) => name.endsWith(".js"));
+  for (const name of scripts) {
+    assert.ok(listed.includes(name), name + " is missing from the Makefile JS= list");
+  }
 });
 
 test("dashboard source refreshes Drive status and exposes the dashboard action", () => {

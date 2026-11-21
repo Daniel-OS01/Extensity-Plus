@@ -461,3 +461,101 @@ test("D9b: with History enabled, idle syncs do not write to Drive", async () => 
   await assertSettled(drive, [a]);
   await assertSettled(drive, [a]);
 });
+
+test("a category unchecked on one device stays in the Drive file", async () => {
+  const drive = new FakeDrive();
+  const a = await boot("A", drive);
+  const b = await boot("B", drive, { driveSyncCategories: { aliases: false, groups: true, history: false, options: true, profiles: true, urlRules: true } });
+  await a.ok({ type: "SAVE_ALIAS", aliases: { [E1]: "One" } });
+  await b.ok({ type: "SAVE_ALIAS", aliases: { [E2]: "B-private" } });
+  await b.ok({ type: "SAVE_URL_RULES", urlRules: [rule("rB")] });
+  await sync(a);
+  await sync(b);
+  assert.deepEqual(driveCategories(drive).aliases && driveCategories(drive).aliases.data, { [E1]: "One" }, "B stripped Aliases from Drive");
+  assertNoConflicts(await converge([a, b]));
+  assert.deepEqual(local(a, "aliases"), { [E1]: "One" });
+  assert.deepEqual(local(b, "aliases"), { [E2]: "B-private" });
+  assert.deepEqual(ruleIds(a), ["rB"]);
+  await assertSettled(drive, [a, b]);
+});
+
+test("renaming one of two aliases does not pause automatic sync", async () => {
+  const drive = new FakeDrive();
+  const a = await boot("A", drive);
+  const b = await boot("B", drive, { driveTimeBasedSync: true });
+  await a.ok({ type: "SAVE_ALIAS", aliases: { [E1]: "One", [E2]: "Two" } });
+  assertNoConflicts(await converge([a, b]));
+  await a.ok({ type: "SAVE_ALIAS", aliases: { [E1]: "One-renamed", [E2]: "Two" } });
+  await sync(a);
+  await b.fireAlarm("extensity-drive-auto-sync");
+  await settle(200);
+  assert.equal(local(b, "drivePendingConflict"), null, "periodic sync paused on a one-item rename");
+  assert.deepEqual(local(b, "aliases"), { [E1]: "One-renamed", [E2]: "Two" });
+  assertNoConflicts(await converge([a, b]));
+  await assertSettled(drive, [a, b]);
+});
+
+test("an interrupted sync leaves a readable recovery notice", async () => {
+  const drive = new FakeDrive();
+  const a = await boot("A", drive);
+  let b = await boot("B", drive);
+  await a.ok({ type: "SAVE_ALIAS", aliases: { [E1]: "One" } });
+  assertNoConflicts(await converge([a, b]));
+  await b.ok({ type: "SAVE_ALIAS", aliases: { [E1]: "One", [E3]: "Three-B" } });
+  // Fail the post-write verification download once, which keeps the recovery journal.
+  let patched = false;
+  drive.beforeRequest = async (method, parsed) => {
+    if (method === "PATCH") {
+      patched = true;
+      return null;
+    }
+    if (patched && parsed.searchParams.get("alt") === "media") {
+      drive.beforeRequest = null;
+      return drive.respond(200, JSON.stringify({ categories: {}, version: "2.0.0" }), "application/json");
+    }
+    return null;
+  };
+  assert.equal((await sync(b)).status, "error");
+  b = await b.restart();
+  const pending = local(b, "drivePendingConflict");
+  assert.equal(pending.reason, "transaction_recovered");
+  const describe = b.self.ExtensityDriveSync.describeDrivePendingConflict;
+  assert.match(describe(pending), /interrupted/i);
+  assert.match(describe({ reason: "transaction_recovery_missing_backup" }), /interrupted/i);
+  assert.equal((await b.uiResolve("cancel")).result.status, "cancelled");
+  assertNoConflicts(await converge([a, b]));
+  await assertSettled(drive, [a, b]);
+});
+
+test("SAVE_PROFILES saves through the background and schedules change sync", async () => {
+  const drive = new FakeDrive();
+  const a = await boot("A", drive, { driveChangeBasedSync: true });
+  await sync(a);
+  delete a.alarms["extensity-drive-change-sync"];
+  const response = await a.send({ meta: { Work: { color: "#123456" } }, profiles: { Work: [E1] }, type: "SAVE_PROFILES" });
+  assert.equal(response.ok, true, response.error);
+  a.stopTimers();
+  assert.ok(Object.prototype.hasOwnProperty.call(a.alarms, "extensity-drive-change-sync"), "change sync was not scheduled");
+  const state = await profiles(a);
+  assert.deepEqual(plain(state.map.Work), [E1]);
+  assert.equal(state.meta.Work.color, "#123456");
+  assertNoConflicts(await converge([a]));
+  await assertSettled(drive, [a]);
+});
+
+test("the connection test reports conflicts the way a real sync would", async () => {
+  const drive = new FakeDrive();
+  const a = await boot("A", drive);
+  const b = await boot("B", drive);
+  await a.ok({ type: "SAVE_ALIAS", aliases: { [E1]: "One" } });
+  assertNoConflicts(await converge([a, b]));
+  await b.ok({ type: "SAVE_ALIAS", aliases: { [E1]: "One", [E2]: "Two-B" } });
+  await sync(b);
+  await a.ok({ type: "SAVE_ALIAS", aliases: { [E1]: "One", [E3]: "Three-A" } });
+  const report = (await a.ok({ type: "TEST_DRIVE_CONNECTION" })).report;
+  const dryRun = report.steps.find((entry) => entry.name === "dry_run_conflicts");
+  assert.equal(dryRun.status, "ok", dryRun.detail);
+  assert.equal((await sync(a)).status, "merged");
+  assertNoConflicts(await converge([a, b]));
+  await assertSettled(drive, [a, b]);
+});

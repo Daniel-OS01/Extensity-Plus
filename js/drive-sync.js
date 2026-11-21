@@ -74,6 +74,9 @@
   var DRIVE_RETRYABLE_HTTP_STATUSES = [429, 500, 502, 503, 504];
   var DRIVE_BACKUP_LIMIT = 3;
   var DRIVE_FAILSAFE_ABSOLUTE_DELETIONS = 1000;
+  // The percentage rules apply only once this many items would be deleted or replaced, so
+  // renaming one of two aliases is not treated as a destructive change.
+  var DRIVE_FAILSAFE_MIN_ITEMS = 5;
   var DRIVE_MAX_CONCURRENCY_RETRIES = 3;
   var activeSyncPromise = null;
 
@@ -1155,10 +1158,11 @@
       if (
         (entry.beforeCount > 0 && entry.afterCount === 0)
         || entry.deleted >= DRIVE_FAILSAFE_ABSOLUTE_DELETIONS
-        || (entry.deleted > 0 && entry.deletionPercent >= threshold)
+        || (entry.deleted >= DRIVE_FAILSAFE_MIN_ITEMS && entry.deletionPercent >= threshold)
         || (
           options && options.driveAutomaticTrigger
           && entry.beforeCount > 0
+          && entry.changed + entry.deleted >= DRIVE_FAILSAFE_MIN_ITEMS
           && (entry.changed + entry.deleted) / entry.beforeCount * 100 >= threshold
         )
       ) {
@@ -1232,6 +1236,10 @@
           " (" + (failsafe.deletionPercent || 0) + "%, threshold " + (failsafe.thresholdPercent || 0) +
           "%). Adjust \"Protect destructive changes\" in Settings if this is intentional, then Cancel and retry.";
       }
+      case "transaction_recovered":
+        return "A sync was interrupted before it finished, so this device was restored to how it was before that sync. Click Cancel, check your data, then Sync again.";
+      case "transaction_recovery_missing_backup":
+        return "A sync was interrupted before it finished, and the backup needed to restore this device is missing. Check your data, then click Cancel and Sync again.";
       default:
         throw new Error("Unhandled Drive conflict reason: " + reason);
     }
@@ -1472,6 +1480,27 @@
     });
     merged.exportedAt = nowMs();
     return merged;
+  }
+
+  /**
+   * Copies the Drive categories this device does not sync into an envelope about to be
+   * written, so unchecking a category here never removes it for the devices that sync it.
+   * @param {Object} envelope - The envelope to write.
+   * @param {Object} remoteEnvelope - The envelope currently in the Drive file.
+   * @param {Object} categoryFlags - This device's category flags.
+   * @return {Object} A copy of `envelope` that also carries those categories unchanged.
+   */
+  function withUnsyncedRemoteCategories(envelope, remoteEnvelope, categoryFlags) {
+    var enabled = enabledCategoryList(categoryFlags);
+    var remoteCategories = remoteEnvelope && isObject(remoteEnvelope.categories) ? remoteEnvelope.categories : {};
+    var next = clone(envelope);
+    next.categories = isObject(next.categories) ? next.categories : {};
+    Object.keys(remoteCategories).forEach(function(categoryId) {
+      if (enabled.indexOf(categoryId) === -1 && !Object.prototype.hasOwnProperty.call(next.categories, categoryId)) {
+        next.categories[categoryId] = clone(remoteCategories[categoryId]);
+      }
+    });
+    return next;
   }
 
   /**
@@ -2489,10 +2518,20 @@
     if (typeof config.loadContext === "function") {
       try {
         var context = await config.loadContext();
-        var categoryFlags = normalizeCategoryFlags(context.options && context.options.driveSyncCategories);
+        var contextOptions = context.options || {};
+        var categoryFlags = normalizeCategoryFlags(contextOptions.driveSyncCategories);
         var localMeta = normalizeDriveMeta(context.localState && context.localState.driveSyncMeta);
         if (remoteEnvelope) {
-          var conflicts = detectConflicts(localMeta, remoteEnvelope, categoryFlags);
+          // Same item-level comparison a real sync makes, including its baseline rule.
+          var conflicts = buildThreeWayEnvelope(
+            buildEnvelope(context, categoryFlags, contextOptions.syncWriterId || ""),
+            remoteEnvelope,
+            fileId === localMeta.fileId ? localMeta.baselineCategories : {},
+            categoryFlags,
+            null,
+            contextOptions.syncWriterId || "",
+            contextOptions.driveSyncDeletionPolicy
+          ).conflicts;
           if (conflicts.length === 0) {
             step("dry_run_conflicts", "ok", "No conflicts detected. Local and remote are in sync.");
           } else {
@@ -2751,6 +2790,10 @@
         resultEnvelope = threeWay.envelope;
         localResultEnvelope = threeWay.localEnvelope;
         status = "merged";
+      }
+
+      if (remoteEnvelope && direction !== "pull") {
+        resultEnvelope = withUnsyncedRemoteCategories(resultEnvelope, remoteEnvelope, categoryFlags);
       }
 
       var remoteDiffers = direction !== "pull" && (!remoteEnvelope || mergedDataDiffers(resultEnvelope, remoteEnvelope, categoryFlags));

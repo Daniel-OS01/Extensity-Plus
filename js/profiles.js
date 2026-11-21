@@ -586,7 +586,7 @@ document.addEventListener("DOMContentLoaded", function() {
 
     self.save = function() {
       self.busy(true);
-      ExtensityStorage.saveProfiles(self.profiles.toMap(), self.profiles.toMeta()).then(function() {
+      ExtensityApi.saveProfiles(self.profiles.toMap(), self.profiles.toMeta()).then(function() {
         fadeOutMessage("save-result");
         return self.refresh();
       }).catch(function(error) {

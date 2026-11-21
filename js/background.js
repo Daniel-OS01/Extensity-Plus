@@ -1835,6 +1835,12 @@ importScripts(
     return buildState();
   }
 
+  async function saveProfileEdits(payload) {
+    await storage.saveProfiles(payload.profiles || {}, payload.meta);
+    await touchDriveCategories(["profiles"]);
+    return buildState();
+  }
+
   async function saveUrlRules(payload) {
     await storage.saveLocalState({
       urlRules: urlRules.normalizeRules(payload.urlRules || [])
@@ -2583,6 +2589,8 @@ importScripts(
         return { state: await saveGroups(message) };
       case "SAVE_OPTIONS":
         return { state: await saveOptions(message) };
+      case "SAVE_PROFILES":
+        return { state: await saveProfileEdits(message) };
       case "SAVE_URL_RULES":
         return { state: await saveUrlRules(message) };
       case "TEST_URL_RULES":

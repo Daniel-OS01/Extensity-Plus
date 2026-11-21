@@ -977,6 +977,9 @@
     saveOptions: function(options) {
       return chromeMessage({ options: options, type: "SAVE_OPTIONS" });
     },
+    saveProfiles: function(profiles, meta) {
+      return chromeMessage({ meta: meta, profiles: profiles, type: "SAVE_PROFILES" });
+    },
     saveUrlRules: function(urlRules) {
       return chromeMessage({ type: "SAVE_URL_RULES", urlRules: urlRules });
     },

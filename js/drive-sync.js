@@ -50,6 +50,18 @@
     "driveAuthStatus",
     "syncWriterId"
   ];
+  // Options that are not the user's portable settings: `activeProfile` is what this device
+  // last applied; `profileMeta` duplicates the Profiles category; `migration` and every
+  // `migration_*` key record this install's upgrades; `syncMode`, `localProfiles` and
+  // `syncProfilesPartial` describe how this browser uses chrome.storage.sync.
+  var DRIVE_NON_SYNCED_OPTION_KEYS = [
+    "activeProfile",
+    "localProfiles",
+    "migration",
+    "profileMeta",
+    "syncMode",
+    "syncProfilesPartial"
+  ];
   // How a delete on one device is applied to the others.
   // "additive"  - never remove an item that still exists on the other side (default, safest).
   // "mirror"    - propagate deletions, so both sides converge on the same set.
@@ -204,10 +216,21 @@
     return DELETION_POLICIES.indexOf(value) === -1 ? DELETION_POLICY_ADDITIVE : value;
   }
 
+  /**
+   * Builds the synced Options payload. Applied to outgoing and incoming data alike, so a
+   * Drive file written by an older version cannot set these keys on this device either.
+   * @param {Object} options - Options as stored on this device or as read from Drive.
+   * @return {Object} The options that are the user's settings and belong in the payload.
+   */
   function buildOptionsCategoryPayload(options) {
     var payload = clone(options || {});
-    DRIVE_SYNC_OPTION_KEYS.concat(DRIVE_DEVICE_LOCAL_OPTION_KEYS).forEach(function(key) {
+    DRIVE_SYNC_OPTION_KEYS.concat(DRIVE_DEVICE_LOCAL_OPTION_KEYS, DRIVE_NON_SYNCED_OPTION_KEYS).forEach(function(key) {
       delete payload[key];
+    });
+    Object.keys(payload).forEach(function(key) {
+      if (key.indexOf("migration_") === 0) {
+        delete payload[key];
+      }
     });
     delete payload._syncOptionsUpdatedAt;
     return payload;
@@ -720,7 +743,14 @@
    */
   function categoryItemMap(categoryId, data) {
     var result = {};
-    if (categoryId === "options" || categoryId === "aliases") {
+    if (categoryId === "options") {
+      var options = isObject(data) ? buildOptionsCategoryPayload(data) : {};
+      Object.keys(options).forEach(function(key) {
+        result[key] = options[key];
+      });
+      return result;
+    }
+    if (categoryId === "aliases") {
       Object.keys(isObject(data) ? data : {}).forEach(function(key) {
         result[key] = data[key];
       });
@@ -1257,7 +1287,7 @@
       return false;
     }
     if (categoryId === "options") {
-      patches.syncOptions = Object.assign(patches.syncOptions || {}, categoryData);
+      patches.syncOptions = Object.assign(patches.syncOptions || {}, buildOptionsCategoryPayload(categoryData));
       return true;
     }
     if (categoryId === "profiles") {

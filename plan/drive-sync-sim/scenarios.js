@@ -1,4 +1,4 @@
-const { FakeDrive, createDevice, plain, settle } = require("./harness");
+const { FakeDrive, createDevice, plain, settle } = require("../../tests/helpers/sync-sim");
 
 const E1 = "extaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1";
 const E2 = "extaaaaaaaaaaaaaaaaaaaaaaaaaaaaa2";

@@ -1,4 +1,4 @@
-const { FakeDrive, createDevice, plain, settle } = require("./harness");
+const { FakeDrive, createDevice, plain, settle } = require("../../tests/helpers/sync-sim");
 const E1 = "extaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1", E2 = "extaaaaaaaaaaaaaaaaaaaaaaaaaaaaa2", E3 = "extaaaaaaaaaaaaaaaaaaaaaaaaaaaaa3";
 const rule = (id) => ({ active: true, disableIds: [], enableIds: [E1], id, matchMethod: "wildcard", name: id, timeout: 0, urlPattern: "*://" + id + ".example/*" });
 const FULL = { __always_on: [E1], __base: [E1], __favorites: [E1] };

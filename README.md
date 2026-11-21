@@ -14,20 +14,12 @@ Extensity-Plus is a Manifest V3 extension manager for Chrome and Chromium-based 
 
 ## Releases
 
-Newest first. Full notes and downloads are on the [GitHub Releases page](https://github.com/Daniel-OS01/Extensity-Plus/releases).
+Significant updates, oldest first, ending with the latest release. All versions and full notes are on the [GitHub Releases page](https://github.com/Daniel-OS01/Extensity-Plus/releases).
 
-- **v4.7.4** (2026-11-21): Faster popup search and bulk toggle/profile apply. Accessibility: the profile delete control is a labelled button that names its profile, and inputs that only had a placeholder now have labels.
-- **v4.7.3** (2026-11-07): Faster extension list building. Accessibility: the popup search input and the settings gear icon now have accessible names.
-- **v4.7.2** (2026-08-03): URL rules can be exported and imported as JSON. Sync no longer wipes categories, and malformed sync data no longer clears other devices. Adds an additive merge option and an Activity & Log toggle.
-- **v4.7.1** (2026-08-02): Fixes a recurring `preview_stale` loop and needless re-uploads on every Drive sync.
-- **v4.7.0** (2026-07-23): Drive sync safety overhaul. Every push, pull or conflict resolution now asks for confirmation first, a safeguard pauses changes that would delete too much, and item-level merging uses sync format v2.0.0. Adds sync strategies and triggers, *Undo last sync*, deletion of duplicate Drive files, and an *Errors only* log filter. **Breaking:** `ExtensityApi.syncDrive` and `resolveDriveConflict` are now async and require the confirmation token.
-- **v4.5.0** (2026-07-20): Chrome Web Store bundle script cleanup; no user-facing changes.
-- **v4.4.0** (2026-07-20): Version bump only.
-- **v4.3.0** (2026-07-20): Better Drive sync merge logic and a single Activity & Log timeline in the dashboard. Release builds now inject the Drive web OAuth client, and Chrome Web Store releases can be run manually.
-- **v4.2.2** (2026-05-15): Google Drive sync, the tiered Browser Sync modes (Full / Smart / Minimal), the dashboard Log tab and the Drive connection test. Also fixes scoped JSON import for profile and settings exports.
-- **v4.0.2** (2026-05-15): Release automation: tag-based Chrome Web Store uploads, an OAuth bootstrap fix, and unused permissions removed.
-- **v4.0.1** (2026-04-25): URL rules now match the actual page tab, not whichever window has focus when the popup opens.
-- **v4.0.0** (2026-04-25): First 4.x release. The popup's *Copy link* button is replaced by *Add to URL Rules*.
+- **v4.2.2** (2026-05-15): Adds Google Drive sync, the Full / Smart / Minimal browser-sync modes, the dashboard Log tab and a Drive connection test.
+- **v4.7.0** (2026-07-23): Drive sync safety overhaul. Every push, pull or conflict resolution now asks for confirmation first, a safeguard pauses changes that would delete too much, and *Undo last sync* restores the last backup. **Breaking:** `ExtensityApi.syncDrive` and `resolveDriveConflict` are now async and require the confirmation token.
+- **v4.7.2** (2026-08-03): URL rules can be exported and imported as JSON. Sync no longer wipes categories, and malformed sync data no longer clears other devices.
+- **v4.7.4** (2026-11-21, latest): Faster popup search and bulk toggle/profile apply. Accessibility: the profile delete button names its profile, and inputs that only had a placeholder now have labels.
 
 ## Screenshots
 

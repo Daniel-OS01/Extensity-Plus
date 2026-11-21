@@ -10,6 +10,7 @@
 
 <p align="center">
   <a href="https://github.com/Daniel-OS01/Extensity-Plus/releases"><img src="https://img.shields.io/github/v/release/Daniel-OS01/Extensity-Plus?label=release" alt="Latest release" /></a>
+  <a href="https://chromewebstore.google.com/detail/extensity-plus/gbojjphhdboeaafjdilfibonoflhgcde"><img src="https://img.shields.io/badge/Chrome%20Web%20Store-install-4285F4?logo=googlechrome&amp;logoColor=white" alt="Install from the Chrome Web Store" /></a>
   <img src="https://img.shields.io/badge/manifest-v3-4285F4" alt="Manifest V3" />
   <img src="https://img.shields.io/badge/browsers-Chrome%20%7C%20Brave-orange" alt="Chrome and Brave" />
 </p>
@@ -20,7 +21,7 @@
 - 🗂️ **Profiles** switch between whole sets of extensions (for example *Work* or *Dev*). `Always On` extensions stay enabled.
 - 🌐 **URL rules** turn extensions on or off automatically, depending on the site you're on.
 - 🔄 **Sync** settings across devices with browser sync, or with optional Google Drive sync.
-- 🚀 **Try it:** `chrome://extensions` → *Developer mode* → *Load unpacked* → pick this folder.
+- 🚀 **Try it:** [install from the Chrome Web Store](https://chromewebstore.google.com/detail/extensity-plus/gbojjphhdboeaafjdilfibonoflhgcde). The listing works in Brave too.
 
 ## 🆕 Releases
 
@@ -72,6 +73,10 @@
 - 🔔 Optional reminders to turn an extension back off after you enable it manually.
 
 ## 🚀 Install
+
+**From the store:** [Extensity-Plus on the Chrome Web Store](https://chromewebstore.google.com/detail/extensity-plus/gbojjphhdboeaafjdilfibonoflhgcde)
+
+**From source** (for development):
 
 1. Clone the repo. There is nothing to build.
 2. Open `chrome://extensions` or `brave://extensions` and turn on **Developer mode**.

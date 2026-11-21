@@ -239,6 +239,16 @@
     return payload;
   }
 
+  // Profile membership item keys encode the (profile name, extension ID) pair as JSON, so
+  // no character in either part can be misread. Splitting a "name:id" key on a colon
+  // corrupted profile names containing ":" and would silently move memberships already
+  // stored under such names. Keys are internal: baselines store category data, not keys.
+  var PROFILE_MEMBER_KEY_PREFIX = "member:";
+
+  function profileMemberKey(profileName, extensionId) {
+    return PROFILE_MEMBER_KEY_PREFIX + JSON.stringify([String(profileName), String(extensionId)]);
+  }
+
   // Member order carries no meaning, so member lists travel sorted. Two devices that added
   // members in a different order would otherwise rewrite Drive on every sync.
   function sortedProfileMap(map) {
@@ -411,7 +421,13 @@
     merged.sort(function(left, right) {
       var leftTs = typeof left.timestamp === "number" ? left.timestamp : 0;
       var rightTs = typeof right.timestamp === "number" ? right.timestamp : 0;
-      return leftTs - rightTs;
+      if (leftTs !== rightTs) {
+        return leftTs - rightTs;
+      }
+      // Ties break by id, so every device builds the same order and the same 500-record cut.
+      var leftId = String(left.id);
+      var rightId = String(right.id);
+      return leftId < rightId ? -1 : leftId > rightId ? 1 : 0;
     });
     // Keep the most recent records, mirroring history-logger.js truncation.
     return merged.slice(-HISTORY_MAX_RECORDS);
@@ -766,7 +782,7 @@
         // The profile itself is an item, so a profile without members still exists.
         result["profile:" + profileName] = true;
         (Array.isArray(profileMap[profileName]) ? profileMap[profileName] : []).forEach(function(extensionId) {
-          result["member:" + profileName + ":" + extensionId] = true;
+          result[profileMemberKey(profileName, extensionId)] = true;
         });
       });
       Object.keys(profileData.meta || {}).forEach(function(profileName) {
@@ -923,12 +939,10 @@
         if (key.indexOf("profile:") === 0 && items[key]) {
           var existingName = key.slice(8);
           profiles.map[existingName] = profiles.map[existingName] || [];
-        } else if (key.indexOf("member:") === 0 && items[key]) {
-          // Split on the last colon: extension IDs never contain one, profile names can.
-          var memberKey = key.slice(7);
-          var separator = memberKey.lastIndexOf(":");
-          var profileName = memberKey.slice(0, separator);
-          var extensionId = memberKey.slice(separator + 1);
+        } else if (key.indexOf(PROFILE_MEMBER_KEY_PREFIX) === 0 && items[key]) {
+          var member = JSON.parse(key.slice(PROFILE_MEMBER_KEY_PREFIX.length));
+          var profileName = member[0];
+          var extensionId = member[1];
           profiles.map[profileName] = (profiles.map[profileName] || []).concat([extensionId]);
         } else if (key.indexOf("meta:") === 0) {
           profiles.meta[key.slice(5)] = clone(items[key]);
@@ -1064,6 +1078,23 @@
           localResultItems[itemId] = clone(chosenValue);
         }
       });
+      if (categoryId === "profiles" && additiveOnly) {
+        // A profile deleted here stays deleted here, even when another device has since
+        // added members or appearance settings to it.
+        Object.keys(baseItems).forEach(function(itemId) {
+          if (itemId.indexOf("profile:") !== 0 || Object.prototype.hasOwnProperty.call(localItems, itemId)) {
+            return;
+          }
+          var deletedProfileName = itemId.slice(8);
+          Object.keys(localResultItems).forEach(function(resultItemId) {
+            var isMember = resultItemId.indexOf(PROFILE_MEMBER_KEY_PREFIX) === 0
+              && JSON.parse(resultItemId.slice(PROFILE_MEMBER_KEY_PREFIX.length))[0] === deletedProfileName;
+            if (isMember || resultItemId === "meta:" + deletedProfileName) {
+              delete localResultItems[resultItemId];
+            }
+          });
+        });
+      }
       var updatedAt = Math.max(localCategory.updatedAt || 0, remoteCategory.updatedAt || 0) || nowMs();
       result.categories[categoryId] = {
         data: orderedCategoryData(categoryId, mergedItems, baseData, localCategory.data, remoteCategory.data),
@@ -1499,6 +1530,43 @@
       if (enabled.indexOf(categoryId) === -1 && !Object.prototype.hasOwnProperty.call(next.categories, categoryId)) {
         next.categories[categoryId] = clone(remoteCategories[categoryId]);
       }
+    });
+    return next;
+  }
+
+  /**
+   * Builds what a pull leaves on this device, so repeated pulls of the same file compare
+   * equal: each enabled category in the shape it is applied in (device-only options removed,
+   * options merged over this device's own), or this device's copy when the Drive file lacks
+   * the category or holds it in an unusable shape and the pull therefore skips it.
+   * @param {Object} remoteEnvelope - The envelope read from Drive.
+   * @param {Object} localEnvelope - This device's current envelope.
+   * @param {Object} categoryFlags - This device's category flags.
+   * @return {Object} The envelope describing this device after the pull.
+   */
+  function buildPulledLocalEnvelope(remoteEnvelope, localEnvelope, categoryFlags) {
+    var remoteCategories = isObject(remoteEnvelope.categories) ? remoteEnvelope.categories : {};
+    var localCategories = localEnvelope && isObject(localEnvelope.categories) ? localEnvelope.categories : {};
+    var next = { categories: {}, exportedAt: remoteEnvelope.exportedAt, version: remoteEnvelope.version, writerId: remoteEnvelope.writerId };
+    enabledCategoryList(categoryFlags).forEach(function(categoryId) {
+      var remoteCategory = remoteCategories[categoryId];
+      var localCategory = localCategories[categoryId];
+      if (!isObject(remoteCategory) || !isApplicableCategoryData(categoryId, remoteCategory.data)) {
+        if (localCategory) {
+          next.categories[categoryId] = clone(localCategory);
+        }
+        return;
+      }
+      var data;
+      if (categoryId === "options") {
+        // Applying options merges them over this device's own, so keys the file lacks stay.
+        data = Object.assign({}, clone(localCategory ? localCategory.data : {}), buildOptionsCategoryPayload(remoteCategory.data));
+      } else if (categoryId === "aliases" || categoryId === "profiles") {
+        data = categoryDataFromItemMap(categoryId, categoryItemMap(categoryId, remoteCategory.data));
+      } else {
+        data = clone(remoteCategory.data);
+      }
+      next.categories[categoryId] = { data: data, updatedAt: remoteCategory.updatedAt };
     });
     return next;
   }
@@ -2771,7 +2839,7 @@
           return buildSyncResult("noop", { reason: "no_remote_file" });
         }
         resultEnvelope = remoteEnvelope;
-        localResultEnvelope = remoteEnvelope;
+        localResultEnvelope = buildPulledLocalEnvelope(remoteEnvelope, localEnvelope, categoryFlags);
         status = "pulled";
       } else if (direction === "push") {
         resultEnvelope = remoteEnvelope ? localEnvelope : stampEnvelopeForInitialUpload(localEnvelope);
@@ -2799,6 +2867,15 @@
       var remoteDiffers = direction !== "pull" && (!remoteEnvelope || mergedDataDiffers(resultEnvelope, remoteEnvelope, categoryFlags));
       var localDiffers = direction !== "push" && mergedDataDiffers(localResultEnvelope, localEnvelope, categoryFlags);
       if (!remoteDiffers && !localDiffers) {
+        if (remoteEnvelope) {
+          // Nothing to write, but record the file and baseline this comparison was made
+          // against. Without them, a device whose data already matched Drive on its first
+          // sync would later read its own deletions as new items arriving from Drive.
+          var settledMeta = mergeEnvelopeAfterSync(driveMeta, resultEnvelope, categoryFlags);
+          if (!dataEqual(settledMeta, normalizeDriveMeta(context.localState.driveSyncMeta))) {
+            await saveDriveMeta(settledMeta);
+          }
+        }
         return buildSyncResult("noop", { fileId: driveMeta.fileId });
       }
 

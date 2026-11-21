@@ -1836,7 +1836,11 @@ importScripts(
   }
 
   async function saveProfileEdits(payload) {
-    await storage.saveProfiles(payload.profiles || {}, payload.meta);
+    // The map replaces every profile, so a message without one must not be read as "none".
+    if (!payload || !payload.profiles || typeof payload.profiles !== "object" || Array.isArray(payload.profiles)) {
+      throw new Error("SAVE_PROFILES requires a profiles map.");
+    }
+    await storage.saveProfiles(payload.profiles, payload.meta);
     await touchDriveCategories(["profiles"]);
     return buildState();
   }

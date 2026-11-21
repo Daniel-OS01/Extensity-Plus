@@ -173,17 +173,21 @@ test("D3: a stale file ID merges with the file that exists instead of overwritin
   const drive = new FakeDrive();
   const a = await boot("A", drive, { driveSyncDeletionPolicy: "mirror" });
   const b = await boot("B", drive, { driveSyncDeletionPolicy: "mirror" });
-  await a.ok({ type: "SAVE_ALIAS", aliases: { [E1]: "One" } });
+  await a.ok({ type: "SAVE_ALIAS", aliases: { [E1]: "One", [E3]: "Three" } });
   assertNoConflicts(await converge([a, b]));
   const oldId = drive.only().id;
+  // The replacement file was written elsewhere: it lacks E3, which A's baseline (for the old
+  // file) still lists, and has E2. Read against the old baseline, mirror would delete E3.
   const content = drive.json(oldId);
+  delete content.categories.aliases.data[E3];
   content.categories.aliases.data[E2] = "Two-from-elsewhere";
   drive.files.delete(oldId);
   drive.put("file-replacement", JSON.stringify(content));
   const result = await sync(a);
   assert.notEqual(result.reason, "initial_upload", "replaced the Drive file without merging");
-  assert.deepEqual(driveCategories(drive).aliases.data, { [E1]: "One", [E2]: "Two-from-elsewhere" });
-  assert.deepEqual(local(a, "aliases"), { [E1]: "One", [E2]: "Two-from-elsewhere" });
+  const expected = { [E1]: "One", [E2]: "Two-from-elsewhere", [E3]: "Three" };
+  assert.deepEqual(driveCategories(drive).aliases.data, expected);
+  assert.deepEqual(local(a, "aliases"), expected);
   assertNoConflicts(await converge([a, b]));
   assert.deepEqual(local(b, "aliases"), local(a, "aliases"));
   await assertSettled(drive, [a, b]);
@@ -221,6 +225,7 @@ test("D4: pull succeeds when the Drive file lacks a category enabled here", asyn
   assert.equal(pulled.result.status, "pulled");
   assert.deepEqual(local(b, "aliases"), { [E1]: "One" });
   assert.equal(local(b, "driveSyncTxn"), null);
+  assert.equal((await b.uiSync({ direction: "pull" })).result.status, "noop", "a repeated pull re-applied the same file");
   b = await b.restart();
   assert.deepEqual(local(b, "aliases"), { [E1]: "One" });
   assert.equal(local(b, "drivePendingConflict"), null);
@@ -243,6 +248,10 @@ test("D4: the automatic Use Drive strategy pulls without crashing", async () => 
   assert.deepEqual(local(b, "aliases"), { [E1]: "One" });
   assert.equal((await b.state()).options.lastDriveSyncError, null);
   assert.equal(local(b, "driveSyncTxn"), null);
+  const backups = (local(b, "driveSyncBackups") || []).length;
+  await b.fireAlarm("extensity-drive-auto-sync");
+  await settle(200);
+  assert.equal((local(b, "driveSyncBackups") || []).length, backups, "a repeated automatic pull applied the same file again");
   assertNoConflicts(await converge([a, b]));
   await assertSettled(drive, [a, b]);
 });
@@ -420,12 +429,17 @@ test("D9: merged history is a sorted rolling log capped at 500 records", async (
   await a.self.ExtensityStorage.saveLocalState({ eventHistory: make("a", 400, 1000) });
   await b.self.ExtensityStorage.saveLocalState({ eventHistory: make("b", 400, 1005) });
   assertNoConflicts(await converge([a, b]));
+  const seeded = make("a", 400, 1000).concat(make("b", 400, 1005)).sort((x, y) => x.timestamp - y.timestamp);
   for (const device of [a, b]) {
     const historyLog = local(device, "eventHistory");
-    assert.ok(historyLog.length <= 500, device.name + " history length " + historyLog.length);
+    assert.equal(historyLog.length, 500, device.name + " history length");
     assert.ok(historyLog.every((entry, index) => index === 0 || historyLog[index - 1].timestamp <= entry.timestamp), device.name + " history out of order");
+    // Sync audit records are newer than every seeded record; the rest must be the newest seeded ones.
+    const kept = historyLog.filter((entry) => /^[ab]-/.test(entry.id)).map((entry) => entry.id);
+    assert.deepEqual(kept, seeded.slice(seeded.length - kept.length).map((entry) => entry.id), device.name + " kept the wrong records");
+    assert.ok(kept.length >= 490, device.name + " kept only " + kept.length + " seeded records");
   }
-  assert.ok(driveCategories(drive).history.data.length <= 500);
+  assert.deepEqual(driveCategories(drive).history.data.map((entry) => entry.id), local(a, "eventHistory").map((entry) => entry.id));
   assert.equal(local(b, "drivePendingConflict"), null);
   await assertSettled(drive, [a, b]);
 });
@@ -543,6 +557,15 @@ test("SAVE_PROFILES saves through the background and schedules change sync", asy
   await assertSettled(drive, [a]);
 });
 
+test("SAVE_PROFILES without a profiles map is rejected and changes nothing", async () => {
+  const drive = new FakeDrive();
+  const a = await boot("A", drive);
+  await saveProfilesDirect(a, { Work: [E1] }, {});
+  const response = await a.send({ type: "SAVE_PROFILES" });
+  assert.equal(response.ok, false);
+  assert.deepEqual(plain((await profiles(a)).map.Work), [E1]);
+});
+
 test("the connection test reports conflicts the way a real sync would", async () => {
   const drive = new FakeDrive();
   const a = await boot("A", drive);
@@ -558,4 +581,78 @@ test("the connection test reports conflicts the way a real sync would", async ()
   assert.equal((await sync(a)).status, "merged");
   assertNoConflicts(await converge([a, b]));
   await assertSettled(drive, [a, b]);
+});
+
+test("a first sync that finds identical data still records the baseline", async () => {
+  const drive = new FakeDrive();
+  const a = await boot("A", drive);
+  const b = await boot("B", drive);
+  await a.ok({ type: "SAVE_ALIAS", aliases: { [E1]: "One", [E2]: "Two" } });
+  await b.ok({ type: "SAVE_ALIAS", aliases: { [E1]: "One", [E2]: "Two" } });
+  await sync(a);
+  assert.equal((await sync(b)).status, "noop");
+  await b.ok({ type: "SAVE_ALIAS", aliases: { [E1]: "One" } });
+  assertNoConflicts(await converge([a, b]));
+  assert.deepEqual(local(b, "aliases"), { [E1]: "One" }, "B's deletion was undone by its next sync");
+  await assertSettled(drive, [a, b]);
+});
+
+test("history records with equal timestamps settle to one order", async () => {
+  const drive = new FakeDrive();
+  const a = await boot("A", drive, { driveSyncCategories: ALL_CATEGORIES });
+  const b = await boot("B", drive, { driveSyncCategories: ALL_CATEGORIES });
+  await a.self.ExtensityStorage.saveLocalState({ eventHistory: [{ action: "manual", id: "rec-a", label: "", timestamp: 5000 }] });
+  await b.self.ExtensityStorage.saveLocalState({ eventHistory: [{ action: "manual", id: "rec-b", label: "", timestamp: 5000 }] });
+  assertNoConflicts(await converge([a, b]));
+  assert.deepEqual(local(a, "eventHistory").map((entry) => entry.id), local(b, "eventHistory").map((entry) => entry.id));
+  await assertSettled(drive, [a, b]);
+});
+
+test("under the default policy a profile deleted here stays deleted when the other device adds to it", async () => {
+  const drive = new FakeDrive();
+  const a = await boot("A", drive);
+  const b = await boot("B", drive);
+  await saveProfilesDirect(a, { Work: [E1] }, {});
+  assertNoConflicts(await converge([a, b]));
+  await saveProfilesDirect(a, {}, {});
+  await saveProfilesDirect(b, { Work: [E1, E2] }, {});
+  assertNoConflicts(await converge([a, b]));
+  assert.equal(Object.prototype.hasOwnProperty.call((await profiles(a)).map, "Work"), false, "the deleted profile came back on A");
+  assert.deepEqual(plain((await profiles(b)).map.Work), [E1, E2]);
+  assert.deepEqual(driveCategories(drive).profiles.data.map.Work, [E1, E2]);
+  await assertSettled(drive, [a, b]);
+});
+
+test("memberships stored under the old colon split are left as they are", async () => {
+  const drive = new FakeDrive();
+  const a = await boot("A", drive);
+  const b = await boot("B", drive);
+  // What the colon bug left behind: profile "Work" holding the member " dev:<id>" (decision D: no repair).
+  const damaged = " dev:" + E2;
+  await saveProfilesDirect(a, { Work: [E1, damaged] }, {});
+  assert.deepEqual(plain((await profiles(a)).map.Work).sort(), [E1, damaged].sort(), "storage rejected the fixture");
+  assertNoConflicts(await converge([a, b]));
+  for (const device of [a, b]) {
+    const map = (await profiles(device)).map;
+    assert.deepEqual(plain(map.Work).sort(), [E1, damaged].sort(), device.name + " Work");
+    assert.equal(Object.prototype.hasOwnProperty.call(map, "Work: dev"), false, device.name + " moved a membership");
+  }
+  await assertSettled(drive, [a, b]);
+});
+
+test("repeated pulls of a file written by an older version settle", async () => {
+  const drive = new FakeDrive();
+  const a = await boot("A", drive);
+  const b = await boot("B", drive);
+  await saveProfilesDirect(a, { Work: [E1, E2] }, {});
+  await sync(a);
+  // An older version wrote device-only options and unsorted members into the file.
+  const content = drive.json(drive.only().id);
+  content.categories.options.data.activeProfile = "Work";
+  content.categories.options.data.migration_example = true;
+  content.categories.profiles.data.map.Work = [E2, E1];
+  drive.put(drive.only().id, JSON.stringify(content));
+  assert.equal((await b.uiSync({ direction: "pull" })).result.status, "pulled");
+  assert.equal((await b.uiSync({ direction: "pull" })).result.status, "noop", "the second pull applied the same file again");
+  assert.notEqual((await b.state()).options.activeProfile, "Work");
 });

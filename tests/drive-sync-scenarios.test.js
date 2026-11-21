@@ -439,6 +439,10 @@ test("D9b: with History enabled, idle syncs do not write to Drive", async () => 
   const a = await boot("A", drive, { driveSyncCategories: ALL_CATEGORIES });
   await a.ok({ type: "SAVE_ALIAS", aliases: { [E1]: "One" } });
   await sync(a);
+  // The audit record of the first run is new history and goes up with the next run; that
+  // history-only run must not add another audit record.
+  const trace = await converge([a]);
+  assert.ok(trace.length <= 2, "history kept the device busy: " + trace.join(" / "));
   await assertSettled(drive, [a]);
   await assertSettled(drive, [a]);
 });

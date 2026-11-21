@@ -753,17 +753,124 @@
     // front re-keys every later item, so the three-way merge reports them all as changed on
     // both sides and invents conflicts. Repeated identical items get a stable occurrence
     // suffix so duplicates survive the round trip.
+    var list = Array.isArray(data) ? data : [];
+    arrayItemKeys(list).forEach(function(key, index) {
+      result[key] = list[index];
+    });
+    return result;
+  }
+
+  /**
+   * Lists the item keys of an array category in array order, as categoryItemMap keys them.
+   * @param {*} data - The array category data.
+   * @return {string[]} One key per array entry, in the same order.
+   */
+  function arrayItemKeys(data) {
+    var keys = [];
+    var seen = {};
     var duplicateCounts = {};
     (Array.isArray(data) ? data : []).forEach(function(item) {
       var id = item && (item.id || item.eventId || item.timestamp);
       var key = id ? String(id) : "content:" + hashText(stableSerialize(item));
-      if (Object.prototype.hasOwnProperty.call(result, key)) {
+      if (Object.prototype.hasOwnProperty.call(seen, key)) {
         duplicateCounts[key] = (duplicateCounts[key] || 1) + 1;
         key = key + "#" + duplicateCounts[key];
       }
-      result[key] = item;
+      seen[key] = true;
+      keys.push(key);
     });
-    return result;
+    return keys;
+  }
+
+  /**
+   * Merges the order of an ordered collection that may have been edited on both sides.
+   * The local order wins only when this device alone reordered the items all three lists
+   * share; otherwise the Drive order wins, so two devices never keep rewriting Drive with
+   * their own order. Ids present only on the other side are placed after their nearest
+   * preceding neighbour from that side, or at the front when they have none.
+   * @param {string[]} baseOrder - Order at the last successful sync.
+   * @param {string[]} localOrder - Order on this device.
+   * @param {string[]} remoteOrder - Order in the Drive file.
+   * @return {string[]} The merged order, containing every id of both sides once.
+   */
+  function mergeOrder(baseOrder, localOrder, remoteOrder) {
+    var base = Array.isArray(baseOrder) ? baseOrder : [];
+    var local = Array.isArray(localOrder) ? localOrder : [];
+    var remote = Array.isArray(remoteOrder) ? remoteOrder : [];
+    var shared = base.filter(function(id) {
+      return local.indexOf(id) !== -1 && remote.indexOf(id) !== -1;
+    });
+    function sharedOrderOf(list) {
+      return list.filter(function(id) {
+        return shared.indexOf(id) !== -1;
+      });
+    }
+    var localReordered = !dataEqual(sharedOrderOf(local), shared);
+    var remoteReordered = !dataEqual(sharedOrderOf(remote), shared);
+    var primary = localReordered && !remoteReordered ? local : remote;
+    var secondary = primary === local ? remote : local;
+    var merged = [];
+    primary.forEach(function(id) {
+      if (merged.indexOf(id) === -1) {
+        merged.push(id);
+      }
+    });
+    secondary.forEach(function(id, index) {
+      if (merged.indexOf(id) !== -1) {
+        return;
+      }
+      var position = 0;
+      for (var back = index - 1; back >= 0; back -= 1) {
+        var neighbour = merged.indexOf(secondary[back]);
+        if (neighbour !== -1) {
+          position = neighbour + 1;
+          break;
+        }
+      }
+      merged.splice(position, 0, id);
+    });
+    return merged;
+  }
+
+  function categoryOrder(categoryId, data) {
+    if (categoryId === "groups") {
+      return isObject(data) && Array.isArray(data.groupOrder) ? data.groupOrder : [];
+    }
+    return arrayItemKeys(data);
+  }
+
+  /**
+   * Rebuilds merged category data, merging the order of ordered categories (URL rules,
+   * groups) instead of taking one side's order.
+   * @param {string} categoryId - The category being rebuilt.
+   * @param {Object} items - Merged items keyed as categoryItemMap keys them.
+   * @param {*} baseData - Category data at the last successful sync.
+   * @param {*} localData - Category data on this device.
+   * @param {*} remoteData - Category data in the Drive file.
+   * @return {Object|Array} The rebuilt category data.
+   */
+  function orderedCategoryData(categoryId, items, baseData, localData, remoteData) {
+    if (categoryId !== "urlRules" && categoryId !== "groups") {
+      return categoryDataFromItemMap(categoryId, items);
+    }
+    var order = mergeOrder(
+      categoryOrder(categoryId, baseData),
+      categoryOrder(categoryId, localData),
+      categoryOrder(categoryId, remoteData)
+    ).filter(function(key) {
+      return Object.prototype.hasOwnProperty.call(items, key);
+    });
+    Object.keys(items).forEach(function(key) {
+      if (order.indexOf(key) === -1) {
+        order.push(key);
+      }
+    });
+    if (categoryId === "groups") {
+      return categoryDataFromItemMap(categoryId, items, { groupOrder: clone(order) });
+    }
+    return clone(order.map(function(key) {
+      return items[key];
+    }));
   }
 
   /**
@@ -858,6 +965,15 @@
       if (!localPresent && !remotePresent) {
         return;
       }
+      if (categoryId === "history") {
+        // History is a rolling log: union by id, sorted by time, newest records kept.
+        // Turnover is normal for a log, so it takes no part in conflicts or deletion policy.
+        result.categories[categoryId] = {
+          data: mergeHistory(localCategory.data, remoteCategory.data),
+          updatedAt: Math.max(localCategory.updatedAt || 0, remoteCategory.updatedAt || 0) || nowMs()
+        };
+        return;
+      }
 
       var baseData = baselineCategories && baselineCategories[categoryId];
       var baseItems = categoryItemMap(categoryId, baseData);
@@ -899,7 +1015,7 @@
         }
       });
       result.categories[categoryId] = {
-        data: categoryDataFromItemMap(categoryId, mergedItems, localCategory.data || remoteCategory.data),
+        data: orderedCategoryData(categoryId, mergedItems, baseData, localCategory.data, remoteCategory.data),
         updatedAt: Math.max(localCategory.updatedAt || 0, remoteCategory.updatedAt || 0) || nowMs()
       };
     });
@@ -975,6 +1091,10 @@
     var threshold = Math.max(1, Math.min(100, Number(options && options.driveFailsafeThresholdPercent) || 20));
     for (var index = 0; index < summary.length; index += 1) {
       var entry = summary[index];
+      // History is a rolling log capped at its newest records; turnover is not data loss.
+      if (entry.categoryId === "history") {
+        continue;
+      }
       if (
         (entry.beforeCount > 0 && entry.afterCount === 0)
         || entry.deleted >= DRIVE_FAILSAFE_ABSOLUTE_DELETIONS
@@ -1322,7 +1442,12 @@
       var localUpdatedAt = timestamps[categoryId] || remoteUpdatedAt;
       mergedAt[categoryId] = Math.max(localUpdatedAt, remoteUpdatedAt, mergedAt[categoryId] || 0);
       timestamps[categoryId] = mergedAt[categoryId];
-      meta.baselineCategories[categoryId] = clone(remoteCategory.data);
+      if (categoryId === "history") {
+        // History merges without a baseline, so storing one would only cost local storage.
+        delete meta.baselineCategories[categoryId];
+      } else {
+        meta.baselineCategories[categoryId] = clone(remoteCategory.data);
+      }
     });
     meta.lastMergedAt = mergedAt;
     meta.categoryTimestamps = timestamps;
@@ -2683,7 +2808,17 @@
       if (typeof savePendingConflict === "function") {
         await savePendingConflict(null);
       }
-      if (typeof appendAudit === "function") {
+      var changedCategoryIds = remoteSummary.concat(localSummary).filter(function(entry) {
+        return entry.added || entry.deleted || entry.changed;
+      }).map(function(entry) {
+        return entry.categoryId;
+      });
+      // An audit record is itself new history. Recording a run that only moved history
+      // would make the next sync non-idle again, forever.
+      var historyOnlyRun = changedCategoryIds.length > 0 && changedCategoryIds.every(function(categoryId) {
+        return categoryId === "history";
+      });
+      if (typeof appendAudit === "function" && !historyOnlyRun) {
         await appendAudit({
           changes: remoteSummary.concat(localSummary),
           direction: direction,

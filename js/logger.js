@@ -206,6 +206,35 @@
     }
   }
 
+  /**
+   * Keeps this page's level and enabled flag in step with changes saved by any other page
+   * or the service worker, so a choice made in the Dashboard applies everywhere at once.
+   * @param {Object} changes - chrome.storage change map.
+   * @param {string} area - Storage area name.
+   */
+  function applyStorageChanges(changes, area) {
+    if (area !== "local" || !changes) {
+      return;
+    }
+    if (changes[STORAGE_KEY] && LEVEL_RANK.hasOwnProperty(changes[STORAGE_KEY].newValue)) {
+      _level = changes[STORAGE_KEY].newValue;
+    }
+    if (changes[ENABLED_KEY] && typeof changes[ENABLED_KEY].newValue === "boolean") {
+      _enabled = changes[ENABLED_KEY].newValue;
+    }
+  }
+
+  loadLevel();
+  loadEnabled();
+  if (
+    typeof chrome !== "undefined" &&
+    chrome.storage &&
+    chrome.storage.onChanged &&
+    typeof chrome.storage.onChanged.addListener === "function"
+  ) {
+    chrome.storage.onChanged.addListener(applyStorageChanges);
+  }
+
   root.ExtensityLogger = {
     LEVELS: LEVELS,
     clearEntries: clearEntries,

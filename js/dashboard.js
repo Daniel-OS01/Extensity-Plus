@@ -444,6 +444,62 @@ document.addEventListener("DOMContentLoaded", function() {
     return "Chrome extension OAuth is active. Brave fallback is not configured.";
   }
 
+  var LOG_LEVEL_BADGE_CLASS = {
+    debug: "event-badge event-meta",
+    error: "event-badge event-state_changed_off",
+    info: "event-badge event-state_changed_on",
+    warn: "event-badge event-scheduled"
+  };
+
+  /**
+   * Builds one display row from a stored diagnostic log entry.
+   * @param {Object} entry - Entry written by ExtensityLogger.
+   * @return {Object} Row for the Activity & Log timeline.
+   */
+  function buildLogRow(entry) {
+    var rawTs = entry.timestamp || "";
+    var epochTs = rawTs ? new Date(rawTs).getTime() : Date.now();
+    return {
+      isLogEntry: true,
+      isHistoryEntry: false,
+      epochTs: isFinite(epochTs) ? epochTs : Date.now(),
+      level: entry.level,
+      levelBadgeClass: LOG_LEVEL_BADGE_CLASS[entry.level] || "event-badge",
+      timestamp: rawTs.replace("T", " ").slice(0, 19),
+      message: entry.message,
+      dataLine: entry.data ? JSON.stringify(entry.data) : null
+    };
+  }
+
+  /**
+   * Builds the full list of log rows from the stored log, newest first.
+   * The stored list is the source of truth, so a rotated log (same length, new tail) still shows its newest entry.
+   * @param {Array<Object>|undefined} entries - Stored log entries, oldest first. Missing means the log was cleared.
+   * @return {Array<Object>} Log rows, newest first.
+   */
+  function buildLogRows(entries) {
+    if (!Array.isArray(entries)) {
+      return [];
+    }
+    return entries.map(buildLogRow).reverse();
+  }
+
+  /**
+   * Formats timeline rows as plain text for the clipboard, oldest first.
+   * @param {Array<Object>} rows - Activity and log rows as shown on the page.
+   * @return {string} One line per row, or an empty string for no rows.
+   */
+  function buildTimelineText(rows) {
+    return rows.slice().sort(function(left, right) {
+      return left.epochTs - right.epochTs;
+    }).map(function(row) {
+      if (row.isLogEntry) {
+        return [row.timestamp, String(row.level || "").toUpperCase(), row.message, row.dataLine].filter(Boolean).join(" | ");
+      }
+      return [row.formattedDate, row.event, row.extensionName, row.triggeredBy, row.details].filter(Boolean).join(" | ");
+    }).join("\n");
+  }
+
   /**
    * Create the dashboard's Knockout view model and initialize its state, actions, computed values, and synchronization controls.
    */
@@ -638,6 +694,33 @@ document.addEventListener("DOMContentLoaded", function() {
       }).catch(function() {});
     };
 
+    self.applyHistory = function(eventHistory) {
+      self.historyRows(eventHistory.slice().reverse().map(function(row) {
+        var details = [];
+        if (row.action) { details.push("action=" + row.action); }
+        if (row.ruleName) { details.push("rule=" + row.ruleName); }
+        if (row.result) { details.push("result=" + row.result); }
+        if (row.url) { details.push("url=" + row.url); }
+        if (row.tabId != null) { details.push("tab=" + row.tabId); }
+        if (typeof row.previousEnabled === "boolean" && typeof row.nextEnabled === "boolean") {
+          details.push("state=" + (row.previousEnabled ? "on" : "off") + "→" + (row.nextEnabled ? "on" : "off"));
+        }
+        if (row.debug) { details.push("debug=" + row.debug); }
+        return {
+          event: historyLabelForEvent(row.event),
+          extensionName: row.extensionName || row.label || "Rule event",
+          id: row.id,
+          result: row.result || "",
+          ruleId: row.ruleId || null,
+          triggeredBy: row.triggeredBy,
+          details: details.join(" • "),
+          timestamp: row.timestamp,
+          badgeClass: "event-badge event-" + (row.result || row.event || "unknown"),
+          formattedDate: new Date(row.timestamp).toLocaleString()
+        };
+      }));
+    };
+
     self.applyState = function(state) {
       var localState = state && state.localState ? state.localState : {};
       var extensionList = Array.isArray(state && state.extensions) ? state.extensions : [];
@@ -667,30 +750,7 @@ document.addEventListener("DOMContentLoaded", function() {
       });
       self.rules(ruleEditors);
       self.refreshPeerRules();
-      self.historyRows(eventHistory.slice().reverse().map(function(row) {
-        var details = [];
-        if (row.action) { details.push("action=" + row.action); }
-        if (row.ruleName) { details.push("rule=" + row.ruleName); }
-        if (row.result) { details.push("result=" + row.result); }
-        if (row.url) { details.push("url=" + row.url); }
-        if (row.tabId != null) { details.push("tab=" + row.tabId); }
-        if (typeof row.previousEnabled === "boolean" && typeof row.nextEnabled === "boolean") {
-          details.push("state=" + (row.previousEnabled ? "on" : "off") + "→" + (row.nextEnabled ? "on" : "off"));
-        }
-        if (row.debug) { details.push("debug=" + row.debug); }
-        return {
-          event: historyLabelForEvent(row.event),
-          extensionName: row.extensionName || row.label || "Rule event",
-          id: row.id,
-          result: row.result || "",
-          ruleId: row.ruleId || null,
-          triggeredBy: row.triggeredBy,
-          details: details.join(" • "),
-          timestamp: row.timestamp,
-          badgeClass: "event-badge event-" + (row.result || row.event || "unknown"),
-          formattedDate: new Date(row.timestamp).toLocaleString()
-        };
-      }));
+      self.applyHistory(eventHistory);
       if (self.ruleTestResult()) {
         self.ruleTestResult(null);
       }
@@ -1101,22 +1161,8 @@ document.addEventListener("DOMContentLoaded", function() {
     };
 
     var _logger = typeof window !== "undefined" && window.ExtensityLogger ? window.ExtensityLogger : null;
-    var _levelClass = { error: "event-badge event-state_changed_off", warn: "event-badge event-scheduled", info: "event-badge event-state_changed_on", debug: "event-badge event-meta" };
-
-    function buildLogRow(entry) {
-      var rawTs = entry.timestamp || "";
-      var epochTs = rawTs ? new Date(rawTs).getTime() : Date.now();
-      return {
-        isLogEntry: true,
-        isHistoryEntry: false,
-        epochTs: isFinite(epochTs) ? epochTs : Date.now(),
-        level: entry.level,
-        levelBadgeClass: _levelClass[entry.level] || "event-badge",
-        timestamp: rawTs.replace("T", " ").slice(0, 19),
-        message: entry.message,
-        dataLine: entry.data ? JSON.stringify(entry.data) : null
-      };
-    }
+    var LOG_ACTION_STATUS_MS = 3000;
+    var _logActionStatusTimer = null;
 
     var _debugOrigConsoleError = null;
     var _debugOrigConsoleWarn = null;
@@ -1158,36 +1204,38 @@ document.addEventListener("DOMContentLoaded", function() {
     self.logLevel = ko.observable(_logger ? _logger.getLevel() : "warn");
     self.errorsOnly = ko.observable(false);
     self.logEmpty = ko.pureComputed(function() { return self.logEntries().length === 0; });
+    self.logActionStatus = ko.observable("");
+
+    function showLogActionStatus(text) {
+      self.logActionStatus(text);
+      if (_logActionStatusTimer !== null) {
+        clearTimeout(_logActionStatusTimer);
+      }
+      _logActionStatusTimer = setTimeout(function() {
+        _logActionStatusTimer = null;
+        self.logActionStatus("");
+      }, LOG_ACTION_STATUS_MS);
+    }
 
     if (_logger) {
-      // Honour the Activity & Log setting here too, so dashboard-side logging stops
-      // recording as well - not just the service worker's.
-      if (typeof _logger.loadEnabled === "function") {
-        _logger.loadEnabled(function() {});
-      }
       _logger.loadLevel(function(level) {
         self.logLevel(level);
         if (level === "debug") { installDebugHooks(); }
       });
-      _logger.subscribe(function(entry) {
-        self.logEntries.unshift(buildLogRow(entry));
-      });
       _logger.readShared(function(entries) {
-        var rows = entries.map(buildLogRow);
-        self.logEntries(rows.reverse().concat(self.logEntries()));
+        self.logEntries(buildLogRows(entries));
       });
     }
 
     if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.onChanged) {
       chrome.storage.onChanged.addListener(function(changes, area) {
-        if (area !== "local" || !changes.extensityLog) { return; }
-        var newList = changes.extensityLog.newValue;
-        var oldList = changes.extensityLog.oldValue || [];
-        if (!Array.isArray(newList)) { return; }
-        var added = newList.slice(oldList.length);
-        added.forEach(function(entry) {
-          self.logEntries.unshift(buildLogRow(entry));
-        });
+        if (area !== "local") { return; }
+        if (changes.extensityLog) {
+          self.logEntries(buildLogRows(changes.extensityLog.newValue));
+        }
+        if (changes.logLevel && typeof changes.logLevel.newValue === "string") {
+          self.logLevel(changes.logLevel.newValue);
+        }
       });
     }
 
@@ -1203,20 +1251,42 @@ document.addEventListener("DOMContentLoaded", function() {
     });
 
     self.clearLog = function() {
-      if (_logger) {
-        _logger.clearEntries();
-        _logger.clearShared();
+      if (!window.confirm("Delete all activity history and the diagnostic log on this device?")) {
+        return;
       }
-      self.logEntries([]);
+      self.busy(true);
+      self.error("");
+      // Only the activity rows and the log are refreshed, so unsaved edits in other tabs survive.
+      ExtensityApi.clearActivityLog().then(function(payload) {
+        var localState = payload && payload.state && payload.state.localState ? payload.state.localState : {};
+        self.applyHistory(Array.isArray(localState.eventHistory) ? localState.eventHistory : []);
+        if (_logger) {
+          _logger.clearEntries();
+        }
+        self.logEntries([]);
+        showLogActionStatus("Cleared");
+      }).catch(function(err) {
+        self.error((err && err.message) || "Failed to clear Activity & Log.");
+      }).finally(function() {
+        self.busy(false);
+      });
     };
 
     self.copyLog = function() {
-      var text = self.logEntries().slice().reverse().map(function(row) {
-        return [row.timestamp, row.level.toUpperCase(), row.message, row.dataLine].filter(Boolean).join(" | ");
-      }).join("\n");
-      if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
-        navigator.clipboard.writeText(text);
+      var rows = self.unifiedTimeline();
+      if (!rows.length) {
+        showLogActionStatus("Nothing to copy");
+        return;
       }
+      if (!navigator.clipboard || typeof navigator.clipboard.writeText !== "function") {
+        self.error("Clipboard is not available on this page.");
+        return;
+      }
+      navigator.clipboard.writeText(buildTimelineText(rows)).then(function() {
+        showLogActionStatus("Copied " + rows.length + (rows.length === 1 ? " entry" : " entries"));
+      }).catch(function(err) {
+        self.error("Copy failed: " + ((err && err.message) || "clipboard write was rejected."));
+      });
     };
 
     self.unifiedTimeline = ko.computed(function() {
@@ -1311,6 +1381,8 @@ document.addEventListener("DOMContentLoaded", function() {
       buildDriveStatusDetails: buildDriveStatusDetails,
       buildDriveStatusHeadline: buildDriveStatusHeadline,
       buildDriveStatusRows: buildDriveStatusRows,
+      buildLogRows: buildLogRows,
+      buildTimelineText: buildTimelineText,
       parseRuleDraft: parseRuleDraft,
       resolveDraftEnableIds: resolveDraftEnableIds
     };

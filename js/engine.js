@@ -930,6 +930,9 @@
     applyProfile: function(profileName) {
       return chromeMessage({ profileName: profileName, type: "APPLY_PROFILE" });
     },
+    clearActivityLog: function() {
+      return chromeMessage({ type: "CLEAR_ACTIVITY_LOG" });
+    },
     exportBackup: function(exportScope) {
       return chromeMessage({ exportScope: exportScope || "full", type: "EXPORT_BACKUP" });
     },

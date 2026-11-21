@@ -2552,6 +2552,17 @@ importScripts(
   }
 
   /**
+   * Deletes this device's activity history and diagnostic log.
+   * @return {Promise<Object>} The refreshed public state.
+   */
+  async function clearActivityLog() {
+    await storage.saveLocalState({ eventHistory: [] });
+    logger.clearEntries();
+    logger.clearShared();
+    return buildState();
+  }
+
+  /**
    * Routes a background message to its supported state, backup, dashboard, extension, or Drive operation.
    * @param {Object} message - Message containing a supported `type` and operation-specific fields.
    * @return {Promise<Object>} The operation-specific response.
@@ -2563,6 +2574,8 @@ importScripts(
         return { state: await runApplyProfile(message.profileName) };
       case "ASSIGN_EXTENSION_PROFILE":
         return { state: await assignExtensionProfile(message.extensionId, message.profileName) };
+      case "CLEAR_ACTIVITY_LOG":
+        return { state: await clearActivityLog() };
       case "EXPORT_BACKUP":
         return await exportBackup(message);
       case "GET_EXTENSION_METADATA":

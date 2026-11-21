@@ -588,6 +588,64 @@ test("dashboard drive status helpers surface Brave fallback and hidden app data 
   assert.match(rows.find((row) => row.label === "Drive storage").value, /hidden appDataFolder/);
 });
 
+function loadDashboardInternals() {
+  const windowRoot = {};
+  loadBrowserScript(path.join(repoRoot, "js/dashboard.js"), {
+    _: { defer() {} },
+    document: { addEventListener(event, callback) { callback(); } },
+    window: windowRoot
+  });
+  return windowRoot.ExtensityDashboardInternals;
+}
+
+test("dashboard buildTimelineText lists activity and log rows oldest first", () => {
+  const helpers = loadDashboardInternals();
+  const text = helpers.buildTimelineText([
+    {
+      isLogEntry: true,
+      isHistoryEntry: false,
+      epochTs: 2000,
+      level: "warn",
+      timestamp: "2026-11-21 10:00:02",
+      message: "drive_api_retry",
+      dataLine: "{\"attempt\":2}"
+    },
+    {
+      isLogEntry: false,
+      isHistoryEntry: true,
+      epochTs: 1000,
+      event: "Enabled",
+      extensionName: "Reader",
+      triggeredBy: "rule",
+      details: "rule=Docs",
+      formattedDate: "11/21/2026, 10:00:01 AM"
+    }
+  ]);
+  assert.equal(text, [
+    "11/21/2026, 10:00:01 AM | Enabled | Reader | rule | rule=Docs",
+    "2026-11-21 10:00:02 | WARN | drive_api_retry | {\"attempt\":2}"
+  ].join("\n"));
+  assert.equal(helpers.buildTimelineText([]), "");
+});
+
+test("dashboard buildLogRows replaces the list from storage, newest first", () => {
+  const helpers = loadDashboardInternals();
+  const stored = Array.from({ length: 300 }, (_, index) => ({
+    level: "warn",
+    message: "entry_" + index,
+    timestamp: new Date(Date.UTC(2026, 10, 21, 0, 0, index)).toISOString()
+  }));
+  const rows = helpers.buildLogRows(stored);
+  assert.equal(rows.length, 300);
+  assert.equal(rows[0].message, "entry_299");
+  assert.equal(rows[299].message, "entry_0");
+
+  // A full log that rotates keeps its length; the newest entry must still appear.
+  const rotated = stored.slice(1).concat([{ level: "error", message: "entry_300", timestamp: "2026-11-21T00:05:00.000Z" }]);
+  assert.equal(helpers.buildLogRows(rotated)[0].message, "entry_300");
+  assert.deepEqual(normalize(helpers.buildLogRows(undefined)), []);
+});
+
 test("dashboard source refreshes Drive status and exposes the dashboard action", () => {
   const source = fs.readFileSync(path.join(repoRoot, "js/dashboard.js"), "utf8");
   const html = fs.readFileSync(path.join(repoRoot, "dashboard.html"), "utf8");
@@ -3648,6 +3706,73 @@ test("ExtensityLogger records nothing while the Activity & Log setting is off", 
   logger.setEnabled(true);
   logger.warn("after_reenable");
   assert.equal(logger.getEntries().length, 2);
+});
+
+function loadLoggerWithStorage(stored) {
+  const changeListeners = [];
+  const windowRoot = {};
+  loadBrowserScript(path.join(repoRoot, "js/logger.js"), {
+    chrome: {
+      storage: {
+        local: {
+          get(keys, callback) { callback({ ...stored }); },
+          set(values, callback) { Object.assign(stored, values); if (callback) { callback(); } },
+          remove(keys, callback) { if (callback) { callback(); } }
+        },
+        onChanged: {
+          addListener(listener) { changeListeners.push(listener); }
+        }
+      }
+    },
+    window: windowRoot
+  });
+  return { changeListeners, logger: windowRoot.ExtensityLogger };
+}
+
+test("ExtensityLogger level none records nothing at any level", () => {
+  const { logger } = loadLoggerWithStorage({});
+  logger.setLevel("none");
+  logger.error("e");
+  logger.warn("w");
+  logger.info("i");
+  logger.debug("d");
+  assert.equal(logger.getEntries().length, 0);
+});
+
+test("ExtensityLogger picks up the saved level and enabled flag on load", () => {
+  const quiet = loadLoggerWithStorage({ logLevel: "none" }).logger;
+  assert.equal(quiet.getLevel(), "none");
+  quiet.error("should_not_record");
+  assert.equal(quiet.getEntries().length, 0);
+
+  const off = loadLoggerWithStorage({ activityLogEnabled: false, logLevel: "debug" }).logger;
+  assert.equal(off.isEnabled(), false);
+  off.error("should_not_record");
+  assert.equal(off.getEntries().length, 0);
+});
+
+test("ExtensityLogger follows level and enabled changes made in other pages", () => {
+  const { changeListeners, logger } = loadLoggerWithStorage({ logLevel: "debug" });
+  assert.equal(changeListeners.length, 1, "logger must listen to chrome.storage.onChanged");
+  const fire = (changes, area) => changeListeners.forEach((listener) => listener(changes, area));
+
+  fire({ logLevel: { newValue: "none", oldValue: "debug" } }, "sync");
+  assert.equal(logger.getLevel(), "debug", "changes outside the local area are ignored");
+
+  fire({ logLevel: { newValue: "none", oldValue: "debug" } }, "local");
+  assert.equal(logger.getLevel(), "none");
+  logger.error("muted");
+  assert.equal(logger.getEntries().length, 0);
+
+  fire({ logLevel: { newValue: "error", oldValue: "none" } }, "local");
+  fire({ activityLogEnabled: { newValue: false, oldValue: true } }, "local");
+  assert.equal(logger.isEnabled(), false);
+  logger.error("still_muted");
+  assert.equal(logger.getEntries().length, 0);
+
+  fire({ activityLogEnabled: { newValue: true, oldValue: false } }, "local");
+  logger.error("recorded");
+  assert.equal(logger.getEntries().length, 1);
 });
 
 test("importing URL rules merges by id and never drops existing rules", async () => {

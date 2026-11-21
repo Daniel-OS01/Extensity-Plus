@@ -963,10 +963,14 @@
    * @param {string} [deletionPolicy] - `"mirror"` propagates deletions to the other side;
    *   anything else (including omitted) uses the safe `"additive"` default, under which an
    *   item deleted on one side survives while the other side still has it.
-   * @return {Object} An object containing `conflicts`, an array of item-level conflict records, and `envelope`, the merged envelope.
+   * @return {Object} An object containing `conflicts`, an array of item-level conflict records;
+   *   `envelope`, the merged envelope for Drive and the baseline; and `localEnvelope`, what
+   *   this device keeps. The two differ only under the additive policy, for items this device
+   *   deleted that Drive still has: Drive keeps them for other devices, this device does not.
    */
   function buildThreeWayEnvelope(localEnvelope, remoteEnvelope, baselineCategories, categoryFlags, resolution, writerId, deletionPolicy) {
     var result = { categories: {}, exportedAt: nowMs(), version: ENVELOPE_VERSION, writerId: writerId || "" };
+    var localResult = { categories: {}, exportedAt: result.exportedAt, version: ENVELOPE_VERSION, writerId: writerId || "" };
     var conflicts = [];
     var additiveOnly = normalizeDeletionPolicy(deletionPolicy) === DELETION_POLICY_ADDITIVE;
     var localCategories = localEnvelope && isObject(localEnvelope.categories) ? localEnvelope.categories : {};
@@ -1010,6 +1014,7 @@
       var localItems = categoryItemMap(categoryId, localCategory.data);
       var remoteItems = categoryItemMap(categoryId, remoteCategory.data);
       var mergedItems = {};
+      var localResultItems = {};
       var keys = Object.keys(Object.assign({}, baseItems, localItems, remoteItems));
       keys.forEach(function(itemId) {
         var baseHas = Object.prototype.hasOwnProperty.call(baseItems, itemId);
@@ -1018,7 +1023,13 @@
         var localChanged = localHas !== baseHas || (localHas && !dataEqual(localItems[itemId], baseItems[itemId]));
         var remoteChanged = remoteHas !== baseHas || (remoteHas && !dataEqual(remoteItems[itemId], baseItems[itemId]));
         var chooseRemote = false;
-        if (localChanged && remoteChanged && (localHas !== remoteHas || !dataEqual(localItems[itemId], remoteItems[itemId]))) {
+        // Under the additive policy delete-versus-edit has a determined outcome (the edit
+        // survives on Drive, the deleting device stays without it), so it is not a conflict.
+        var deleteVersusEdit = additiveOnly && localHas !== remoteHas;
+        if (
+          localChanged && remoteChanged && !deleteVersusEdit
+          && (localHas !== remoteHas || !dataEqual(localItems[itemId], remoteItems[itemId]))
+        ) {
           conflicts.push({
             categoryId: categoryId,
             itemId: itemId,
@@ -1043,13 +1054,29 @@
         if (chosenHas) {
           mergedItems[itemId] = clone(chosenValue);
         }
+        // Additive policy: an item this device deleted stays deleted here, even though Drive
+        // keeps it for the devices that still have it.
+        var deletedHere = additiveOnly && baseHas && !localHas;
+        if (chosenHas && !deletedHere) {
+          localResultItems[itemId] = clone(chosenValue);
+        }
       });
+      var updatedAt = Math.max(localCategory.updatedAt || 0, remoteCategory.updatedAt || 0) || nowMs();
       result.categories[categoryId] = {
         data: orderedCategoryData(categoryId, mergedItems, baseData, localCategory.data, remoteCategory.data),
-        updatedAt: Math.max(localCategory.updatedAt || 0, remoteCategory.updatedAt || 0) || nowMs()
+        updatedAt: updatedAt
+      };
+      localResult.categories[categoryId] = {
+        data: orderedCategoryData(categoryId, localResultItems, baseData, localCategory.data, remoteCategory.data),
+        updatedAt: updatedAt
       };
     });
-    return { conflicts: conflicts, envelope: result };
+    Object.keys(result.categories).forEach(function(categoryId) {
+      if (!Object.prototype.hasOwnProperty.call(localResult.categories, categoryId)) {
+        localResult.categories[categoryId] = clone(result.categories[categoryId]);
+      }
+    });
+    return { conflicts: conflicts, envelope: result, localEnvelope: localResult };
   }
 
   /**
@@ -2694,7 +2721,10 @@
           pendingConflict: pending
         });
       }
+      // resultEnvelope goes to Drive and becomes the baseline; localResultEnvelope is what this
+      // device keeps. They differ only for a merge under the additive policy.
       var resultEnvelope;
+      var localResultEnvelope;
       var status;
       var reason = null;
       if (direction === "pull") {
@@ -2702,30 +2732,35 @@
           return buildSyncResult("noop", { reason: "no_remote_file" });
         }
         resultEnvelope = remoteEnvelope;
+        localResultEnvelope = remoteEnvelope;
         status = "pulled";
       } else if (direction === "push") {
         resultEnvelope = remoteEnvelope ? localEnvelope : stampEnvelopeForInitialUpload(localEnvelope);
+        localResultEnvelope = resultEnvelope;
         status = "pushed";
       } else if (!remoteEnvelope) {
         resultEnvelope = stampEnvelopeForInitialUpload(localEnvelope);
+        localResultEnvelope = resultEnvelope;
         status = "pushed";
         reason = "initial_upload";
       } else if (conflicts.length && (resolution === "keep_local" || resolution === "keep_remote")) {
         resultEnvelope = threeWay.envelope;
+        localResultEnvelope = threeWay.localEnvelope;
         status = resolution === "keep_local" ? "resolved_local" : "resolved_remote";
       } else {
         resultEnvelope = threeWay.envelope;
+        localResultEnvelope = threeWay.localEnvelope;
         status = "merged";
       }
 
       var remoteDiffers = direction !== "pull" && (!remoteEnvelope || mergedDataDiffers(resultEnvelope, remoteEnvelope, categoryFlags));
-      var localDiffers = direction !== "push" && mergedDataDiffers(resultEnvelope, localEnvelope, categoryFlags);
+      var localDiffers = direction !== "push" && mergedDataDiffers(localResultEnvelope, localEnvelope, categoryFlags);
       if (!remoteDiffers && !localDiffers) {
         return buildSyncResult("noop", { fileId: driveMeta.fileId });
       }
 
       var remoteSummary = remoteDiffers ? buildChangeSummary(remoteEnvelope, resultEnvelope, categoryFlags) : [];
-      var localSummary = localDiffers ? buildChangeSummary(localEnvelope, resultEnvelope, categoryFlags) : [];
+      var localSummary = localDiffers ? buildChangeSummary(localEnvelope, localResultEnvelope, categoryFlags) : [];
       var failsafeOptions = Object.assign({}, syncOptions, {
         driveAutomaticTrigger: ["change", "periodic", "startup"].indexOf(trigger) >= 0
       });
@@ -2819,7 +2854,7 @@
         }
       }
       if (localDiffers) {
-        await savePatches(buildPatchesFromEnvelope(resultEnvelope, categoryFlags), {
+        await savePatches(buildPatchesFromEnvelope(localResultEnvelope, categoryFlags), {
           direction: direction === "pull" ? "pull" : "merge",
           source: "drive"
         });

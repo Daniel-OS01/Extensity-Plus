@@ -287,6 +287,21 @@ test("D6: under the default policy a deletion stays on the device that made it",
   await assertSettled(drive, [a, b]);
 });
 
+test("D6: under the default policy delete on one device and edit on the other is not a conflict", async () => {
+  const drive = new FakeDrive();
+  const a = await boot("A", drive);
+  const b = await boot("B", drive);
+  await a.ok({ type: "SAVE_ALIAS", aliases: { [E1]: "One", [E2]: "Two" } });
+  assertNoConflicts(await converge([a, b]));
+  await a.ok({ type: "SAVE_ALIAS", aliases: { [E1]: "One" } });
+  await b.ok({ type: "SAVE_ALIAS", aliases: { [E1]: "One", [E2]: "Two-edited" } });
+  assertNoConflicts(await converge([a, b]));
+  assert.deepEqual(local(a, "aliases"), { [E1]: "One" });
+  assert.deepEqual(local(b, "aliases"), { [E1]: "One", [E2]: "Two-edited" });
+  assert.deepEqual(driveCategories(drive).aliases.data, { [E1]: "One", [E2]: "Two-edited" });
+  await assertSettled(drive, [a, b]);
+});
+
 test("mirror policy propagates deletions to the other device", async () => {
   const drive = new FakeDrive();
   const a = await boot("A", drive, { driveSyncDeletionPolicy: "mirror" });

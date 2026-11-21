@@ -1427,6 +1427,11 @@ test("the default additive policy keeps an item deleted on only one side", () =>
     plain(result.envelope.categories.urlRules.data).map((item) => item.id).sort(),
     ["A", "B", "C"]
   );
+  // The device that deleted "B" stays without it; only Drive keeps it.
+  assert.deepEqual(
+    plain(result.localEnvelope.categories.urlRules.data).map((item) => item.id).sort(),
+    ["A", "C"]
+  );
 });
 
 test("an absent remote category never deletes the local copy", () => {

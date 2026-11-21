@@ -14,12 +14,19 @@ Extensity-Plus is a Manifest V3 extension manager for Chrome and Chromium-based 
 
 ## Releases
 
-Significant updates, oldest first, ending with the latest release. All versions and full notes are on the [GitHub Releases page](https://github.com/Daniel-OS01/Extensity-Plus/releases).
+Full notes for every version are on the [GitHub Releases page](https://github.com/Daniel-OS01/Extensity-Plus/releases).
 
-- **v4.2.2** (2026-05-15): Adds Google Drive sync, the Full / Smart / Minimal browser-sync modes, the dashboard Log tab and a Drive connection test.
-- **v4.7.0** (2026-07-23): Drive sync safety overhaul. Every push, pull or conflict resolution now asks for confirmation first, a safeguard pauses changes that would delete too much, and *Undo last sync* restores the last backup. **Breaking:** `ExtensityApi.syncDrive` and `resolveDriveConflict` are now async and require the confirmation token.
-- **v4.7.2** (2026-08-03): URL rules can be exported and imported as JSON. Sync no longer wipes categories, and malformed sync data no longer clears other devices.
-- **v4.7.4** (2026-11-21, latest): Faster popup search and bulk toggle/profile apply. Accessibility: the profile delete button names its profile, and inputs that only had a placeholder now have labels.
+**Latest: v4.7.4** (2026-11-21)
+- Faster popup search and bulk toggle/profile apply. Accessibility fixes: the profile delete button names its profile, and inputs that only had a placeholder now have labels.
+
+**Version 4** (2026-04 →)
+- Google Drive sync, added in 4.2. It became safer in 4.7: each push, pull or conflict resolution is shown for confirmation first, a safeguard pauses changes that would delete too much, and *Undo last sync* restores the last backup. 4.x also added the Full / Smart / Minimal browser-sync modes, the dashboard Log tab, and quick URL-rule creation from the popup.
+
+**Version 3** (2026-04)
+- A Dashboard **Sync Status** tab for checking browser sync, and scoped JSON exports (only profiles, or only settings). Also a separate Favorites section in the popup and a steadier popup load.
+
+**Version 2** (2026-04)
+- The Extensity 2.0 rewrite: a Manifest V3 service worker that owns every enable/disable change, plus the dashboard (aliases, groups, URL rules, history). It also added undo, list/grid views, sorting by name, recent use or frequency, and pin-to-toolbar.
 
 ## Screenshots
 
